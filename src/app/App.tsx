@@ -9,6 +9,7 @@ import { SplashScreen } from '../features/startup/SplashScreen'
 import { FocusProvider } from '../navigation/FocusProvider'
 import { focusElement, navigables } from '../navigation/spatial'
 import { DevBadge } from '../dev/DevBadge'
+import { PlayRequestCoordinator } from '../features/remote/PlayRequestCoordinator'
 import { AppLayout } from './AppLayout'
 import type { Backend } from '../services/api/backend'
 import type { detectPlatform } from '../platform/environment'
@@ -116,6 +117,7 @@ function Navigation() {
   return (
     <FocusProvider platformKeys={platform.keys} onDefaultBack={onDefaultBack} routeKey={`${location.pathname}${location.search}`}>
       <SessionGate />
+      <PlayRequestCoordinator />
       {confirmExit && (
         <ConfirmDialog
           title="Sair do iPlex?"

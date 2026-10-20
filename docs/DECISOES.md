@@ -33,9 +33,16 @@ Gestor separado; projeto institucional intocado; pagamentos desligados.
 
 ## Decisões que afetam segurança — precisam de aprovação
 
-1. **PIN de perfil adulto (falha fechada).** O backend não tem PIN de perfil.
-   Com perfil infantil na família, perfis adultos ficam **bloqueados na TV**
-   até o backend oferecer a validação. O PIN nunca é validado no cliente.
+1. **PIN parental (implementado em 20/10/2026, local).** Um PIN de 4 dígitos
+   por família, definido pelo administrador no Control e validado no backend
+   (scrypt, 5 tentativas, bloqueio de 15 min por TV). Sem PIN definido e com
+   perfil infantil, adultos continuam bloqueados na TV (falha fechada).
+   **A aprovar:** PIN único por família (e não por perfil adulto).
+5. **Pedido de reprodução com algo tocando (proposta v1, a aprovar).** A TV
+   pergunta ("Assistir agora" / "Continuar assistindo"); sem resposta em 40 s,
+   mantém a reprodução atual. Sem reprodução em andamento, inicia direto. Na
+   seleção de perfis, espera a escolha (até 60 s). Ajuste em
+   `features/remote/PlayRequestCoordinator.tsx` (`CONFIRM_TIMEOUT_MS`).
 2. **Navegador como dispositivo.** O pareamento pelo navegador envia
    `platform: 'web'` (a callable aceita; o schema lista só TVs e o Gestor
    exibiria "Android TV").

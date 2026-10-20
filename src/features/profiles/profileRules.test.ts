@@ -44,6 +44,10 @@ describe('proteção infantil', () => {
   it('sem perfil infantil não exige PIN', () => {
     expect(requiresPin(admin, [admin, regular])).toBe(false)
   })
+  it('o backend decide quando informa pinRequired (a regra local é só reserva)', () => {
+    expect(requiresPin({ ...admin, pinRequired: false }, [admin, kids])).toBe(false)
+    expect(requiresPin({ ...regular, pinRequired: true }, [admin, regular])).toBe(true)
+  })
 })
 
 describe('visitante', () => {

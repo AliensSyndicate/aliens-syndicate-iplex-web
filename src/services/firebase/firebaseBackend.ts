@@ -11,7 +11,7 @@
  * Nenhuma credencial administrativa passa pelo navegador. URLs individuais
  * de reprodução podem conter credenciais do provedor e não devem ser registradas.
  */
-import { initializeApp } from 'firebase/app'
+import { initializeApp, type FirebaseApp } from 'firebase/app'
 import {
   browserLocalPersistence,
   connectAuthEmulator,
@@ -23,7 +23,7 @@ import {
 } from 'firebase/auth'
 import { connectFunctionsEmulator, getFunctions, httpsCallable, type Functions } from 'firebase/functions'
 import { EMULATOR_HOST, FUNCTIONS_REGION, type FirebaseWebConfig } from '../../config/env'
-import type { Backend, CatalogQuery, PairingRequest, ProgressWrite } from '../api/backend'
+import type { Backend, CatalogQuery, HeartbeatResult, PairingRequest, ProgressWrite } from '../api/backend'
 import { AppError, toAppError } from '../api/errors'
 import type {
   CatalogCategory,
@@ -37,6 +37,8 @@ import type {
   LibraryEntry,
   PairingPoll,
   PairingSession,
+  PinCheck,
+  PlayRequestClaim,
   Profile,
   ProgressEntry,
   SeriesDetails,
@@ -44,9 +46,11 @@ import type {
   StreamGrant,
 } from '../api/types'
 import { normalizeSeriesDetails } from '../catalog/normalize'
+import { parseHeartbeat, parsePinCheck, parsePlayRequestClaim, parseProfiles } from '../api/validation'
 import { diag } from '../../platform/diagnostics'
 
 interface Context {
+  app: FirebaseApp
   auth: Auth
   functions: Functions
 }
@@ -65,7 +69,7 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
       connectAuthEmulator(auth, `http://${EMULATOR_HOST}:9099`, { disableWarnings: true })
       connectFunctionsEmulator(functions, EMULATOR_HOST, 5001)
     }
-    ctx = { auth, functions }
+    ctx = { app, auth, functions }
     return ctx
   }
 
@@ -156,24 +160,45 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
     },
 
     async listProfiles(): Promise<Profile[]> {
-      const { profiles } = await call<{ profiles: Profile[] }>('listPlayerProfiles')
-      return profiles
+      return parseProfiles(await call<unknown>('listPlayerProfiles'))
     },
 
-    async verifyProfilePin() {
-      // O backend atual não tem PIN de perfil. Falha fechada: nunca validar no cliente.
-      throw new AppError('not-supported', 'profile-pin-unsupported')
+    async verifyProfilePin(profileId: string, pin: string): Promise<PinCheck> {
+      // O PIN vai só para o backend (HTTPS) e é descartado; o resultado é validado aqui.
+      return parsePinCheck(await call<unknown>('verifyProfilePin', { profileId, pin }))
     },
 
     async acquireSession(profileId: string): Promise<Lease> {
       const lease = await call<{ id: string; profileId: string; expiresAt: number }>('acquireSession', { profileId })
       return { id: lease.id, profileId: lease.profileId, expiresAt: lease.expiresAt }
     },
-    async heartbeat(sessionId: string) {
-      await call('heartbeat', { sessionId })
+    async heartbeat(sessionId: string): Promise<HeartbeatResult> {
+      return parseHeartbeat(await call<unknown>('heartbeat', { sessionId }))
     },
-    async releaseSession(sessionId: string) {
-      await call('releaseSession', { sessionId })
+    async releaseSession(sessionId: string, options?: { suspend?: boolean }) {
+      await call('releaseSession', { sessionId, ...(options?.suspend ? { suspend: true } : {}) })
+    },
+
+    watchPlayRequests(identity, onPending, onError) {
+      let stop: (() => void) | null = null
+      let closed = false
+      // Firestore só é carregado quando a TV está pareada (chunk separado).
+      void import('./playRequestListener')
+        .then(({ listenPlayRequests }) => {
+          if (closed) return
+          stop = listenPlayRequests(context().app, identity, onPending, onError)
+        })
+        .catch(() => onError('unavailable'))
+      return () => {
+        closed = true
+        stop?.()
+      }
+    },
+    async claimPlayRequest(id: string): Promise<PlayRequestClaim> {
+      return parsePlayRequestClaim(await call<unknown>('claimPlayRequest', { playRequestId: id }))
+    },
+    async updatePlayRequest(id, status, errorCode) {
+      await call('updatePlayRequest', { playRequestId: id, status, ...(errorCode ? { errorCode } : {}) })
     },
 
     async listSpaces(profileId: string): Promise<Space[]> {
@@ -208,10 +233,29 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
       return normalizeSeriesDetails(raw.seriesId, raw.details)
     },
 
-    async readEpg(): Promise<EpgResult> {
-      // readSourceEpg do backend aceita só contas de pessoa (iptvWorkspace recusa
-      // dispositivos). Sem EPG para a TV até o backend liberar: nada é inventado.
-      return { supported: false }
+    async readEpg(sourceId: string, channelId: string): Promise<EpgResult> {
+      try {
+        const raw = await call<{ programmes?: unknown }>('readSourceEpg', { id: sourceId, channelId })
+        const programmes = Array.isArray(raw?.programmes) ? raw.programmes : []
+        return {
+          supported: true,
+          programmes: programmes
+            .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
+            .filter((p) => typeof p.startAt === 'number' && typeof p.endAt === 'number')
+            .map((p) => ({
+              channelId: String(p.channelId ?? channelId),
+              title: typeof p.title === 'string' ? p.title : '',
+              startAt: p.startAt as number,
+              endAt: p.endAt as number,
+              description: typeof p.description === 'string' ? p.description : '',
+            })),
+        }
+      } catch (error) {
+        // Backend anterior (sem EPG para TVs) ou fonte sem guia: nada é inventado.
+        const e = toAppError(error)
+        if (e.kind === 'backend-outdated' || e.kind === 'content-unavailable' || e.kind === 'source-locked') return { supported: false }
+        throw e
+      }
     },
 
     async resolveStream(profileId: string, input): Promise<StreamGrant> {

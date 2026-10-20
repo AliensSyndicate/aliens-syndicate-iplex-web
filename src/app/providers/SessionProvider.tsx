@@ -11,6 +11,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { TIMING } from '../../config/features'
 import { decideStartupProfile, requiresPin, sortProfiles } from '../../features/profiles/profileRules'
+import type { HeartbeatResult } from '../../services/api/backend'
 import { AppError, toAppError } from '../../services/api/errors'
 import type { DeviceIdentity, Lease, Profile, Space } from '../../services/api/types'
 import { CatalogStore } from '../../services/catalog/catalogStore'
@@ -55,6 +56,10 @@ export interface SessionApi {
   reloadSpaces(): Promise<void>
   /** Readquire o lease do perfil atual (após session-expired). */
   recoverSession(): Promise<void>
+  /** Confirma agora se a credencial da TV ainda vale (ex.: sinal de desvinculação). */
+  checkDevice(): Promise<void>
+  /** Respostas do heartbeat (pedido de reprodução pendente). Devolve o cancelamento. */
+  onHeartbeat(listener: (result: HeartbeatResult) => void): () => void
 }
 
 const LAST_PROFILE_KEY = 'iplex.lastProfile.v1'
@@ -70,6 +75,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   })
   const run = useRef(0)
   const handleLost = useRef<(error: AppError) => void>(() => undefined)
+  const beatListeners = useRef(new Set<(result: HeartbeatResult) => void>())
 
   const leases = useMemo(
     () =>
@@ -77,6 +83,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         backend,
         heartbeatMs: TIMING.leaseHeartbeatMs,
         onLost: (error) => handleLost.current(error),
+        onBeat: (result) => beatListeners.current.forEach((listener) => listener(result)),
       }),
     [backend],
   )
@@ -269,6 +276,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         } catch (raw) {
           handleLost.current(toAppError(raw))
           throw raw
+        }
+      },
+      checkDevice: async () => {
+        const current = stateRef.current
+        if (current.status === 'ready') return leases.checkNow()
+        if (current.status !== 'choosing') return
+        try {
+          await backend.listProfiles()
+        } catch (raw) {
+          if (toAppError(raw).kind === 'device-unpaired' && stateRef.current === current) await toPairing()
+        }
+      },
+      onHeartbeat: (listener) => {
+        beatListeners.current.add(listener)
+        return () => {
+          beatListeners.current.delete(listener)
         }
       },
       reloadSpaces: async () => {

@@ -28,6 +28,7 @@ import { episodeContentId } from '../../services/catalog/normalize'
 import { indexFromItem } from '../../services/library/libraryStore'
 import { hasPersonalLibrary } from '../profiles/profileRules'
 import { createProgressTracker } from './progressTracker'
+import { playRequestErrorCode, reportPlayRequest, setPlaybackActive } from '../remote/playRequestReport'
 
 type Phase = { status: 'preparing' } | { status: 'playing' } | { status: 'error'; error: AppError }
 
@@ -45,6 +46,8 @@ export default function PlayerScreen() {
   const title = q.get('t') ?? ''
   const episodeId = q.get('e')
   const wantsResume = q.get('r') === '1'
+  /** Pedido do iPlex Control que abriu esta reprodução (o resultado volta ao celular). */
+  const playRequestId = q.get('pr')
   const live = kind === 'channel'
   const personal = hasPersonalLibrary(session.profile)
 
@@ -121,6 +124,7 @@ export default function PlayerScreen() {
         offs.push(
           adapter.on('state', ({ state }) => {
             setPlaying(state === 'playing')
+            if (state === 'playing') reportPlayRequest(backend, playRequestId, 'started')
             if (state === 'playing' || state === 'paused') setBuffering(false)
             if (state === 'paused') saveRef.current(true)
           }),
@@ -166,6 +170,17 @@ export default function PlayerScreen() {
     }
     // A reprodução reinicia ao mudar o conteúdo ou ao tentar novamente.
   }, [sourceId, itemId, episodeId, kind, attempt]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Só há "reprodução em andamento" com mídia carregada (nunca em erro ou preparando).
+  useEffect(() => {
+    setPlaybackActive(phase.status === 'playing')
+    return () => setPlaybackActive(false)
+  }, [phase.status])
+
+  // Pedido do celular que não chegou a tocar: o Control recebe o motivo.
+  useEffect(() => {
+    if (phase.status === 'error') reportPlayRequest(backend, playRequestId, 'failed', playRequestErrorCode(phase.error))
+  }, [phase, backend, playRequestId])
 
   // App ocultado: o shell para o player. Ao voltar, o Web reabre a mídia.
   const wasHidden = useRef(false)

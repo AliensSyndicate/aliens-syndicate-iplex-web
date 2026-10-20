@@ -25,6 +25,7 @@ export const ERROR_COPY: Record<AppErrorKind, ErrorCopy> = {
   'profile-in-use': { title: 'Perfil em uso', description: 'Este perfil já está assistindo em outro dispositivo. Escolha outro perfil ou tente mais tarde.', retry: 'Tentar novamente' },
   'profile-unavailable': { title: 'Perfil indisponível', description: 'Este perfil não está disponível nesta TV. As configurações de perfis ficam no iPlex Gestor.', retry: 'Tentar novamente' },
   'profile-locked': { title: 'Perfil protegido', description: 'A entrada neste perfil exige PIN porque há um perfil infantil na família.' },
+  'parental-pin-missing': { title: 'PIN parental não configurado', description: 'Há um perfil infantil na família, então os perfis adultos exigem PIN. Defina o PIN parental no iPlex Gestor, em Família › Controle parental.' },
   'iptv-not-configured': { title: 'Nenhuma fonte configurada', description: 'Adicione uma fonte IPTV no iPlex Gestor para ver canais, filmes e séries aqui.', retry: 'Verificar novamente' },
   'iptv-unavailable': { title: 'Fonte IPTV indisponível', description: 'A fonte configurada não respondeu agora. Sua assinatura do iPlex não foi afetada.', retry: 'Tentar novamente' },
   'source-locked': { title: 'Fonte protegida', description: 'Esta fonte IPTV é protegida por PIN no iPlex Gestor e ainda não pode ser desbloqueada pela TV.' },

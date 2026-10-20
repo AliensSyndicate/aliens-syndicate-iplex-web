@@ -1155,6 +1155,24 @@
   color: var(--iplex-button-primary-text);
 }
 
+/* ---- Pedido de reprodução do iPlex Control (aviso) ------------------- */
+.iplex-remote-toast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--iplex-space-7);
+  z-index: 90;
+  max-width: 1200px;
+  padding: var(--iplex-space-4) var(--iplex-space-6);
+  border: 2px solid var(--iplex-text-primary);
+  border-radius: var(--iplex-radius-full);
+  background-color: var(--iplex-bg);
+  color: var(--iplex-text-primary);
+  text-align: center;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
 /* ---- Marca de demonstração (somente desenvolvimento) ----------------- */
 .iplex-dev-badge {
   position: fixed;

@@ -59,6 +59,34 @@ localmente) → confirmação no Gestor (`linkDevice`) → a TV consulta
 `signInWithCustomToken`. As regras do Firestore não permitem ler a sessão de
 pareamento, por isso não há listener.
 
+## PIN parental
+
+`listPlayerProfiles` informa `pinRequired` por perfil (adulto + perfil infantil
+na família). A `PinDialog` envia o PIN a `verifyProfilePin` (backend: scrypt,
+5 tentativas, bloqueio de 15 min por TV) e mostra tentativas restantes. O
+`acquireSession` seguinte só passa para aquele perfil. Multitarefa usa
+`releaseSession {suspend: true}` e mantém a liberação; trocar de perfil ou sair
+bloqueia de novo. Sem PIN definido no Control: perfil adulto bloqueado
+("PIN parental não configurado").
+
+## Pedidos de reprodução do iPlex Control
+
+`features/remote/PlayRequestCoordinator.tsx` (contrato v1, ver
+`aliens_syndicate_iplex_control/docs/CONTRACTS.md`):
+
+1. Ouvinte Firestore somente leitura de `devices/{did}/play_requests`
+   (`status in [pending, revoked]`, chunk carregado sob demanda); reserva pelo
+   ponteiro devolvido no heartbeat.
+2. `claimPlayRequest` (uma vez, antes de expirar, revalidando o perfil ativo).
+3. Sem reprodução em andamento → abre o player (`/assistir?...&pr=<id>`); com
+   reprodução em andamento (`isPlaybackActive`) → "Pedido de reprodução" com
+   "Assistir agora"/"Continuar assistindo" (40 s → `no-answer`). Na seleção de
+   perfis, aviso e espera pela escolha.
+4. `updatePlayRequest`: `started` só quando o adaptador (AVPlay/Clappr) emite
+   `playing`; falhas com código do contrato.
+5. Marcador `revoked` (desvinculação) → `checkDevice()` → heartbeat →
+   `device-revoked` → vinculação.
+
 ## Catálogo
 
 `readSourceCatalog` devolve 30 itens por página, em ordem alfabética, sem

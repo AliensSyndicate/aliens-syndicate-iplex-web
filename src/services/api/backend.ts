@@ -13,6 +13,10 @@ import type {
   EpgResult,
   Lease,
   Library,
+  PinCheck,
+  PlayRequestClaim,
+  PlayRequestErrorCode,
+  PlayRequestNotice,
   PairingPoll,
   PairingSession,
   Profile,
@@ -50,6 +54,10 @@ export interface ProgressWrite {
   watchedGeneration?: number
 }
 
+export interface HeartbeatResult {
+  playRequest: { id: string; expiresAt: number } | null
+}
+
 export interface Backend {
   readonly label: 'firebase' | 'mock'
   /** Restaura a credencial do dispositivo (Firebase Auth persistido). null = não pareado. */
@@ -63,12 +71,26 @@ export interface Backend {
   getAppCheckToken(): Promise<string | null>
 
   listProfiles(): Promise<Profile[]>
-  /** Validação de PIN de perfil. O backend real ainda não oferece: rejeita com not-supported. */
-  verifyProfilePin(profileId: string, pin: string): Promise<boolean>
+  /**
+   * PIN parental (perfil adulto quando há perfil infantil). Validado no backend,
+   * com limite de tentativas; o acquireSession seguinte é liberado só para este perfil.
+   */
+  verifyProfilePin(profileId: string, pin: string): Promise<PinCheck>
 
   acquireSession(profileId: string): Promise<Lease>
-  heartbeat(sessionId: string): Promise<void>
-  releaseSession(sessionId: string): Promise<void>
+  /** Renova o lease; devolve um pedido de reprodução pendente (reserva do ouvinte). */
+  heartbeat(sessionId: string): Promise<HeartbeatResult>
+  /** `suspend`: multitarefa — mantém a liberação por PIN para retomar o mesmo perfil. */
+  releaseSession(sessionId: string, options?: { suspend?: boolean }): Promise<void>
+
+  /**
+   * Pedidos de reprodução do iPlex Control para esta TV. Ouvinte em tempo real
+   * (somente leitura, regras do Firestore); devolve a função para encerrar.
+   * `onError('revoked')`: a credencial deixou de valer (TV desvinculada).
+   */
+  watchPlayRequests(identity: DeviceIdentity, onPending: (notice: PlayRequestNotice) => void, onError: (reason: 'revoked' | 'unavailable') => void): () => void
+  claimPlayRequest(id: string): Promise<PlayRequestClaim>
+  updatePlayRequest(id: string, status: 'confirming' | 'started' | 'declined' | 'failed', errorCode?: PlayRequestErrorCode): Promise<void>
 
   listSpaces(profileId: string): Promise<Space[]>
   readCatalog(profileId: string, query: CatalogQuery): Promise<CatalogPage>

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { FEATURES } from '../../config/features'
 import { toAppError } from '../../services/api/errors'
+import type { PinCheck } from '../../services/api/types'
+import { ERROR_COPY } from '../feedback/errorCopy'
 import { IplexButton } from '../ui/IplexButton'
 import { IplexText } from '../ui/IplexText'
 import { Dialog } from './Dialog'
@@ -16,6 +18,14 @@ function readLock(): { until: number; attempts: number } {
     return { until: 0, attempts: 0 }
   }
 }
+const clock = () => Date.now()
+
+/** Bloqueio após uma falha: o do backend (retryAt) prevalece; o local é camada extra. */
+function lockAfterFailure(lock: { until: number; attempts: number }, retryAt: number): { until: number; attempts: number } {
+  if (retryAt) return { until: retryAt, attempts: 0 }
+  const attempts = lock.attempts + 1
+  return attempts >= FEATURES.pinMaxAttempts ? { until: Date.now() + FEATURES.pinLockoutMs, attempts: 0 } : { until: 0, attempts }
+}
 function writeLock(value: { until: number; attempts: number }) {
   try {
     window.sessionStorage.setItem(LOCK_KEY, JSON.stringify(value))
@@ -25,11 +35,11 @@ function writeLock(value: { until: number; attempts: number }) {
 }
 
 /**
- * PIN de perfil. O PIN nunca é guardado nem comparado no cliente: é enviado
- * para validação (verify) e descartado. Limite de tentativas local como
- * camada adicional; o limite de verdade deve ser do backend.
+ * PIN parental. O PIN nunca é guardado nem comparado no cliente: é enviado
+ * para validação (verify) e descartado. O backend limita as tentativas e
+ * bloqueia; o limite local é só uma camada adicional.
  */
-export function PinDialog({ profileName, verify, onSuccess, onCancel }: { profileName: string; verify: (pin: string) => Promise<boolean>; onSuccess: () => void; onCancel: () => void }) {
+export function PinDialog({ profileName, verify, onSuccess, onCancel }: { profileName: string; verify: (pin: string) => Promise<PinCheck>; onSuccess: () => void; onCancel: () => void }) {
   const [pin, setPinState] = useState('')
   // Ref: teclas em sequência rápida (repetição do controle) não perdem dígitos.
   const pinRef = useRef('')
@@ -63,29 +73,44 @@ export function PinDialog({ profileName, verify, onSuccess, onCancel }: { profil
     setBusy(true)
     setMessage(null)
     try {
-      const ok = await verify(value)
+      const result = await verify(value)
       if (!alive.current) return
-      if (ok) {
+      if (result.verified) {
         writeLock({ until: 0, attempts: 0 })
         onSuccess()
         return
       }
-      const attempts = lock.attempts + 1
-      const next = attempts >= FEATURES.pinMaxAttempts ? { until: Date.now() + FEATURES.pinLockoutMs, attempts: 0 } : { until: 0, attempts }
+      // O backend conta as tentativas e bloqueia; o cliente só reflete.
+      const retryAt = result.retryAt ?? 0
+      const next = lockAfterFailure(lock, retryAt)
       writeLock(next)
       setLock(next)
-      setNow(Date.now())
-      setMessage(next.until ? 'Muitas tentativas. Aguarde um minuto.' : 'PIN incorreto.')
+      setNow(clock())
+      if (retryAt) {
+        setMessage('Muitas tentativas. Aguarde para tentar de novo.')
+      } else {
+        const left = result.attemptsLeft
+        setMessage(next.until ? 'Muitas tentativas. Aguarde um minuto.' : left !== undefined ? `PIN incorreto. ${left === 1 ? 'Resta 1 tentativa' : `Restam ${left} tentativas`}.` : 'PIN incorreto.')
+      }
       setPin('')
     } catch (error) {
       if (!alive.current) return
       const appError = toAppError(error)
+      const retryAt = typeof appError.details.retryAt === 'number' ? appError.details.retryAt : 0
+      if (appError.kind === 'rate-limited' && retryAt) {
+        const next = lockAfterFailure(lock, retryAt)
+        writeLock(next)
+        setLock(next)
+        setNow(clock())
+      }
       setMessage(
-        appError.kind === 'not-supported'
-          ? 'A proteção por PIN ainda não está disponível no servidor. Por segurança, este perfil não pode ser aberto nesta TV enquanto houver perfil infantil na família.'
+        appError.kind === 'parental-pin-missing'
+          ? ERROR_COPY['parental-pin-missing'].description
           : appError.kind === 'rate-limited'
             ? 'Muitas tentativas. Aguarde antes de tentar de novo.'
-            : 'Não foi possível validar o PIN. Tente novamente.',
+            : appError.kind === 'not-supported' || appError.kind === 'backend-outdated'
+              ? 'A proteção por PIN ainda não está disponível no servidor. Por segurança, este perfil não pode ser aberto nesta TV enquanto houver perfil infantil na família.'
+              : 'Não foi possível validar o PIN. Tente novamente.',
       )
       setPin('')
     } finally {

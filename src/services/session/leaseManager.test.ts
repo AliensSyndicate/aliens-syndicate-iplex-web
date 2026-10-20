@@ -93,3 +93,32 @@ describe('LeaseManager — ocultar/mostrar rápido', () => {
     expect(backend.acquireSession).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('LeaseManager — PIN parental e pedidos do Control', () => {
+  it('suspender (multitarefa) avisa o backend para manter a liberação por PIN; trocar de perfil não', async () => {
+    const { manager, backend } = setup()
+    const first = await manager.acquire('admin')
+    await manager.suspend()
+    expect(backend.releaseSession).toHaveBeenLastCalledWith(first.id, { suspend: true })
+    const second = await manager.resume()
+    await manager.release()
+    expect(backend.releaseSession).toHaveBeenLastCalledWith(second!.id, undefined)
+  })
+
+  it('repassa a resposta do heartbeat (pedido pendente) e permite verificação imediata', async () => {
+    const onBeat = vi.fn()
+    const heartbeat = vi.fn(async () => ({ playRequest: { id: 'pr_1', expiresAt: 9 } }))
+    const manager = new LeaseManager({
+      backend: { acquireSession: async (profileId: string) => ({ id: 'l', profileId, expiresAt: 1 }), heartbeat, releaseSession: async () => undefined } as never,
+      heartbeatMs: 30000,
+      onLost: vi.fn(),
+      onBeat,
+      setTimer: () => 1 as unknown as ReturnType<typeof setTimeout>,
+      clearTimer: () => undefined,
+    })
+    await manager.acquire('admin')
+    await manager.checkNow()
+    expect(heartbeat).toHaveBeenCalledWith('l')
+    expect(onBeat).toHaveBeenCalledWith({ playRequest: { id: 'pr_1', expiresAt: 9 } })
+  })
+})

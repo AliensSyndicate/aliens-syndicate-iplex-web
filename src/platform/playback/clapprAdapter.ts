@@ -68,6 +68,8 @@ export function createClapprAdapter(load: () => Promise<ClapprModule> = loadClap
         autoPlay: source.autoplay !== false,
         mute: false,
         chromeless: true,
+        // A tela de erro é a do iPlex (ErrorState); a do Clappr ficava no DOM por baixo.
+        disableErrorScreen: true,
         allowUserInteraction: false,
         disableKeyboardShortcuts: true,
         disableVideoTagContextMenu: true,

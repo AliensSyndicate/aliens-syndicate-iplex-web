@@ -1,6 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "iplex-web-dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 5173 }
+    { "name": "iplex-web-dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 5173 },
+    { "name": "iplex-web-emulator", "runtimeExecutable": "npx", "runtimeArgs": ["vite", "--mode", "emulator", "--port", "5174", "--strictPort", "--host", "0.0.0.0"], "port": 5174 }
   ]
 }

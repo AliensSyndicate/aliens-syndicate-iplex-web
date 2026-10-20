@@ -13,7 +13,7 @@ import { AppError } from '../../services/api/errors'
 import type { CatalogItem, Lease, Library, Profile, SeriesDetails, Space } from '../../services/api/types'
 import { delay } from '../../utils/async'
 
-type Scenario = 'default' | 'unpaired' | 'subscription' | 'no-iptv' | 'iptv-down' | 'single' | 'kids-last' | 'session-limit' | 'guest-only'
+type Scenario = 'default' | 'unpaired' | 'subscription' | 'no-iptv' | 'iptv-down' | 'single' | 'kids-last' | 'session-limit' | 'guest-only' | 'remote'
 
 const SCENARIO_KEY = 'iplex.mock.scenario'
 function scenario(): Scenario {
@@ -158,7 +158,7 @@ export function createMockBackend(): Backend {
     },
     async verifyProfilePin(_profileId, pin) {
       await delay(300)
-      return (await sha256(pin)) === DEMO_PIN_SHA256
+      return { verified: (await sha256(pin)) === DEMO_PIN_SHA256, required: true }
     },
     async acquireSession(profileId) {
       await delay(250)
@@ -169,6 +169,21 @@ export function createMockBackend(): Backend {
     },
     async heartbeat() {
       requireLease()
+      return { playRequest: null }
+    },
+    // ?mock=remote: um pedido de reprodução fictício do Control 8 s depois de abrir.
+    watchPlayRequests(_identity, onPending) {
+      if (mode !== 'remote') return () => undefined
+      const id = setTimeout(() => onPending({ id: 'demo-request', expiresAt: Date.now() + 60_000, requesterName: '[Demo] Ana', title: 'Sintel (2010)' }), 8_000)
+      return () => clearTimeout(id)
+    },
+    async claimPlayRequest(id) {
+      await delay(200)
+      const found = ITEMS.find((i) => i.id === 'm-sintel')!
+      return { id, status: 'delivered', request: { sourceId: found.sourceId, itemId: found.id, episodeId: null, episodeLabel: null, kind: found.kind, title: found.title, requesterName: '[Demo] Ana' } }
+    },
+    async updatePlayRequest(id, status, errorCode) {
+      console.info(`[mock] play request ${id}: ${status}${errorCode ? ` (${errorCode})` : ''}`)
     },
     async releaseSession(id) {
       if (lease?.id === id) lease = null

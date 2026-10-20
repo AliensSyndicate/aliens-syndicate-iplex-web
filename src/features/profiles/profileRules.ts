@@ -39,8 +39,13 @@ export function decideStartupProfile(profiles: Profile[], lastProfileId: string 
   return { type: 'choose', reason: last ? 'last-adult' : profiles.length > 1 ? 'multiple' : 'no-last' }
 }
 
-/** Com perfil infantil na família, perfis adultos exigem PIN para entrar. */
+/**
+ * Com perfil infantil na família, perfis adultos exigem PIN para entrar.
+ * O backend informa `pinRequired` e o aplica no acquireSession; a regra local
+ * só vale para respostas antigas sem o campo (sempre conservadora).
+ */
 export function requiresPin(target: Profile, profiles: Profile[]): boolean {
+  if (typeof target.pinRequired === 'boolean') return target.pinRequired
   return isAdult(target) && profiles.some(isKids)
 }
 

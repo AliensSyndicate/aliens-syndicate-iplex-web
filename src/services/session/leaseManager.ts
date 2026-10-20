@@ -10,7 +10,7 @@
  *  - recarga da página: o mesmo dispositivo substitui o próprio lease no backend,
  *    então recarregar não cria sessões extras nem contorna o limite.
  */
-import type { Backend } from '../api/backend'
+import type { Backend, HeartbeatResult } from '../api/backend'
 import { AppError, toAppError } from '../api/errors'
 import type { Lease } from '../api/types'
 
@@ -18,6 +18,8 @@ export interface LeaseManagerOptions {
   backend: Pick<Backend, 'acquireSession' | 'heartbeat' | 'releaseSession'>
   heartbeatMs: number
   onLost: (error: AppError) => void
+  /** Resposta de cada heartbeat (ex.: pedido de reprodução pendente do Control). */
+  onBeat?: (result: HeartbeatResult) => void
   setTimer?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>
   clearTimer?: (id: ReturnType<typeof setTimeout>) => void
 }
@@ -56,23 +58,26 @@ export class LeaseManager {
   }
 
   /** Encerra a sessão (troca de perfil, saída). Falha de rede: o lease expira sozinho. */
-  async release(): Promise<void> {
+  async release(options: { suspend?: boolean } = {}): Promise<void> {
     this.stopTimer()
     const lease = this.lease
     this.lease = null
     this.suspendedProfileId = null
     if (!lease) return
     try {
-      await this.options.backend.releaseSession(lease.id)
+      await this.options.backend.releaseSession(lease.id, options.suspend ? { suspend: true } : undefined)
     } catch {
       // expira no backend em até 90 s
     }
   }
 
-  /** App oculto (multitarefa): libera a vaga e lembra o perfil para retomar. */
+  /**
+   * App oculto (multitarefa): libera a vaga e lembra o perfil para retomar.
+   * O backend mantém a liberação por PIN parental desse perfil por alguns minutos.
+   */
   async suspend(): Promise<void> {
     const profileId = this.lease?.profileId ?? this.suspendedProfileId
-    const releasing = this.release()
+    const releasing = this.release({ suspend: true })
     // Registrado antes de aguardar: um resume() imediato (ocultar/mostrar
     // rápido) precisa saber qual perfil retomar.
     this.suspendedProfileId = profileId
@@ -92,6 +97,13 @@ export class LeaseManager {
   async ensure(profileId: string): Promise<Lease> {
     if (this.lease && this.lease.profileId === profileId) return this.lease
     return this.acquire(profileId)
+  }
+
+  /** Verificação imediata (ex.: o ouvinte do Firestore perdeu a permissão: TV desvinculada?). */
+  async checkNow(): Promise<void> {
+    if (!this.lease) return
+    this.stopTimer()
+    await this.beat()
   }
 
   dispose() {
@@ -115,8 +127,9 @@ export class LeaseManager {
     const lease = this.lease
     if (!lease) return
     try {
-      await this.options.backend.heartbeat(lease.id)
+      const result = await this.options.backend.heartbeat(lease.id)
       if (this.lease === lease) this.schedule()
+      if (result) this.options.onBeat?.(result)
     } catch (raw) {
       if (this.lease !== lease) return
       const error = toAppError(raw)

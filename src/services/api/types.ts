@@ -20,7 +20,59 @@ export interface Profile {
   type: ProfileType
   generations: Generations
   permissionsVersion: number
+  /** Informativo (backend ≥ contrato v1): o acquireSession exige PIN parental. Ausente = regra local. */
+  pinRequired?: boolean
 }
+
+/** verifyProfilePin: resultado do backend. O PIN nunca é comparado no cliente. */
+export interface PinCheck {
+  verified: boolean
+  /** false: o perfil não exige PIN (sem perfil infantil na família ou perfil não adulto). */
+  required: boolean
+  attemptsLeft?: number
+  /** Bloqueio por tentativas: horário (ms) em que novas tentativas voltam a ser aceitas. */
+  retryAt?: number
+}
+
+/**
+ * Solicitação de reprodução enviada pelo iPlex Control (contrato v1,
+ * docs/CONTRACTS.md do Control). Só identificadores estáveis do catálogo.
+ */
+export type PlayRequestStatus = 'pending' | 'delivered' | 'confirming' | 'started' | 'declined' | 'failed' | 'expired' | 'superseded'
+
+export interface PlayRequestNotice {
+  id: string
+  expiresAt: number
+  requesterName: string
+  title: string
+}
+
+export interface PlayRequestContent {
+  sourceId: string
+  itemId: string
+  episodeId: string | null
+  episodeLabel: string | null
+  kind: ContentKind
+  title: string
+  requesterName: string
+}
+
+export type PlayRequestClaim =
+  | { id: string; status: 'delivered'; request: PlayRequestContent }
+  | { id: string; status: 'expired' | 'failed'; errorCode?: string }
+
+/** Códigos que a TV pode reportar ao Control. */
+export type PlayRequestErrorCode =
+  | 'content-unavailable'
+  | 'content-not-allowed'
+  | 'source-protected'
+  | 'stream-unavailable'
+  | 'playback-failed'
+  | 'format-unsupported'
+  | 'session-limit'
+  | 'subscription-required'
+  | 'no-answer'
+  | 'busy'
 
 export interface DeviceIdentity {
   deviceId: string
