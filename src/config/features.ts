@@ -1,0 +1,71 @@
+/**
+ * Decisões de produto centralizadas.
+ *
+ * APROVADAS (seção 32 do prompt mestre) estão marcadas como tal e não devem
+ * mudar. PROPOSTAS (seção 33, ainda sem aprovação definitiva) ficam aqui para
+ * ajuste sem alterar regras de negócio espalhadas pelo código.
+ */
+import type { SectionId } from '../services/api/types'
+
+export const FEATURES = {
+  /** APROVADO: sem checkout nesta fase. Não libera reprodução nem assinatura. */
+  paymentsEnabled: false,
+
+  /** APROVADO: visitante abre em Ao Vivo. */
+  guestStartSection: 'live' as SectionId,
+
+  /** PROPOSTA: seção inicial de perfis regulares/administrador/infantis. */
+  regularStartSection: 'my-iplex' as SectionId,
+
+  /** PROPOSTA (não aprovada): abrir automaticamente o último canal. Desligado. */
+  autoplayLastChannel: false,
+
+  /**
+   * SEGURANÇA — decisão pendente de aprovação.
+   * Com perfil infantil na família, a entrada em perfis adultos exige PIN.
+   * O backend atual (callable `manager`) NÃO tem validação de PIN de perfil.
+   * 'block' = falha fechada: sem validação no backend, perfis adultos ficam
+   * bloqueados na TV enquanto houver perfil infantil. Nunca validar PIN só
+   * no cliente.
+   */
+  adultProfileGuardWithoutBackend: 'block',
+
+  /** Tentativas de PIN antes do bloqueio temporário no cliente (o backend deve limitar também). */
+  pinMaxAttempts: 5,
+  pinLockoutMs: 60_000,
+} as const
+
+export const TIMING = {
+  /** Handshake com o shell (o shell mostra erro próprio após 20 s). */
+  bridgeHandshakeMs: 8_000,
+  /** Lease do backend dura 90 s (LEASE_MS); renovação com folga. */
+  leaseHeartbeatMs: 30_000,
+  /** Pareamento: consulta com recuo exponencial (evita polling excessivo). */
+  pairingPollInitialMs: 3_000,
+  pairingPollMaxMs: 15_000,
+  /** Progresso: gravação controlada. */
+  progressSaveIntervalMs: 30_000,
+  progressMinDeltaMs: 10_000,
+  /** Busca: espera após a última tecla. */
+  searchDebounceMs: 450,
+  searchMinLength: 2,
+  /** Ocultar controles do player sem interação. */
+  playerControlsHideMs: 5_000,
+  /** Startup: limite para cada etapa remota. */
+  startupStepTimeoutMs: 20_000,
+} as const
+
+export const CATALOG = {
+  /** Páginas iniciais por espaço (a API devolve 30 itens por página). */
+  initialPages: 6,
+  /** Páginas extras carregadas ao chegar ao fim de uma fileira. */
+  morePages: 4,
+  /** Limite de páginas por espaço mantidas em memória. */
+  maxPages: 60,
+  /** Itens por fileira exibidos (o resto via "carregar mais"). */
+  rowLimit: 40,
+  /** Requisições TMDB simultâneas a partir do cliente. */
+  tmdbConcurrency: 4,
+  /** Confiança mínima exibida como correspondência (o servidor já filtra). */
+  heroCandidates: 12,
+} as const

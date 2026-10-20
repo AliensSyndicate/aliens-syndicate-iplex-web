@@ -1,0 +1,194 @@
+/*
+ * iPlex Design System — componentes fundamentais.
+ * Compatível com Chromium M56: sem `gap` em flex (M84), `inset` (M87),
+ * `aspect-ratio` (M88) e CSS Grid (M57). Foco por box-shadow.
+ */
+
+/* ---- Texto ---------------------------------------------------------- */
+.iplex-text {
+  margin: 0;
+  font-family: var(--iplex-font-family);
+  line-height: var(--iplex-line-height);
+  color: var(--iplex-text-primary);
+}
+.iplex-text--page-title {
+  font-size: var(--iplex-font-size-page-title);
+  font-weight: var(--iplex-font-weight-medium);
+  line-height: 1.15;
+}
+.iplex-text--hero-title {
+  font-size: var(--iplex-font-size-hero-title);
+  font-weight: var(--iplex-font-weight-bold);
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+}
+.iplex-text--section-title {
+  font-size: var(--iplex-font-size-section-title);
+  font-weight: var(--iplex-font-weight-medium);
+  line-height: 1.25;
+}
+.iplex-text--content-title {
+  font-size: var(--iplex-font-size-content-title);
+  font-weight: var(--iplex-font-weight-medium);
+  line-height: 1.3;
+}
+.iplex-text--meta {
+  font-size: var(--iplex-font-size-meta);
+  color: var(--iplex-text-secondary);
+}
+.iplex-text--description {
+  font-size: var(--iplex-font-size-description);
+  color: var(--iplex-text-secondary);
+}
+.iplex-text--caption {
+  font-size: var(--iplex-font-size-caption);
+  color: var(--iplex-text-secondary);
+}
+.iplex-text--secondary {
+  color: var(--iplex-text-secondary);
+}
+.iplex-text--clamp-2,
+.iplex-text--clamp-3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.iplex-text--clamp-2 {
+  -webkit-line-clamp: 2;
+}
+.iplex-text--clamp-3 {
+  -webkit-line-clamp: 3;
+}
+
+/* ---- Logo: texto branco sólido, sem brilho, relevo, contorno ou sombra --- */
+.iplex-logo-text {
+  position: relative;
+  display: inline-block;
+  font-family: var(--iplex-font-family);
+  font-weight: 700;
+  color: var(--iplex-logo-color);
+  text-shadow: none;
+  -webkit-text-stroke: 0;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.iplex-logo-text--header {
+  font-size: var(--iplex-logo-size-header);
+}
+.iplex-logo-text--splash {
+  font-size: var(--iplex-logo-size-splash);
+}
+.iplex-logo-text--small {
+  font-size: var(--iplex-logo-size-small);
+}
+
+/* ---- Ícone (Hugeicons Stroke Rounded) ------------------------------ */
+.iplex-icon {
+  display: inline-block;
+  -webkit-flex: none;
+  flex: none;
+  width: var(--iplex-icon-size);
+  height: var(--iplex-icon-size);
+  vertical-align: middle;
+}
+
+/* ---- Card de superfície -------------------------------------------- */
+.iplex-card {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  min-height: 310px;
+  width: 100%;
+  background-color: var(--iplex-card-bg);
+  border-radius: var(--iplex-radius);
+  border: none;
+  color: inherit;
+}
+.iplex-card--compact {
+  min-height: 0;
+}
+
+/* ---- Botões (somente texto, nunca ícone) ---------------------------- */
+.iplex-button {
+  display: -webkit-inline-flex;
+  display: inline-flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  width: -webkit-fit-content;
+  width: fit-content;
+  margin: 0;
+  padding: var(--iplex-button-padding-block) var(--iplex-button-padding-inline);
+  border: none;
+  border-radius: var(--iplex-radius-full);
+  font-family: var(--iplex-font-family);
+  font-size: var(--iplex-button-font-size);
+  font-weight: var(--iplex-font-weight-medium);
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  -webkit-appearance: none;
+  -webkit-transition: box-shadow var(--iplex-transition), -webkit-transform var(--iplex-transition);
+  transition: box-shadow var(--iplex-transition), transform var(--iplex-transition);
+}
+.iplex-button-primary {
+  background: var(--iplex-button-primary-bg);
+  color: var(--iplex-button-primary-text);
+}
+.iplex-button-secondary {
+  /* Mesma altura do primário: o padding desconta a borda de 2px. */
+  padding: calc(var(--iplex-button-padding-block) - var(--iplex-button-border-width))
+    calc(var(--iplex-button-padding-inline) - var(--iplex-button-border-width));
+  background: var(--iplex-button-secondary-bg);
+  color: var(--iplex-button-secondary-text);
+  border: var(--iplex-button-border-width) solid var(--iplex-button-secondary-border);
+}
+.iplex-button + .iplex-button {
+  margin-left: var(--iplex-space-4);
+}
+.iplex-button:disabled,
+.iplex-button[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---- Foco (padrão único para todos os elementos navegáveis) --------- */
+.iplex-focusable {
+  outline: none;
+}
+.iplex-button:focus,
+.iplex-focusable:focus,
+.iplex-focusable.is-focused {
+  box-shadow: var(--iplex-focus-ring);
+}
+
+/* Web: clique de mouse não mostra o anel; teclado mostra. Em motores sem
+ * :focus-visible (TV) a regra é ignorada e o anel continua visível. */
+:root:not([data-iplex-platform='tv']) .iplex-button:focus:not(:focus-visible),
+:root:not([data-iplex-platform='tv']) .iplex-focusable:focus:not(:focus-visible) {
+  box-shadow: none;
+}
+
+/* Web: hover só com ponteiro real; a TV não depende de hover. */
+@media (hover: hover) {
+  :root:not([data-iplex-platform='tv']) .iplex-button-secondary:hover:not(:disabled) {
+    background-color: var(--iplex-card-bg);
+  }
+  :root:not([data-iplex-platform='tv']) .iplex-button-primary:hover:not(:disabled) {
+    background-color: var(--iplex-text-primary);
+  }
+}
+
+@media (forced-colors: active) {
+  .iplex-button:focus,
+  .iplex-focusable:focus {
+    outline: 3px solid CanvasText;
+    outline-offset: 4px;
+  }
+}

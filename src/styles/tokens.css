@@ -1,0 +1,160 @@
+/*
+ * iPlex Design System — tokens.
+ *
+ * OFICIAIS (exatos; não aproximar nem trocar por equivalentes como #fff):
+ * cores, raios e fonte. Os demais tokens derivam deles, SEM cores novas
+ * (sem cor de destaque, sem gradientes no fundo global).
+ *
+ * Compatível com Chromium M56 (Tizen 4.0): custom properties, rgba, calc.
+ */
+:root {
+  /* ---- Oficiais ---------------------------------------------------- */
+  --iplex-bg: #0F0F0F;
+  --iplex-text-primary: #F1F1F1;
+  --iplex-text-secondary: #B7B7B7;
+
+  --iplex-card-bg: rgba(241, 243, 244, 0.0509803922);
+
+  --iplex-button-primary-bg: #FFFFFF;
+  --iplex-button-primary-text: #0F0F0F;
+
+  --iplex-button-secondary-bg: transparent;
+  --iplex-button-secondary-text: #F1F1F1;
+  --iplex-button-secondary-border: #F1F1F1;
+
+  --iplex-radius: 48px;
+  --iplex-radius-full: 9999px;
+
+  --iplex-font-family: "Google Sans", "Segoe UI", Roboto, Arial, sans-serif;
+  --iplex-logo-color: #FFFFFF;
+
+  /* ---- Derivados (sem cores novas) --------------------------------- */
+  --iplex-font-weight-regular: 400;
+  --iplex-font-weight-medium: 500;
+  --iplex-font-weight-bold: 700;
+
+  /* Hierarquia tipográfica (Web). A TV aumenta a escala abaixo. */
+  --iplex-font-size-page-title: 40px;
+  --iplex-font-size-hero-title: 48px;
+  --iplex-font-size-section-title: 22px;
+  --iplex-font-size-content-title: 16px;
+  --iplex-font-size-meta: 14px;
+  --iplex-font-size-description: 16px;
+  --iplex-font-size-caption: 13px;
+  --iplex-font-size-tab: 16px;
+  --iplex-line-height: 1.4;
+
+  /* Espaçamento */
+  --iplex-space-1: 4px;
+  --iplex-space-2: 8px;
+  --iplex-space-3: 12px;
+  --iplex-space-4: 16px;
+  --iplex-space-5: 24px;
+  --iplex-space-6: 32px;
+  --iplex-space-7: 48px;
+  --iplex-space-8: 64px;
+
+  /* Botões (PROPOSTA de dimensões; tokens permitem ajuste) */
+  --iplex-button-padding-block: 12px;
+  --iplex-button-padding-inline: 28px;
+  --iplex-button-font-size: 16px;
+  --iplex-button-border-width: 2px;
+
+  /* Raio pequeno para elementos pequenos (onde 48px quebraria o layout). */
+  --iplex-radius-small: 16px;
+  --iplex-radius-medium: 24px;
+
+  /* Foco — PENDENTE DE APROVAÇÃO VISUAL. Padrão inicial acessível:
+   * anel em --iplex-text-primary separado por um vão na cor do fundo
+   * (visível sobre #0F0F0F e sobre o botão branco). box-shadow acompanha
+   * o raio em todos os motores e não desloca o layout. */
+  --iplex-focus-gap: 3px;
+  --iplex-focus-width: 3px;
+  --iplex-focus-ring: 0 0 0 var(--iplex-focus-gap) var(--iplex-bg),
+    0 0 0 calc(var(--iplex-focus-gap) + var(--iplex-focus-width)) var(--iplex-text-primary);
+  --iplex-focus-scale: 1.06;
+  --iplex-transition: 140ms ease-out;
+
+  /* Ícones Hugeicons Stroke Rounded */
+  --iplex-icon-size: 22px;
+
+  /* Logo (proporcional ao contexto, nunca excessivo) */
+  --iplex-logo-size-header: 22px;
+  --iplex-logo-size-splash: 44px;
+  --iplex-logo-size-small: 28px;
+
+  /* Layout — PROPOSTAS (seção 33): altura do header, banner, espaçamentos. */
+  --iplex-safe-area-x: 48px;
+  --iplex-safe-area-top: 24px;
+  --iplex-header-height: 56px;
+  --iplex-content-top: 104px;
+  --iplex-hero-height: 56vh;
+  --iplex-row-gap: 36px;
+  --iplex-card-gap: 16px;
+  --iplex-poster-width: 160px;
+  --iplex-landscape-width: 280px;
+  --iplex-channel-width: 220px;
+}
+
+/* TV (10 pés, 1920×1080): mesma identidade, escala maior.
+ * Ativado por <html data-iplex-platform="tv"> quando o shell responde ao handshake. */
+:root[data-iplex-platform='tv'] {
+  --iplex-font-size-page-title: 56px;
+  --iplex-font-size-hero-title: 72px;
+  --iplex-font-size-section-title: 32px;
+  --iplex-font-size-content-title: 26px;
+  --iplex-font-size-meta: 24px;
+  --iplex-font-size-description: 28px;
+  --iplex-font-size-caption: 22px;
+  --iplex-font-size-tab: 28px;
+
+  --iplex-button-padding-block: 16px;
+  --iplex-button-padding-inline: 44px;
+  --iplex-button-font-size: 26px;
+
+  --iplex-focus-gap: 5px;
+  --iplex-focus-width: 4px;
+
+  --iplex-icon-size: 34px;
+  --iplex-logo-size-header: 34px;
+  --iplex-logo-size-splash: 72px;
+  --iplex-logo-size-small: 44px;
+
+  /* 5% de 1920: área segura contra overscan */
+  --iplex-safe-area-x: 96px;
+  --iplex-safe-area-top: 40px;
+  --iplex-header-height: 84px;
+  --iplex-content-top: 160px;
+  --iplex-row-gap: 52px;
+  --iplex-card-gap: 28px;
+  --iplex-poster-width: 236px;
+  --iplex-landscape-width: 420px;
+  --iplex-channel-width: 330px;
+}
+
+/* Navegador: telas menores. */
+@media (max-width: 1100px) {
+  :root:not([data-iplex-platform='tv']) {
+    --iplex-safe-area-x: 24px;
+    --iplex-font-size-hero-title: 36px;
+    --iplex-font-size-page-title: 30px;
+    --iplex-poster-width: 132px;
+    --iplex-landscape-width: 232px;
+    --iplex-channel-width: 180px;
+    --iplex-content-top: 96px;
+  }
+}
+
+@media (max-width: 640px) {
+  :root:not([data-iplex-platform='tv']) {
+    --iplex-safe-area-x: 16px;
+    --iplex-font-size-tab: 14px;
+    --iplex-font-size-hero-title: 28px;
+    --iplex-poster-width: 112px;
+    --iplex-landscape-width: 200px;
+    --iplex-channel-width: 150px;
+    --iplex-hero-height: 48vh;
+    --iplex-header-height: 48px;
+    --iplex-content-top: 132px;
+  }
+}

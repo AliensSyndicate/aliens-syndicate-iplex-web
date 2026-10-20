@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+coverage
+*.local
+.env
+.env.*
+!.env.example
+!.env.production
+functions/lib
+functions/node_modules
+.firebase
+firebase-debug.log*
+*.log
+.DS_Store
+node_modules
