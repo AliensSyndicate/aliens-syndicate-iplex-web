@@ -1,13 +1,14 @@
 import type { ElementType, ReactNode } from 'react'
 import { classNames } from '../../utils/classNames'
 
-export type TextVariant = 'page-title' | 'hero-title' | 'section-title' | 'content-title' | 'meta' | 'description' | 'caption'
+export type TextVariant = 'page-title' | 'hero-title' | 'section-title' | 'content-title' | 'body' | 'meta' | 'description' | 'caption'
 
 const DEFAULT_TAG: Record<TextVariant, ElementType> = {
   'page-title': 'h1',
   'hero-title': 'h1',
   'section-title': 'h2',
   'content-title': 'h3',
+  body: 'p',
   meta: 'p',
   description: 'p',
   caption: 'p',

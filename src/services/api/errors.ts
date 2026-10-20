@@ -8,7 +8,6 @@ export type AppErrorKind =
   | 'offline'
   | 'server-unavailable'
   | 'not-configured'
-  | 'app-check'
   | 'shell-communication'
   | 'device-unpaired'
   | 'pairing-expired'
@@ -28,6 +27,7 @@ export type AppErrorKind =
   | 'rate-limited'
   | 'not-supported'
   | 'backend-outdated'
+  | 'typography'
   | 'unknown'
 
 export class AppError extends Error {
@@ -76,7 +76,7 @@ const IPTV_CODES = new Set([
 
 /** Código de domínio (DomainError.code) → tipo de erro do Web. */
 export function kindForDomainCode(code: string): AppErrorKind {
-  if (code === 'device-revoked') return 'device-unpaired'
+  if (code === 'device-revoked' || code === 'device-required') return 'device-unpaired'
   if (code === 'subscription-required') return 'subscription-inactive'
   if (code === 'session-expired') return 'session-expired'
   if (code === 'session-limit') return 'session-limit'
@@ -111,16 +111,19 @@ export function toAppError(error: unknown, { authenticated = true }: { authentic
   if (error instanceof AppError) return error
   const e = (error ?? {}) as FirebaseLikeError
   const code = typeof e.code === 'string' ? e.code : ''
-  const message = typeof e.message === 'string' ? e.message : ''
+  // O SDK do Firebase (v13) acrescenta o status HTTP: "subscription-required [400]".
+  const message = typeof e.message === 'string' ? e.message.replace(/\s*\[\d{3}\]\s*$/, '').trim() : ''
   const details = e.details && typeof e.details === 'object' ? (e.details as Record<string, unknown>) : {}
   if (!isOnline()) return new AppError('offline')
   const fnCode = code.replace(/^functions\//, '')
   if (code.startsWith('functions/')) {
     if (fnCode === 'unavailable' || fnCode === 'deadline-exceeded') return new AppError('server-unavailable', fnCode)
     if (fnCode === 'unauthenticated') {
-      return authenticated ? new AppError('device-unpaired', 'unauthenticated') : new AppError('app-check', 'unauthenticated')
+      return new AppError('device-unpaired', authenticated ? 'unauthenticated' : 'credential-missing')
     }
     if (fnCode === 'invalid-argument') return new AppError('unknown', 'invalid-input')
+    // Callable `player` ainda não publicada no backend.
+    if (fnCode === 'not-found') return new AppError('backend-outdated', 'player-not-deployed')
     if (fnCode === 'internal') {
       // O SDK usa "internal" também para falha de rede/CORS sem resposta.
       return new AppError('server-unavailable', message || 'internal')

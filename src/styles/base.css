@@ -1,7 +1,6 @@
-/* Estilos globais mínimos. Fundo global SÓLIDO #0F0F0F, sem gradientes/texturas. */
-@import '@fontsource/google-sans/latin-400.css';
-@import '@fontsource/google-sans/latin-500.css';
-@import '@fontsource/google-sans/latin-700.css';
+/* Estilos globais mínimos. Fundo global SÓLIDO #0F0F0F, sem gradientes/texturas.
+ * A Google Sans é registrada e verificada em src/styles/fonts.ts antes da
+ * montagem da interface (sem @font-face com font-display: swap → sem FOUT). */
 
 *,
 *::before,
@@ -24,6 +23,23 @@ body {
 
 #root {
   min-height: 100vh;
+}
+
+/* Inicialização (index.html), antes da fonte e do React: sem texto, só o
+ * indicador discreto, sobre o fundo oficial. */
+.iplex-boot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  background-color: var(--iplex-bg);
 }
 
 /* TV: sem barra de rolagem e sem cursor. */
@@ -77,4 +93,10 @@ img {
     -webkit-animation-iteration-count: 1 !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+
+/* Explicit, stable fallback after a recoverable font failure. Reload retries. */
+:root.iplex-typography-fallback {
+  --iplex-font-family: "Segoe UI", Roboto, Arial, sans-serif;
 }

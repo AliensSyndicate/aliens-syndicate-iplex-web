@@ -1,24 +1,28 @@
 /**
  * Backend real: projeto Firebase iplex-2c8fc.
- *  - Callable `manager` (us-central1, App Check obrigatório) do repositório do Gestor;
+ *  - Callable `player` (us-central1) do repositório do Gestor: endpoint do
+ *    Player, SEM App Check (o reCAPTCHA é incompatível com o Tizen 5.5) e com
+ *    lista fechada de ações + credencial de dispositivo verificada no servidor.
+ *    A callable `manager` (com App Check) continua exclusiva do Gestor;
  *  - Firebase Auth: credencial do dispositivo via custom token (uid tv_<deviceId>,
  *    claims deviceId/familyId) emitido em finishDevicePair;
- *  - Firestore (lite, somente leitura): biblioteca do perfil, que as regras
- *    liberam ao Player pareado (families/{fid}/profiles/{pid}/...).
- * Nenhuma credencial administrativa ou IPTV passa pelo navegador.
+ *  - Biblioteca e gerações pela callable, com autorização do perfil ativo.
+ *    O Web não lê o Firestore diretamente.
+ * Nenhuma credencial administrativa passa pelo navegador. URLs individuais
+ * de reprodução podem conter credenciais do provedor e não devem ser registradas.
  */
-import { initializeApp, type FirebaseApp } from 'firebase/app'
-import { getToken, initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from 'firebase/app-check'
+import { initializeApp } from 'firebase/app'
 import {
   browserLocalPersistence,
+  connectAuthEmulator,
   indexedDBLocalPersistence,
   initializeAuth,
   signInWithCustomToken,
   signOut,
   type Auth,
 } from 'firebase/auth'
-import { getFunctions, httpsCallable, type Functions } from 'firebase/functions'
-import { APP_CHECK_DEBUG_TOKEN, APP_CHECK_SITE_KEY, FUNCTIONS_REGION, type FirebaseWebConfig } from '../../config/env'
+import { connectFunctionsEmulator, getFunctions, httpsCallable, type Functions } from 'firebase/functions'
+import { EMULATOR_HOST, FUNCTIONS_REGION, type FirebaseWebConfig } from '../../config/env'
 import type { Backend, CatalogQuery, PairingRequest, ProgressWrite } from '../api/backend'
 import { AppError, toAppError } from '../api/errors'
 import type {
@@ -40,37 +44,43 @@ import type {
   StreamGrant,
 } from '../api/types'
 import { normalizeSeriesDetails } from '../catalog/normalize'
+import { diag } from '../../platform/diagnostics'
 
 interface Context {
-  app: FirebaseApp
   auth: Auth
   functions: Functions
-  appCheck: AppCheck | null
 }
+
+/** Callable do Player no backend (repositório do Gestor). */
+export const PLAYER_CALLABLE = 'player'
 
 export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
   let ctx: Context | null = null
   const context = (): Context => {
     if (ctx) return ctx
     const app = initializeApp(config)
-    let appCheck: AppCheck | null = null
-    if (APP_CHECK_SITE_KEY) {
-      if (APP_CHECK_DEBUG_TOKEN) (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN?: string }).FIREBASE_APPCHECK_DEBUG_TOKEN = APP_CHECK_DEBUG_TOKEN
-      appCheck = initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY), isTokenAutoRefreshEnabled: true })
-    }
     const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] })
     const functions = getFunctions(app, FUNCTIONS_REGION)
-    ctx = { app, auth, functions, appCheck }
+    if (import.meta.env.MODE === 'emulator' && EMULATOR_HOST) {
+      connectAuthEmulator(auth, `http://${EMULATOR_HOST}:9099`, { disableWarnings: true })
+      connectFunctionsEmulator(functions, EMULATOR_HOST, 5001)
+    }
+    ctx = { auth, functions }
     return ctx
   }
 
   async function call<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
     const { functions, auth } = context()
     try {
-      const manager = httpsCallable<{ action: string; payload: Record<string, unknown> }, T>(functions, 'manager', { timeout: 60000 })
-      const result = await manager({ action, payload })
+      const player = httpsCallable<{ action: string; payload: Record<string, unknown> }, T>(functions, PLAYER_CALLABLE, { timeout: 60000 })
+      const bytes = crypto.getRandomValues(new Uint8Array(16))
+      const requestId = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+      const result = await player({ action, payload: { ...payload, requestId, issuedAt: Date.now() } })
+      diag('call', `${action} ok`)
       return result.data
     } catch (error) {
+      const e = error as { code?: string; message?: string }
+      diag('call', `${action} fail ${e?.code ?? ''} ${e?.message ?? ''}`)
       throw toAppError(error, { authenticated: !!auth.currentUser })
     }
   }
@@ -88,11 +98,6 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
       return null
     }
     return { deviceId, familyId }
-  }
-
-  async function firestore() {
-    const [{ getFirestore, collection, doc, getDoc, getDocs, limit, orderBy, query }] = await Promise.all([import('firebase/firestore/lite')])
-    return { db: getFirestore(context().app), collection, doc, getDoc, getDocs, limit, orderBy, query }
   }
 
   return {
@@ -146,48 +151,13 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
     },
 
     async getAppCheckToken() {
-      const { appCheck } = context()
-      if (!appCheck) return null
-      try {
-        return (await getToken(appCheck, false)).token
-      } catch {
-        return null
-      }
+      // O Web não usa App Check (ver docs/AUDITORIA-APP-CHECK-TV.md).
+      return null
     },
 
     async listProfiles(): Promise<Profile[]> {
-      try {
-        const { profiles } = await call<{ profiles: Profile[] }>('listPlayerProfiles')
-        return profiles
-      } catch (error) {
-        if (!(error instanceof AppError) || error.kind !== 'backend-outdated') throw error
-      }
-      // Backend anterior (sem listPlayerProfiles): as regras do Firestore liberam
-      // ao Player pareado a leitura dos perfis da própria família. Perfis sem
-      // tipo são "regular" (mesma regra de profileView no backend novo); o
-      // acesso a cada perfil continua validado no acquireSession.
-      const identity = await identityFromUser()
-      if (!identity) throw new AppError('device-unpaired', 'claims-missing')
-      try {
-        const { db, collection, getDocs } = await firestore()
-        const docs = (await getDocs(collection(db, 'families', identity.familyId, 'profiles'))).docs
-        return docs
-          .map((d): Record<string, unknown> & { id: string } => ({ ...(d.data() as Record<string, unknown>), id: d.id }))
-          .filter((d) => d.enabled !== false && d.deleting !== true && (d.type !== 'guest' || d.enabled === true))
-          .map((d) => {
-            const g = (d.generations ?? {}) as Partial<Generations>
-            const type = (['admin', 'regular', 'kids', 'guest'] as const).includes(d.type as never) ? (d.type as Profile['type']) : 'regular'
-            return {
-              id: d.id,
-              name: String(d.name ?? ''),
-              type,
-              generations: { favorites: g.favorites ?? 0, watched: g.watched ?? 0, progress: g.progress ?? 0 },
-              permissionsVersion: Number(d.permissionsVersion) || 0,
-            }
-          })
-      } catch (error) {
-        throw toAppError(error)
-      }
+      const { profiles } = await call<{ profiles: Profile[] }>('listPlayerProfiles')
+      return profiles
     },
 
     async verifyProfilePin() {
@@ -253,42 +223,19 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
       })
     },
 
-    async readGenerations(identity: DeviceIdentity, profileId: string): Promise<Generations | null> {
-      try {
-        const { db, doc, getDoc } = await firestore()
-        const snap = await getDoc(doc(db, 'families', identity.familyId, 'profiles', profileId))
-        const data = snap.data() as { generations?: Partial<Generations> } | undefined
-        if (!data) return null
-        return { favorites: data.generations?.favorites ?? 0, watched: data.generations?.watched ?? 0, progress: data.generations?.progress ?? 0 }
-      } catch (error) {
-        throw toAppError(error)
-      }
+    async readGenerations(_identity: DeviceIdentity, profileId: string): Promise<Generations | null> {
+      return call<Generations>('readPlayerGenerations', { profileId })
     },
 
-    async readLibrary(identity: DeviceIdentity, profileId: string): Promise<Library> {
-      try {
-        const { db, collection, getDocs, limit, orderBy, query } = await firestore()
-        const base = ['families', identity.familyId, 'profiles', profileId] as const
-        const read = async (name: string) =>
-          (await getDocs(query(collection(db, ...base, name), orderBy('updatedAt', 'desc'), limit(100)))).docs.map((d) => d.data())
-        const readWatched = async () =>
-          (await getDocs(query(collection(db, ...base, 'watched'), orderBy('completedAt', 'desc'), limit(100)))).docs.map((d) => d.data())
-        const [favorites, progress, watched] = await Promise.all([read('favorites'), read('watch_progress'), readWatched()])
-        return {
-          favorites: favorites.map(entry),
-          progress: progress.map(
-            (d): ProgressEntry => ({
-              contentId: String(d.contentId),
-              position: Number(d.position) || 0,
-              duration: Number(d.duration) || 0,
-              generation: Number(d.generation) || 0,
-              updatedAt: Number(d.updatedAt) || 0,
-            }),
-          ),
-          watched: watched.map((d) => ({ ...entry(d), updatedAt: Number(d.completedAt) || 0 })),
-        }
-      } catch (error) {
-        throw toAppError(error)
+    async readLibrary(_identity: DeviceIdentity, profileId: string): Promise<Library> {
+      const { favorites, progress, watched } = await call<Record<string, Record<string, unknown>[]>>('readPlayerLibrary', { profileId })
+      return {
+        favorites: favorites.map(entry),
+        progress: progress.map((d): ProgressEntry => ({
+          contentId: String(d.contentId), position: Number(d.position) || 0, duration: Number(d.duration) || 0,
+          generation: Number(d.generation) || 0, updatedAt: Number(d.updatedAt) || 0,
+        })),
+        watched: watched.map((d) => ({ ...entry(d), updatedAt: Number(d.completedAt) || 0 })),
       }
     },
 

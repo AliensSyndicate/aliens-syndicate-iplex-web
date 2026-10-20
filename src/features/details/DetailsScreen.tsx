@@ -62,7 +62,7 @@ export default function DetailsScreen() {
   const kind = item?.kind === 'series' ? 'series' : item?.kind === 'movie' ? 'movie' : null
   const match = useMatch(item)
   const summary = match.status === 'ready' ? match.summary : null
-  const { details } = useDetails(kind, summary?.tmdbId ?? null)
+  const { details } = useDetails(kind, summary?.tmdbId ?? null, item)
 
   useEffect(() => {
     if (!item || item.kind !== 'series') return
@@ -81,17 +81,17 @@ export default function DetailsScreen() {
   }, [backend, item, session.profile.id])
 
   useEffect(() => {
-    if (!summary || kind !== 'series' || seasonNumber === null) return
+    if (!item || !summary || kind !== 'series' || seasonNumber === null) return
     let alive = true
     setTmdbSeason(null)
-    tmdb.season(summary.tmdbId, seasonNumber).then(
+    tmdb.season(summary.tmdbId, seasonNumber, item).then(
       (s) => alive && setTmdbSeason(s),
       () => undefined,
     )
     return () => {
       alive = false
     }
-  }, [tmdb, summary, kind, seasonNumber])
+  }, [tmdb, summary, kind, seasonNumber, item])
 
   // Continuação: episódio mais recente com progresso; concluído → próximo elegível.
   const resume = useMemo(() => {

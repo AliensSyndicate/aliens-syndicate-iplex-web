@@ -41,11 +41,11 @@ export function ErrorState({
 
   return (
     <section className={inline ? 'iplex-state iplex-state--inline' : 'iplex-state iplex-state--screen'} role="alert" aria-live="assertive" data-error-kind={resolved}>
-      {showLogo && !inline && <IplexLogo size="small" className="iplex-state__logo" />}
+      {showLogo && !inline && <IplexLogo size="screen" className="iplex-state__logo" />}
       <IplexText variant="page-title" as="h1" className="iplex-state__title">
         {copy.title}
       </IplexText>
-      <IplexText variant="description" className="iplex-state__description">
+      <IplexText variant={inline ? 'description' : 'body'} secondary className="iplex-state__description">
         {copy.description}
       </IplexText>
       {detail && <IplexText variant="caption" className="iplex-state__detail">{detail}</IplexText>}

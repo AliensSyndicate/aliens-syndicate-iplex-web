@@ -1,12 +1,16 @@
 # Pendências
 
+## Correção do App Check na TV (implementada localmente, aguardando aprovação)
+
+Ver docs/AUDITORIA-APP-CHECK-TV.md (seção Implementação). Nada publicado.
+
 ## Situação em produção (20/10/2026)
 
 | Item | Estado |
 |---|---|
 | Hosting `https://iplex-2c8fc.web.app/` | **Publicado** (`--only hosting`) |
 | App web Firebase "iPlex Web" | Registrado: `1:59148444884:web:60eab9d900779226f20741` |
-| App Check | reCAPTCHA Enterprise (chave "iPlex Web (App Check)", token 1 h, pontuação mínima 0,5); aceito pela callable `manager` |
+| App Check | **Não usado pelo Web** (incompatível com Tizen 5.5). A chave reCAPTCHA "iPlex Web (App Check)" e o app "iPlex Web" seguem registrados, sem uso |
 | Function `iplexWebTmdb` (codebase `iplex-web`) | **Publicada**; segredo `TMDB_READ_ACCESS_TOKEN` no Secret Manager; exige dispositivo pareado |
 | Vinculação | Funciona contra o backend publicado (somente QR: ver abaixo) |
 | Player (`aliens-syndicate-iplex-app`) | Rota do webview de produção = `https://iplex-2c8fc.web.app/` (verificação do Player aprovada) |

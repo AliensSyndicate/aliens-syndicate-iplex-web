@@ -93,6 +93,41 @@ describe('segurança de credenciais', () => {
   })
 })
 
+describe('TV sem reCAPTCHA', () => {
+  it('Web usa a callable player e nunca a manager', () => {
+    const backend = read('src/services/firebase/firebaseBackend.ts')
+    expect(backend).toMatch(/PLAYER_CALLABLE = 'player'/)
+    expect(backend).not.toMatch(/httpsCallable[^\n]*'manager'/)
+  })
+  it('nenhum App Check/reCAPTCHA no código do Web', () => {
+    for (const file of walk('src').filter((f) => !isTest(f))) expect(read(file), file).not.toMatch(/firebase\/app-check|ReCaptcha/)
+  })
+  it('CSP sem origens do reCAPTCHA', () => {
+    const csp = buildCsp(['x'])
+    expect(csp).not.toMatch(/google\.com|gstatic/)
+    expect(csp).toMatch(/frame-src 'none'/)
+  })
+})
+
+describe('tipografia', () => {
+  it('sem CSS do @fontsource (font-display: swap → FOUT)', () => {
+    for (const file of walk('src').filter((f) => !isTest(f))) expect(read(file), file).not.toMatch(/@fontsource\/google-sans\/(latin-)?\d+\.css/)
+  })
+  it('escala única: nenhum tamanho de fonte específico do ambiente TV', () => {
+    for (const file of walk('src/styles')) {
+      const text = css(file)
+      const tvBlocks = text.split("[data-iplex-platform='tv']").slice(1)
+      for (const block of tvBlocks) expect(block.slice(0, block.indexOf('}')), file).not.toMatch(/font-size|--iplex-type|width:|height:/)
+    }
+  })
+  it('valores da referência oficial 1920×1080 (iguais às telas do shell)', () => {
+    const tokens = css('src/styles/tokens.css')
+    for (const line of ['--iplex-type-page-title: 4rem;', '--iplex-type-body: 2.125rem;', '--iplex-type-meta: 1.625rem;', '--iplex-type-button: 1.5rem;', '--iplex-logo-size-screen: 4.875rem;'])
+      expect(tokens).toContain(line)
+    expect(tokens).toMatch(/html \{\s*font-size: 0\.8333333333vw;/)
+  })
+})
+
 describe('Hosting', () => {
   const config = buildFirebaseConfig(['abc='])
   it('nunca bloqueia o iframe do shell Tizen', () => {

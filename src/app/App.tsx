@@ -12,6 +12,8 @@ import { DevBadge } from '../dev/DevBadge'
 import { AppLayout } from './AppLayout'
 import type { Backend } from '../services/api/backend'
 import type { detectPlatform } from '../platform/environment'
+import type { TypographyResult } from '../styles/fonts'
+import { TypographyGate } from './TypographyGate'
 import { BackendProvider } from './providers/BackendProvider'
 import { PlatformProvider, usePlatform } from './providers/PlatformProvider'
 import { SessionProvider, useSession, type StartupStep } from './providers/SessionProvider'
@@ -130,9 +132,10 @@ function Navigation() {
   )
 }
 
-export function App({ backend, detect }: { backend?: Backend; detect?: typeof detectPlatform } = {}) {
+export function App({ backend, detect, typography = { ok: true, ms: 0 } }: { backend?: Backend; detect?: typeof detectPlatform; typography?: TypographyResult } = {}) {
   return (
     <PlatformProvider detect={detect}>
+      <TypographyGate result={typography}>
       <BackendProvider backend={backend}>
         <BrowserRouter>
           <SessionProvider>
@@ -140,6 +143,7 @@ export function App({ backend, detect }: { backend?: Backend; detect?: typeof de
           </SessionProvider>
         </BrowserRouter>
       </BackendProvider>
+      </TypographyGate>
     </PlatformProvider>
   )
 }

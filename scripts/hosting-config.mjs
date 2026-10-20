@@ -32,7 +32,7 @@ export function distHashes() {
 }
 
 export function buildCsp(hashes) {
-  const scripts = ["'self'", ...hashes.map((h) => `'sha256-${h}'`), 'https://www.google.com', 'https://www.gstatic.com']
+  const scripts = ["'self'", ...hashes.map((h) => `'sha256-${h}'`)]
   return [
     "default-src 'self'",
     `script-src ${scripts.join(' ')}`,
@@ -43,7 +43,7 @@ export function buildCsp(hashes) {
     "media-src 'self' https: blob:",
     "connect-src 'self' https:",
     "worker-src 'self'",
-    'frame-src https://www.google.com https://recaptcha.google.com',
+    "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

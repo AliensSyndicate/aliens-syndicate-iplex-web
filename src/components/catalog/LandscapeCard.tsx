@@ -8,6 +8,8 @@ import { ProgressBar } from './ProgressBar'
 /** Card 16:9 (Continuar assistindo, episódios). */
 export function LandscapeCard({
   title,
+  sourceId,
+  itemId,
   subtitle,
   kind,
   year,
@@ -19,6 +21,8 @@ export function LandscapeCard({
   autoFocus,
 }: {
   title: string
+  sourceId?: string
+  itemId?: string
   subtitle?: string
   kind: ContentKind
   year?: string | number
@@ -31,7 +35,7 @@ export function LandscapeCard({
 }) {
   const ref = useRef<HTMLButtonElement>(null)
   const visible = useInView(ref)
-  const meta = useMatch(image === undefined ? { kind, title, year } : null, visible)
+  const meta = useMatch(image === undefined && sourceId && itemId ? { id: itemId, sourceId, kind, title, year } : null, visible)
   const summary = meta.status === 'ready' ? meta.summary : null
   const src = image ?? summary?.backdrop ?? summary?.poster ?? null
   const label = summary?.title || title

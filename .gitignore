@@ -1,5 +1,6 @@
 node_modules
 dist
+dist-emulator
 dist-ssr
 coverage
 *.local
@@ -8,6 +9,7 @@ coverage
 !.env.example
 !.env.production
 functions/lib
+functions/.secret.local
 functions/node_modules
 .firebase
 firebase-debug.log*

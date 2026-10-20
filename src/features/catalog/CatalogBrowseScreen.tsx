@@ -47,7 +47,7 @@ function useHero(items: CatalogItem[], kind: Kind) {
     ;(async () => {
       for (const item of candidates) {
         try {
-          const result = await tmdb.match(kind, item.title, itemYear(item.year))
+          const result = await tmdb.match(kind, item.title, itemYear(item.year), item)
           if (!alive) return
           if (result.status === 'matched' && result.summary?.backdrop) {
             setHero({ item, summary: result.summary })
@@ -130,6 +130,8 @@ export function CatalogBrowseScreen({ kind, title }: { kind: Kind; title: string
             <LandscapeCard
               key={entry.contentId}
               title={meta.title}
+              sourceId={meta.sourceId}
+              itemId={meta.itemId}
               subtitle={meta.episodeLabel}
               kind={meta.kind}
               year={meta.year}

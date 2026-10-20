@@ -23,6 +23,7 @@ import {
   type BridgeRequestMessage,
   type BridgeResult,
 } from './protocol'
+import { diag } from '../diagnostics'
 
 export class BridgeCallError extends Error {
   readonly code: BridgeErrorCode | 'timeout' | 'unavailable' | 'disconnected'
@@ -94,6 +95,10 @@ export function createBridgeClient({ win = window, allowedOrigins, timeoutMs = 1
   }
 
   const handleMessage = (event: MessageEvent) => {
+    const data = event.data as { kind?: unknown; id?: unknown } | null
+    if (data && typeof data === 'object' && !String(data.id ?? '').startsWith('diag-')) {
+      diag('bridge-in', `origin=${event.origin} fromParent=${event.source === win.parent} kind=${String(data.kind)} id=${String(data.id).slice(0, 20)}`)
+    }
     if (event.source !== win.parent) return
     if (!origins.has(event.origin)) return
     const message: unknown = event.data

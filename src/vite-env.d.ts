@@ -10,10 +10,9 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string
   readonly VITE_FIREBASE_STORAGE_BUCKET?: string
   readonly VITE_FIREBASE_FUNCTIONS_REGION?: string
-  readonly VITE_FIREBASE_APPCHECK_SITE_KEY?: string
-  readonly VITE_FIREBASE_APPCHECK_DEBUG_TOKEN?: string
   readonly VITE_IPLEX_SHELL_ORIGINS?: string
   readonly VITE_IPLEX_USE_MOCKS?: string
+  readonly VITE_IPLEX_EMULATOR_HOST?: string
 }
 
 interface ImportMeta {

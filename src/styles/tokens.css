@@ -1,11 +1,21 @@
 /*
- * iPlex Design System — tokens.
+ * iPlex Design System — tokens (fonte única; o shell Samsung espelha os
+ * valores em aliens-syndicate-iplex-app/src/design-system/tokens.css).
  *
  * OFICIAIS (exatos; não aproximar nem trocar por equivalentes como #fff):
- * cores, raios e fonte. Os demais tokens derivam deles, SEM cores novas
- * (sem cor de destaque, sem gradientes no fundo global).
+ * cores, raios e fonte. Os demais tokens derivam deles, SEM cores novas.
  *
- * Compatível com Chromium M56 (Tizen 4.0): custom properties, rgba, calc.
+ * ESCALA ÚNICA na referência 1920×1080: 1rem = 16px quando a largura útil é
+ * 1920 (html { font-size: 100vw / 120 }). A mesma interface tem as mesmas
+ * dimensões no app Samsung e no navegador a 1920×1080 e escala
+ * proporcionalmente em outras larguras. Não há tamanhos específicos para a
+ * TV: o ambiente nunca muda a tipografia.
+ *
+ * Valores da referência visual oficial (tela "Não foi possível conectar",
+ * medida em 1920×1080 e usada nas telas do shell): título 64px, texto 34px,
+ * legenda 26px, botão 24px (≈64px de altura), logo 78px.
+ *
+ * Compatível com Chromium M56 (Tizen 4.0): custom properties, rgba, calc, vw.
  */
 :root {
   /* ---- Oficiais ---------------------------------------------------- */
@@ -25,136 +35,97 @@
   --iplex-radius: 48px;
   --iplex-radius-full: 9999px;
 
+  /* Google Sans (SIL OFL 1.1) auto-hospedada; ver src/styles/fonts.ts. */
   --iplex-font-family: "Google Sans", "Segoe UI", Roboto, Arial, sans-serif;
   --iplex-logo-color: #FFFFFF;
 
-  /* ---- Derivados (sem cores novas) --------------------------------- */
+  /* ---- Tipografia semântica (1920×1080: 1rem = 16px) ---------------- */
   --iplex-font-weight-regular: 400;
   --iplex-font-weight-medium: 500;
   --iplex-font-weight-bold: 700;
 
-  /* Hierarquia tipográfica (Web). A TV aumenta a escala abaixo. */
-  --iplex-font-size-page-title: 40px;
-  --iplex-font-size-hero-title: 48px;
-  --iplex-font-size-section-title: 22px;
-  --iplex-font-size-content-title: 16px;
-  --iplex-font-size-meta: 14px;
-  --iplex-font-size-description: 16px;
-  --iplex-font-size-caption: 13px;
-  --iplex-font-size-tab: 16px;
-  --iplex-line-height: 1.4;
+  --iplex-type-hero: 4.5rem;          /* 72px título de destaque */
+  --iplex-type-page-title: 4rem;      /* 64px título de página (referência oficial) */
+  --iplex-type-section-title: 2.75rem;/* 44px título de seção */
+  --iplex-type-card-title: 1.625rem;  /* 26px título de card */
+  --iplex-type-body: 2.125rem;        /* 34px texto principal (referência oficial) */
+  --iplex-type-description: 1.75rem;  /* 28px texto secundário longo (sinopses) */
+  --iplex-type-meta: 1.625rem;        /* 26px metadados e legendas (referência oficial) */
+  --iplex-type-button: 1.5rem;        /* 24px botões (referência oficial) */
+  --iplex-type-nav: 1.75rem;          /* 28px menu de navegação */
+
+  --iplex-line-height: 1.35;
+  --iplex-line-height-tight: 1.15;
+  --iplex-letter-spacing-title: -0.01em;
 
   /* Espaçamento */
-  --iplex-space-1: 4px;
-  --iplex-space-2: 8px;
-  --iplex-space-3: 12px;
-  --iplex-space-4: 16px;
-  --iplex-space-5: 24px;
-  --iplex-space-6: 32px;
-  --iplex-space-7: 48px;
-  --iplex-space-8: 64px;
+  --iplex-space-1: 0.25rem;
+  --iplex-space-2: 0.5rem;
+  --iplex-space-3: 0.75rem;
+  --iplex-space-4: 1rem;
+  --iplex-space-5: 1.5rem;
+  --iplex-space-6: 2rem;
+  --iplex-space-7: 3rem;
+  --iplex-space-8: 4rem;
 
-  /* Botões (PROPOSTA de dimensões; tokens permitem ajuste) */
-  --iplex-button-padding-block: 12px;
-  --iplex-button-padding-inline: 28px;
-  --iplex-button-font-size: 16px;
+  /* Botões (≈64px de altura em 1920) */
+  --iplex-button-padding-block: 1.125rem;
+  --iplex-button-padding-inline: 3rem;
   --iplex-button-border-width: 2px;
 
-  /* Raio pequeno para elementos pequenos (onde 48px quebraria o layout). */
-  --iplex-radius-small: 16px;
-  --iplex-radius-medium: 24px;
+  /* Raio pequeno/médio para elementos pequenos (onde 48px quebraria o layout). */
+  --iplex-radius-small: 1rem;
+  --iplex-radius-medium: 1.5rem;
 
-  /* Foco — PENDENTE DE APROVAÇÃO VISUAL. Padrão inicial acessível:
-   * anel em --iplex-text-primary separado por um vão na cor do fundo
-   * (visível sobre #0F0F0F e sobre o botão branco). box-shadow acompanha
-   * o raio em todos os motores e não desloca o layout. */
-  --iplex-focus-gap: 3px;
-  --iplex-focus-width: 3px;
+  /* Foco — PENDENTE DE APROVAÇÃO VISUAL (seção 33): anel claro com vão escuro.
+   * box-shadow acompanha o raio em todos os motores e não desloca o layout. */
+  --iplex-focus-gap: 0.375rem;
+  --iplex-focus-width: 0.25rem;
   --iplex-focus-ring: 0 0 0 var(--iplex-focus-gap) var(--iplex-bg),
     0 0 0 calc(var(--iplex-focus-gap) + var(--iplex-focus-width)) var(--iplex-text-primary);
   --iplex-focus-scale: 1.06;
   --iplex-transition: 140ms ease-out;
 
   /* Ícones Hugeicons Stroke Rounded */
-  --iplex-icon-size: 22px;
+  --iplex-icon-size: 2.5rem;
 
-  /* Logo (proporcional ao contexto, nunca excessivo) */
-  --iplex-logo-size-header: 22px;
-  --iplex-logo-size-splash: 44px;
-  --iplex-logo-size-small: 28px;
+  /* Logo: telas (splash/erro) com o tamanho da referência; demais contextos menores. */
+  --iplex-logo-size-screen: 4.875rem; /* 78px */
+  --iplex-logo-size-header: 2.125rem;
+  --iplex-logo-size-small: 2.75rem;
 
-  /* Layout — PROPOSTAS (seção 33): altura do header, banner, espaçamentos. */
-  --iplex-safe-area-x: 48px;
-  --iplex-safe-area-top: 24px;
-  --iplex-header-height: 56px;
-  --iplex-content-top: 104px;
+  /* Layout — PROPOSTAS (seção 33): header, banner, espaçamentos, cards. */
+  --iplex-safe-area-x: 6rem;          /* 96px = 5% de 1920 (overscan) */
+  --iplex-safe-area-top: 2.5rem;
+  --iplex-header-height: 5.25rem;
+  --iplex-content-top: 10rem;
   --iplex-hero-height: 56vh;
-  --iplex-row-gap: 36px;
-  --iplex-card-gap: 16px;
-  --iplex-poster-width: 160px;
-  --iplex-landscape-width: 280px;
-  --iplex-channel-width: 220px;
+  --iplex-row-gap: 3.25rem;
+  --iplex-card-gap: 1.75rem;
+  --iplex-poster-width: 14.75rem;
+  --iplex-landscape-width: 26.25rem;
+  --iplex-channel-width: 20.625rem;
 }
 
-/* TV (10 pés, 1920×1080): mesma identidade, escala maior.
- * Ativado por <html data-iplex-platform="tv"> quando o shell responde ao handshake. */
-:root[data-iplex-platform='tv'] {
-  --iplex-font-size-page-title: 56px;
-  --iplex-font-size-hero-title: 72px;
-  --iplex-font-size-section-title: 32px;
-  --iplex-font-size-content-title: 26px;
-  --iplex-font-size-meta: 24px;
-  --iplex-font-size-description: 28px;
-  --iplex-font-size-caption: 22px;
-  --iplex-font-size-tab: 28px;
-
-  --iplex-button-padding-block: 16px;
-  --iplex-button-padding-inline: 44px;
-  --iplex-button-font-size: 26px;
-
-  --iplex-focus-gap: 5px;
-  --iplex-focus-width: 4px;
-
-  --iplex-icon-size: 34px;
-  --iplex-logo-size-header: 34px;
-  --iplex-logo-size-splash: 72px;
-  --iplex-logo-size-small: 44px;
-
-  /* 5% de 1920: área segura contra overscan */
-  --iplex-safe-area-x: 96px;
-  --iplex-safe-area-top: 40px;
-  --iplex-header-height: 84px;
-  --iplex-content-top: 160px;
-  --iplex-row-gap: 52px;
-  --iplex-card-gap: 28px;
-  --iplex-poster-width: 236px;
-  --iplex-landscape-width: 420px;
-  --iplex-channel-width: 330px;
+/* 1rem = 1/120 da largura: 16px em 1920, proporcional em outras larguras. */
+html {
+  font-size: 0.8333333333vw;
 }
 
-/* Navegador: telas menores. */
-@media (max-width: 1100px) {
-  :root:not([data-iplex-platform='tv']) {
-    --iplex-safe-area-x: 24px;
-    --iplex-font-size-hero-title: 36px;
-    --iplex-font-size-page-title: 30px;
-    --iplex-poster-width: 132px;
-    --iplex-landscape-width: 232px;
-    --iplex-channel-width: 180px;
-    --iplex-content-top: 96px;
+/* Telas estreitas (navegador): piso de legibilidade e layout próprio em
+ * app.css. Não afeta a referência 1920×1080 nem a TV. */
+@media (max-width: 1279px) {
+  html {
+    font-size: 10.6666666667px;
   }
 }
 
-@media (max-width: 640px) {
-  :root:not([data-iplex-platform='tv']) {
+@media (max-width: 767px) {
+  html {
+    font-size: 9px;
+  }
+  :root {
     --iplex-safe-area-x: 16px;
-    --iplex-font-size-tab: 14px;
-    --iplex-font-size-hero-title: 28px;
-    --iplex-poster-width: 112px;
-    --iplex-landscape-width: 200px;
-    --iplex-channel-width: 150px;
     --iplex-hero-height: 48vh;
-    --iplex-header-height: 48px;
-    --iplex-content-top: 132px;
   }
 }

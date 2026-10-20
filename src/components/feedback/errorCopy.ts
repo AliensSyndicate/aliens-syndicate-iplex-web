@@ -15,7 +15,6 @@ export const ERROR_COPY: Record<AppErrorKind, ErrorCopy> = {
   offline: { title: 'Não foi possível conectar', description: 'Verifique sua conexão com a internet e tente novamente.', retry: 'Tentar novamente' },
   'server-unavailable': { title: 'Servidor indisponível', description: 'O serviço do iPlex não respondeu. Tente novamente em alguns instantes.', retry: 'Tentar novamente' },
   'not-configured': { title: 'iPlex não configurado', description: 'Esta instalação do iPlex Web ainda não tem a configuração do servidor. Fale com o suporte.' },
-  'app-check': { title: 'Verificação de segurança pendente', description: 'O servidor recusou a verificação deste aplicativo. Fale com o suporte.', retry: 'Tentar novamente' },
   'shell-communication': { title: 'Falha na comunicação com a TV', description: 'O iPlex não conseguiu se comunicar com o aplicativo da TV. Feche e abra o iPlex novamente.', retry: 'Tentar novamente' },
   'device-unpaired': { title: 'Dispositivo desvinculado', description: 'Esta TV não está mais vinculada a uma família. Vincule de novo pelo iPlex Gestor.', retry: 'Vincular novamente' },
   'pairing-expired': { title: 'Código expirado', description: 'O código de vinculação expirou. Gere um novo código para continuar.', retry: 'Gerar novo código' },
@@ -35,5 +34,6 @@ export const ERROR_COPY: Record<AppErrorKind, ErrorCopy> = {
   'rate-limited': { title: 'Muitas tentativas', description: 'Aguarde um pouco antes de tentar novamente.', retry: 'Tentar novamente' },
   'not-supported': { title: 'Recurso indisponível', description: 'Este recurso não está disponível neste perfil ou dispositivo.' },
   'backend-outdated': { title: 'Servidor do iPlex desatualizado', description: 'O servidor ainda não oferece este recurso para TVs. A atualização do serviço é necessária para listar suas fontes aqui.', retry: 'Verificar novamente' },
+  typography: { title: 'Não foi possível carregar a interface', description: 'Os recursos visuais do iPlex não foram carregados. Verifique a conexão e tente novamente.', retry: 'Tentar novamente' },
   unknown: { title: 'Não foi possível concluir', description: 'Ocorreu uma falha inesperada. Tente novamente.', retry: 'Tentar novamente' },
 }

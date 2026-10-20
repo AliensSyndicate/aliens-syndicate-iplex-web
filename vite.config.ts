@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react'
 import legacy from '@vitejs/plugin-legacy'
 import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
+import { fontPreload } from './server/font-preload-plugin.ts'
 import { legacyGuardWithoutDataUrl } from './server/legacy-guard-plugin.ts'
 import { tmdbDevServer } from './server/vite-tmdb-plugin.ts'
 
@@ -37,11 +38,17 @@ export default defineConfig(({ mode }) => {
         modernPolyfills: false,
       }),
       legacyGuardWithoutDataUrl(),
+      fontPreload(),
     ],
     build: {
+      // Fontes sempre como arquivo (nunca data: em CSS/JS): cache e preload.
+      assetsInlineLimit: (file: string) => (/\.(woff2?|ttf|otf)$/.test(file) ? false : undefined),
       // Sem minificar CSS: o minificador reescreve os tokens oficiais do
       // Design System (ex.: alfa 0.0509803922 → 0.05, #FFFFFF → #fff).
       cssMinify: false,
+      // CSS num único <link>: sem isso o bundle legado reinjeta o CSS como
+      // <style> (duplicado e bloqueado pela CSP sem 'unsafe-inline').
+      cssCodeSplit: false,
       // Sem <link rel="modulepreload"> inline polyfill (CSP sem unsafe-inline).
       modulePreload: { polyfill: false },
       chunkSizeWarningLimit: 1100,

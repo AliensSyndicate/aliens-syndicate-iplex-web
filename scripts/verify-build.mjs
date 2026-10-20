@@ -8,7 +8,9 @@
  *  4. Nenhum dado de demonstração (src/dev/mock) no bundle.
  *  5. Tokens oficiais exatos no CSS empacotado.
  *  6. Manifesto /iplex-web.json coerente (versão do package, bridgeVersion 1).
+ *  6b. Google Sans: preload dos WOFF2, sem font-display: swap, licença OFL.
  *  7. Bundle legado (SystemJS/nomodule) presente para Chromium M56.
+ *  Também: nenhum reCAPTCHA/App Check e nenhuma chamada à callable manager.
  */
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
@@ -72,6 +74,8 @@ const banned = [
   { label: 'chamada direta à API TMDB', re: /api\.themoviedb\.org/ },
   { label: 'variável VITE_TMDB_*', re: /VITE_TMDB_/ },
   { label: "import de URL data: (bloqueado pela CSP)", re: /import\s*["'`]data:text\/javascript/ },
+  { label: 'reCAPTCHA/App Check no Web (incompatível com Tizen 5.5)', re: /ReCaptcha(Enterprise|V3)Provider|content-firebaseappcheck|initializeAppCheck/ },
+  { label: 'callable manager no Web (exclusiva do Gestor)', re: /httpsCallable\([^)]*['"`]manager['"`]/ },
   { label: 'dados de demonstração', re: /createMockBackend|test-streams\.mux\.dev|Fonte de demonstração|iplex\.mock\.scenario/ },
 ]
 for (const file of files) {
@@ -109,6 +113,18 @@ else {
   if (manifest.app !== 'iplex-web') fail('manifesto: app != iplex-web')
   if (manifest.version !== pkg.version) fail(`manifesto: version ${manifest.version} != package ${pkg.version}`)
   if (manifest.bridgeVersion !== 1) fail('manifesto: bridgeVersion != 1')
+}
+
+// 6b. Fontes: preload dos 3 WOFF2 e licença OFL publicada
+const preloads = [...html.matchAll(/<link rel="preload" href="([^"]+\.woff2)" as="font" type="font\/woff2" crossorigin/g)].map((m) => m[1])
+if (preloads.length !== 3) fail(`index.html: esperados 3 preloads de fonte, encontrados ${preloads.length}`)
+for (const href of preloads) if (!existsSync(join(dist, href))) fail(`preload aponta para arquivo inexistente: ${href}`)
+if (/@font-face\s*\{[^}]*font-display:\s*swap/.test(css)) fail('CSS com @font-face font-display: swap (causa FOUT)')
+if (!existsSync(join(dist, 'licenses', 'google-sans-OFL.txt'))) fail('licença OFL da Google Sans ausente em /licenses')
+
+// 6c. CSS só por <link>: bundle legado sem CSS embutido (seria <style>, bloqueado pela CSP)
+for (const file of files.filter((f) => /-legacy-[\w-]+\.js$/.test(f))) {
+  if (/--iplex-bg:\s*#0F0F0F/.test(readFileSync(file, 'utf8'))) fail(`${file.slice(dist.length + 1)}: CSS embutido no bundle legado`)
 }
 
 // 7. Bundle legado

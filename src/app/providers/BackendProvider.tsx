@@ -6,6 +6,7 @@ import { createFirebaseBackend } from '../../services/firebase/firebaseBackend'
 import { createTmdbClient, type TmdbClient } from '../../services/tmdb/tmdbClient'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { SplashScreen } from '../../features/startup/SplashScreen'
+import { diag } from '../../platform/diagnostics'
 
 interface BackendApi {
   backend: Backend
@@ -34,7 +35,10 @@ export function BackendProvider({ children, backend: injected }: { children: Rea
     let alive = true
     createBackend().then(
       (backend) => alive && setApi({ backend, tmdb: createTmdbClient(backend) }),
-      (e) => alive && setError(e instanceof AppError ? e : new AppError('not-configured')),
+      (e) => {
+        diag('backend-init', `${e instanceof Error ? `${e.name}: ${e.message}` : String(e)} ${(e as Error)?.stack?.split('\n').slice(0, 3).join(' | ') ?? ''}`)
+        if (alive) setError(e instanceof AppError ? e : new AppError('not-configured'))
+      },
     )
     return () => {
       alive = false

@@ -18,6 +18,7 @@ import { LibraryStore } from '../../services/library/libraryStore'
 import { LeaseManager } from '../../services/session/leaseManager'
 import { readJson, writeJson } from '../../utils/storage'
 import { withTimeout } from '../../utils/async'
+import { diag } from '../../platform/diagnostics'
 import { useBackend } from './BackendProvider'
 import { usePlatform } from './PlatformProvider'
 
@@ -191,6 +192,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setState({ status: 'blocked', error, identity: current.identity, profiles: current.profiles, retryProfile: current.profile })
     }
   }, [toPairing])
+
+  useEffect(() => {
+    diag('session', state.status === 'starting' ? `starting ${state.step}` : state.status === 'blocked' ? `blocked ${state.error.kind} ${state.error.code}` : state.status)
+  }, [state])
 
   useEffect(() => {
     void boot()

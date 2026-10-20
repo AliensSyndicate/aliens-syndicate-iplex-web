@@ -5,7 +5,7 @@ import { IplexLogo } from '../../components/ui/IplexLogo'
 export function SplashScreen({ label }: { label?: string }) {
   return (
     <div className="iplex-splash" aria-busy="true">
-      <IplexLogo size="splash" />
+      <IplexLogo size="screen" />
       <div className="iplex-splash__status">
         <Spinner label={label ?? 'Carregando o iPlex'} />
       </div>

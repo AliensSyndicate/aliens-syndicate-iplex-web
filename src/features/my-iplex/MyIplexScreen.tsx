@@ -99,6 +99,8 @@ export default function MyIplexScreen() {
             <LandscapeCard
               key={entry.contentId}
               title={meta.title}
+              sourceId={meta.sourceId}
+              itemId={meta.itemId}
               subtitle={meta.episodeLabel}
               kind={meta.kind}
               year={meta.year}

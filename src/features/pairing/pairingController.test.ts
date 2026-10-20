@@ -53,7 +53,7 @@ describe('pareamento', () => {
     const ok = run([transient, { status: 'linked', identity: { deviceId: 'd', familyId: 'f' } }])
     await ok.controller.start()
     expect(ok.states.at(-1)?.phase).toBe('linked')
-    const fatal = run([new AppError('app-check')])
+    const fatal = run([new AppError('not-configured')])
     await fatal.controller.start()
     expect(fatal.states.at(-1)?.phase).toBe('error')
   })
