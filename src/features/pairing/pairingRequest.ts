@@ -15,7 +15,7 @@ function randomId(): string {
  * Dados enviados ao beginDevicePair. Os identificadores são DICAS para o
  * backend (que calcula o id canônico); nunca prova de propriedade.
  */
-export function buildPairingRequest(platform: PlatformContext): PairingRequest {
+export function buildPairingRequest(platform: Pick<PlatformContext, 'kind' | 'info'>): PairingRequest {
   if (platform.info && (platform.kind === 'tizen' || platform.kind === 'webos')) {
     const model = platform.info.device.model ?? undefined
     return {

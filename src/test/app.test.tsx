@@ -119,6 +119,21 @@ describe('estados de acesso', () => {
     expect(await find('123-456')).toBeTruthy()
     expect(screen.getByRole('img', { name: /QR Code de vinculação/ })).toBeTruthy()
   })
+  it('vinculação: ocultar/reexibir a tela ou oscilar a rede não troca o código', async () => {
+    const mock = createMockBackend()
+    const beginPairing = vi.fn(mock.beginPairing.bind(mock))
+    start('/', 'unpaired', { beginPairing })
+    expect(await find('123-456')).toBeTruthy()
+    const visibility = vi.spyOn(document, 'visibilityState', 'get')
+    for (const state of ['hidden', 'visible'] as const) {
+      visibility.mockReturnValue(state)
+      await act(async () => { document.dispatchEvent(new Event('visibilitychange')) })
+    }
+    await act(async () => { window.dispatchEvent(new Event('offline')); window.dispatchEvent(new Event('online')) })
+    visibility.mockRestore()
+    expect(await find('123-456')).toBeTruthy()
+    expect(beginPairing).toHaveBeenCalledTimes(1)
+  })
   it('assinatura inativa: estado próprio, com nova verificação', async () => {
     start('/', 'subscription')
     ;(await screen.findByRole('button', { name: /Demonstração/ }, { timeout: 5000 }))

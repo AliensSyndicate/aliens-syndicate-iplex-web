@@ -96,7 +96,10 @@ export class CatalogStore {
     return out
   }
 
-  /** Categorias (da fonte) com pelo menos um item carregado do tipo. */
+  /**
+   * Categorias (das fontes) com pelo menos um item carregado do tipo. A mesma
+   * categoria em várias fontes é um único grupo (por nome), não um chip por fonte.
+   */
   categories(kind: ContentKind): Array<{ key: string; name: string; items: CatalogItem[] }> {
     const groups = new Map<string, { key: string; name: string; items: CatalogItem[]; order: number }>()
     this.statesFor(kind).forEach((state) => {
@@ -105,8 +108,10 @@ export class CatalogStore {
       state.items.forEach((item) => {
         if (item.kind !== kind) return
         const name = (item.categoryId && names.get(item.categoryId)) || item.category || 'Sem categoria'
-        const key = `${state.space.sourceId}:${item.categoryId || name}`
-        const group = groups.get(key) ?? { key, name, items: [], order: order.get(item.categoryId ?? '') ?? 10_000 }
+        const key = name.trim().toLocaleLowerCase('pt-BR')
+        const rank = order.get(item.categoryId ?? '') ?? 10_000
+        const group = groups.get(key) ?? { key, name, items: [], order: rank }
+        group.order = Math.min(group.order, rank)
         group.items.push(item)
         groups.set(key, group)
       })

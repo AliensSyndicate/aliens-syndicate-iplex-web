@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BridgeClient } from '../bridge/client'
 import { BRIDGE_METHODS } from '../bridge/protocol'
 import { createBridgePlaybackAdapter } from './bridgeAdapter'
-import { browserFormatSupport, createClapprAdapter } from './clapprAdapter'
+import { browserFormatSupport, createHtml5Adapter } from './html5Adapter'
 
 function fakeBridge() {
   const handlers = new Map<string, (d: unknown) => void>()
@@ -49,58 +49,110 @@ describe('adaptador AVPlay (ponte)', () => {
   })
 })
 
-describe('adaptador Clappr', () => {
-  function fakeClappr() {
-    const instances: Array<{ options: Record<string, unknown>; handlers: Map<string, (...a: unknown[]) => void>; play: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; seek: ReturnType<typeof vi.fn> }> = []
-    class Player {
+describe('adaptador do navegador (<video> + hls.js)', () => {
+  function fakeHls(supported = true) {
+    const instances: Array<{ config: Record<string, unknown>; handlers: Map<string, (...a: unknown[]) => void>; attachMedia: ReturnType<typeof vi.fn>; loadSource: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn>; recoverMediaError: ReturnType<typeof vi.fn>; subtitleTrack: number }> = []
+    class Hls {
+      static isSupported = () => supported
+      static Events = { ERROR: 'hlsError' }
+      static ErrorTypes = { MEDIA_ERROR: 'mediaError', NETWORK_ERROR: 'networkError' }
       handlers = new Map<string, (...a: unknown[]) => void>()
-      play = vi.fn()
-      pause = vi.fn()
-      stop = vi.fn()
-      seek = vi.fn()
+      attachMedia = vi.fn()
+      loadSource = vi.fn()
       destroy = vi.fn()
-      core = { activeContainer: { on: vi.fn(), audioTracks: [], closedCaptionsTracks: [] } }
-      options: Record<string, unknown>
-      constructor(options: Record<string, unknown>) {
-        this.options = options
+      stopLoad = vi.fn()
+      recoverMediaError = vi.fn()
+      audioTracks = [{ name: 'Português', lang: 'por' }]
+      subtitleTracks = [{ name: 'Inglês', lang: 'eng' }]
+      audioTrack = 0
+      subtitleTrack = -1
+      subtitleDisplay = false
+      config: Record<string, unknown>
+      constructor(config: Record<string, unknown>) {
+        this.config = config
         instances.push(this as never)
       }
       on(event: string, fn: (...a: unknown[]) => void) {
         this.handlers.set(event, fn)
       }
     }
-    const Events = { PLAYER_READY: 'ready', PLAYER_PLAY: 'play', PLAYER_PAUSE: 'pause', PLAYER_ENDED: 'ended', PLAYER_TIMEUPDATE: 'timeupdate', PLAYER_ERROR: 'error' }
-    return { mod: { Player, Events } as never, instances }
+    return { Hls: Hls as never, instances }
   }
+  let play: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(async () => undefined)
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined)
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined)
+  })
 
-  it('cria o Clappr sem interface própria e sem worker do hls.js', async () => {
-    const { mod, instances } = fakeClappr()
-    const adapter = createClapprAdapter(async () => mod)
-    await adapter.load({ url: 'https://x/a.m3u8', live: false }, document.createElement('div'))
-    expect(instances[0]!.options).toMatchObject({ chromeless: true, source: 'https://x/a.m3u8', playback: { hlsjsConfig: { enableWorker: false } } })
+  it('HLS por hls.js sem worker, num <video> sem controles próprios; estados vêm do elemento', async () => {
+    const { Hls, instances } = fakeHls()
+    const adapter = createHtml5Adapter(async () => Hls)
+    const container = document.createElement('div')
+    await adapter.load({ url: 'https://x/live.m3u8', live: true }, container)
+    const video = container.querySelector('video')!
+    expect(video.controls).toBe(false)
+    expect(instances[0]!.config).toMatchObject({ enableWorker: false })
+    expect(instances[0]!.attachMedia).toHaveBeenCalledWith(video)
+    expect(instances[0]!.loadSource).toHaveBeenCalledWith('https://x/live.m3u8')
+    expect(play).toHaveBeenCalled()
     const states: string[] = []
     adapter.on('state', (s) => states.push(s.state))
-    instances[0]!.handlers.get('play')!()
-    instances[0]!.handlers.get('pause')!()
+    video.dispatchEvent(new Event('playing'))
+    video.dispatchEvent(new Event('pause'))
     expect(states).toEqual(['playing', 'paused'])
     await adapter.destroy()
     expect(instances[0]!.destroy).toHaveBeenCalled()
+    expect(container.querySelector('video')).toBeNull()
   })
-  it('retoma VOD na posição salva quando pronto', async () => {
-    const { mod, instances } = fakeClappr()
-    const adapter = createClapprAdapter(async () => mod)
-    await adapter.load({ url: 'https://x/a.mp4', live: false, startPositionMs: 30000 }, document.createElement('div'))
-    instances[0]!.handlers.get('ready')!()
-    expect(instances[0]!.seek).toHaveBeenCalledWith(30)
+  it('VOD: retoma na posição salva; erro de mídia fatal tenta recuperar uma vez, depois falha', async () => {
+    const { Hls, instances } = fakeHls()
+    const adapter = createHtml5Adapter(async () => Hls)
+    await adapter.load({ url: 'https://x/filme.m3u8', live: false, startPositionMs: 30000 }, document.createElement('div'))
+    expect(instances[0]!.config).toMatchObject({ startPosition: 30 })
+    const errors: unknown[] = []
+    adapter.on('error', (e) => errors.push(e))
+    const fire = instances[0]!.handlers.get('hlsError')!
+    fire('hlsError', { fatal: true, type: 'mediaError', details: 'bufferStalledError' })
+    expect(instances[0]!.recoverMediaError).toHaveBeenCalledTimes(1)
+    expect(errors).toEqual([])
+    fire('hlsError', { fatal: true, type: 'mediaError', details: 'manifestIncompatibleCodecsError' })
+    expect(errors[0]).toMatchObject({ code: 'manifestIncompatibleCodecsError', unsupported: true })
   })
-  it('formato que o navegador não reproduz gera erro claro, sem carregar o Clappr', async () => {
+  it('faixas de áudio e legenda pelo hls.js', async () => {
+    const { Hls, instances } = fakeHls()
+    const adapter = createHtml5Adapter(async () => Hls)
+    await adapter.load({ url: 'https://x/a.m3u8', live: false }, document.createElement('div'))
+    await adapter.selectTrack('text', 0)
+    expect(instances[0]!.subtitleTrack).toBe(0)
+    expect((await adapter.getTracks()).map((t) => [t.kind, t.label, t.selected])).toEqual([['audio', 'Português', true], ['text', 'Inglês', true]])
+    await adapter.setSubtitlesVisible(false)
+    expect(instances[0]!.subtitleTrack).toBe(-1)
+  })
+  it('MP4 direto no <video>, sem carregar o hls.js', async () => {
     const load = vi.fn()
-    const adapter = createClapprAdapter(load as never)
+    const adapter = createHtml5Adapter(load as never)
+    const container = document.createElement('div')
+    await adapter.load({ url: 'https://x/filme.mp4', live: false }, container)
+    expect(container.querySelector('video')!.getAttribute('src')).toBe('https://x/filme.mp4')
+    expect(load).not.toHaveBeenCalled()
+  })
+  it('formato que o navegador não reproduz gera erro claro, sem carregar o hls.js', async () => {
+    const load = vi.fn()
+    const adapter = createHtml5Adapter(load as never)
     const errors: unknown[] = []
     adapter.on('error', (e) => errors.push(e))
     await adapter.load({ url: 'https://x/canal.ts', live: true }, document.createElement('div'))
     expect(errors[0]).toMatchObject({ unsupported: true })
     expect(load).not.toHaveBeenCalled()
+  })
+  it('navegador sem MediaSource: erro "unsupported"', async () => {
+    const { Hls } = fakeHls(false)
+    const adapter = createHtml5Adapter(async () => Hls)
+    const errors: unknown[] = []
+    adapter.on('error', (e) => errors.push(e))
+    await adapter.load({ url: 'https://x/a.m3u8', live: true }, document.createElement('div'))
+    expect(errors[0]).toMatchObject({ code: 'hls_unsupported', unsupported: true })
   })
   it('heurística de formato', () => {
     expect(browserFormatSupport('https://x/a.m3u8?t=1')).toBe('supported')

@@ -81,7 +81,7 @@ export default function SettingsScreen() {
             {platform.info && <Row label="Aplicativo da TV" value={platform.info.appVersion} />}
             {platform.info && <Row label="Ponte" value={`v${platform.info.bridge.version}`} />}
             {platform.info?.platformVersion && <Row label="Sistema" value={platform.info.platformVersion} />}
-            <Row label="Reprodução" value={platform.capabilities.nativePlayer ? 'Player nativo da TV' : 'Clappr (navegador)'} />
+            <Row label="Reprodução" value={platform.capabilities.nativePlayer ? 'Player nativo da TV' : 'Navegador (HTML5)'} />
             <Row label="Pagamentos" value={FEATURES.paymentsEnabled ? 'Ativos' : 'Gerenciados no iPlex Gestor'} />
             {backend.label === 'mock' && <Row label="Dados" value="Demonstração (desenvolvimento)" />}
           </dl>

@@ -7,7 +7,7 @@ vi.mock('../platform/playback/createAdapter', () => ({
   createPlaybackAdapter: () => {
     const emitter = createEmitter()
     const adapter = {
-      kind: 'clappr' as const,
+      kind: 'html5' as const,
       capabilities: { seek: true, audioTracks: true, subtitles: true },
       load: vi.fn(async () => emitter.emit('state', { state: 'playing' })),
       play: vi.fn(async () => undefined),

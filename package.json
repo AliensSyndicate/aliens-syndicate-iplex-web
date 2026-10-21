@@ -16,11 +16,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@clappr/player": "^0.14.7",
     "@fontsource/google-sans": "^5.3.2",
     "@hugeicons/core-free-icons": "^4.3.5",
     "@hugeicons/react": "^1.1.10",
     "firebase": "^13.0.0",
+    "hls.js": "1.7.3",
     "qrcode-generator": "^2.0.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

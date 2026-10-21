@@ -32,6 +32,26 @@ describe('CatalogStore', () => {
     expect(names[0]).toBe('Ação') // ordem da fonte primeiro
   })
 
+  it('a mesma categoria em várias fontes vira um único grupo com os itens de todas', async () => {
+    const backend = {
+      readCatalog: vi.fn(async (_p: string, q: { sourceId: string }): Promise<CatalogPage> => ({
+        version: 'v1',
+        items: [{ ...item(`${q.sourceId}-c`, 'channel', 'Notícias'), sourceId: q.sourceId }, { ...item(`${q.sourceId}-d`, 'channel', q.sourceId === 's1' ? 'notícias ' : 'Esportes'), sourceId: q.sourceId }],
+        categories: [],
+        cursor: 30,
+        hasMore: false,
+      })),
+    }
+    const store = new CatalogStore(backend, 'admin', [
+      { sourceId: 's1', name: 'Fonte 1', kinds: ['channel'] },
+      { sourceId: 's2', name: 'Fonte 2', kinds: ['channel'] },
+    ])
+    await store.ensure('channel', 1)
+    const groups = store.categories('channel')
+    expect(groups.map((g) => g.name)).toEqual(['Esportes', 'Notícias'])
+    expect(groups.find((g) => g.name === 'Notícias')!.items.map((i) => i.id).sort()).toEqual(['s1-c', 's1-d', 's2-c'])
+  })
+
   it('não consulta fontes sem o tipo pedido', async () => {
     const backend = backendWith([item('c1', 'channel')])
     const store = new CatalogStore(backend, 'kids', [{ sourceId: 's1', name: 'Fonte', kinds: ['channel'] }])

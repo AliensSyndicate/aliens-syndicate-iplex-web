@@ -1,7 +1,7 @@
 /**
  * Abstração de reprodução. Uma única implementação ativa por vez:
  * - shell Samsung (AVPlay) pela ponte, quando PlatformInfo anuncia player nativo;
- * - Clappr no navegador.
+ * - <video> + hls.js no navegador.
  * Nunca as duas ao mesmo tempo.
  */
 
@@ -48,9 +48,9 @@ export interface PlaybackCapabilities {
 }
 
 export interface PlaybackAdapter {
-  readonly kind: 'native-bridge' | 'clappr'
+  readonly kind: 'native-bridge' | 'html5'
   readonly capabilities: PlaybackCapabilities
-  /** `container` é usado pelo Clappr; o AVPlay desenha atrás da camada web. */
+  /** `container` recebe o <video> do navegador; o AVPlay desenha atrás da camada web. */
   load(source: PlaybackSource, container: HTMLElement | null): Promise<void>
   play(): Promise<void>
   pause(): Promise<void>

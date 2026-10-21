@@ -4,7 +4,7 @@
  * 1. O item é relido do catálogo autorizado (perfil do lease).
  * 2. O backend resolve a URL autorizada (resolveSourceStream), revalidando
  *    assinatura, lease, permissões e a fonte. Credenciais IPTV não chegam aqui.
- * 3. Um único adaptador toca: AVPlay (shell Samsung) ou Clappr (navegador).
+ * 3. Um único adaptador toca: AVPlay (shell Samsung) ou <video> + hls.js (navegador).
  * 4. Progresso: só perfis com biblioteca, só VOD, com frequência controlada.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'

@@ -13,14 +13,14 @@ import { AppError } from '../services/api/errors'
 import type { Backend } from '../services/api/backend'
 import type { PlayRequestClaim, PlayRequestNotice } from '../services/api/types'
 
-// Adaptador de reprodução falso: "tocando" logo após carregar (como AVPlay/Clappr reais).
+// Adaptador de reprodução falso: "tocando" logo após carregar (como AVPlay/<video> reais).
 vi.mock('../platform/playback/createAdapter', async () => {
   const { createEmitter } = await import('../platform/playback/types')
   return {
     createPlaybackAdapter: () => {
       const emitter = createEmitter()
       return {
-        kind: 'clappr' as const,
+        kind: 'html5' as const,
         capabilities: { seek: true, audioTracks: false, subtitles: false },
         load: async () => emitter.emit('state', { state: 'playing' }),
         play: async () => undefined,

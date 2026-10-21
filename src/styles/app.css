@@ -1022,8 +1022,8 @@
   left: 0;
   width: 100%;
   height: 100%;
-  /* Contexto de empilhamento próprio: z-index internos do Clappr (9999) não
-   * passam por cima dos controles iPlex. */
+  /* Contexto de empilhamento próprio: o <video> não passa por cima dos
+   * controles iPlex. */
   z-index: 0;
 }
 .iplex-player__buffering,
@@ -1032,16 +1032,10 @@
 .iplex-player__overlay {
   z-index: 1;
 }
-/* O CSS injetado pelo Clappr é bloqueado pela CSP; o essencial fica aqui. */
-.iplex-player__surface [data-player],
-.iplex-player__surface .container[data-container] {
+.iplex-player__surface video {
   position: absolute;
   top: 0;
   left: 0;
-  width: 100% !important;
-  height: 100% !important;
-}
-.iplex-player__surface video {
   width: 100%;
   height: 100%;
   object-fit: contain;

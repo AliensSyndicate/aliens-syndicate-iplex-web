@@ -31,7 +31,10 @@ export function PairingScreen() {
   const platform = usePlatform()
   const session = useSession()
   const [state, setState] = useState<PairingState>({ phase: 'creating' })
-  const request = useMemo(() => buildPairingRequest(platform), [platform])
+  // Only the device identity: visibility/network changes must not restart the
+  // pairing (a new code would invalidate the one the Gestor is confirming).
+  const { kind, info } = platform
+  const request = useMemo(() => buildPairingRequest({ kind, info }), [kind, info])
   const controller = useMemo(
     () =>
       createPairingController({
