@@ -14,10 +14,14 @@ export interface PosterCardProps {
   progress?: number | null
   autoFocus?: boolean
   onFocus?: () => void
+  /** Somente a capa (sem rótulo de texto); o nome fica no aria-label. */
+  posterOnly?: boolean
+  /** Índice no grid do Catálogo (navegação ortogonal). */
+  gridIndex?: number
 }
 
 /** Pôster 2:3 de filme/série: prioriza a imagem do conteúdo (TMDB) e respeita a proporção. */
-export function PosterCard({ item, navId, navGroup, onSelect, progress, autoFocus, onFocus }: PosterCardProps) {
+export function PosterCard({ item, navId, navGroup, onSelect, progress, autoFocus, onFocus, posterOnly, gridIndex }: PosterCardProps) {
   const ref = useRef<HTMLButtonElement>(null)
   const visible = useInView(ref)
   const meta = useMatch(item, visible)
@@ -35,12 +39,13 @@ export function PosterCard({ item, navId, navGroup, onSelect, progress, autoFocu
       data-nav-id={navId}
       data-nav-group={navGroup}
       {...(autoFocus ? { 'data-nav-autofocus': '' } : {})}
+      {...(gridIndex !== undefined ? { 'data-grid-index': String(gridIndex) } : {})}
     >
       <span className="iplex-tile__frame">
         <Artwork src={summary?.poster} alt="" fallback={item.title} />
         {typeof progress === 'number' && <ProgressBar value={progress} />}
       </span>
-      <span className="iplex-tile__label">{title}</span>
+      {!posterOnly && <span className="iplex-tile__label">{title}</span>}
     </button>
   )
 }

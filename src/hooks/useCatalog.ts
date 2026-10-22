@@ -3,14 +3,14 @@ import { useReadySession } from '../app/providers/SessionProvider'
 import type { ContentKind } from '../services/api/types'
 
 /** Catálogo do perfil atual para um tipo de conteúdo (carregamento progressivo). */
-export function useCatalog(kind: ContentKind) {
+export function useCatalog(kind: ContentKind, enabled = true) {
   const { catalog, spaces, spacesError } = useReadySession()
   const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot)
   const kindSpaces = useMemo(() => spaces.filter((s) => s.kinds.includes(kind)), [spaces, kind])
 
   useEffect(() => {
-    void catalog.ensure(kind)
-  }, [catalog, kind])
+    if (enabled) void catalog.ensure(kind)
+  }, [catalog, kind, enabled])
 
   const loadMore = useCallback(() => {
     if (catalog.hasMore(kind) && !catalog.isLoading(kind)) void catalog.loadMore(kind)

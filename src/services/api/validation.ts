@@ -5,7 +5,7 @@
  */
 import type { HeartbeatResult } from './backend'
 import { AppError } from './errors'
-import type { ContentKind, PinCheck, PlayRequestClaim, PlayRequestNotice, Profile, ProfileType } from './types'
+import type { AccountIdentity, ContentKind, PinCheck, PlayRequestClaim, PlayRequestNotice, Profile, ProfileType } from './types'
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
 const ID = /^[A-Za-z0-9_-]{1,128}$/
@@ -28,6 +28,14 @@ export function parseProfiles(raw: unknown): Profile[] {
       ...(typeof p.pinRequired === 'boolean' ? { pinRequired: p.pinRequired } : {}),
     }]
   })
+}
+
+/** `account` de listPlayerProfiles. Ausente ou inválido (backend anterior) = sem identidade. */
+export function parseAccountIdentity(raw: unknown): AccountIdentity | null {
+  const account = isObject(raw) && isObject(raw.account) ? raw.account : null
+  if (!account || typeof account.name !== 'string') return null
+  const url = typeof account.photoUrl === 'string' && account.photoUrl.length <= 1000 && account.photoUrl.startsWith('https://') ? account.photoUrl : null
+  return { name: account.name.slice(0, 80), photoUrl: url }
 }
 
 export function parsePinCheck(raw: unknown): PinCheck {
@@ -68,6 +76,10 @@ export function parsePlayRequestClaim(raw: unknown): PlayRequestClaim {
       kind: r.kind as ContentKind,
       title: r.title,
       requesterName: typeof r.requesterName === 'string' ? r.requesterName : '',
+      ...(r.resume === true && r.kind !== 'channel' ? { resume: true } : {}),
+      ...(r.resume === true && r.kind !== 'channel' && typeof r.resumePositionSec === 'number' && Number.isFinite(r.resumePositionSec) && r.resumePositionSec > 0
+        ? { resumePositionSec: Math.floor(r.resumePositionSec), ...(typeof r.resumeDurationSec === 'number' && r.resumeDurationSec > 0 ? { resumeDurationSec: r.resumeDurationSec } : {}) }
+        : {}),
     },
   }
 }

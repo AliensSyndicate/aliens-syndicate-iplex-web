@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { isRevocationMarker, parseHeartbeat, parsePinCheck, parsePlayRequestClaim, parsePlayRequestDoc, parseProfiles } from './validation'
+import { playRequestPath } from '../../features/remote/PlayRequestCoordinator'
+import { isRevocationMarker, parseAccountIdentity, parseHeartbeat, parsePinCheck, parsePlayRequestClaim, parsePlayRequestDoc, parseProfiles } from './validation'
 
 describe('validação na fronteira com o backend', () => {
   it('perfis: mantém pinRequired do backend e descarta entradas inválidas', () => {
@@ -55,5 +56,24 @@ describe('validação na fronteira com o backend', () => {
     expect(isRevocationMarker({ status: 'revoked', expiresAt: 2000 }, 1000)).toBe(true)
     expect(isRevocationMarker({ status: 'revoked', expiresAt: 500 }, 1000)).toBe(false)
     expect(isRevocationMarker({ status: 'pending', expiresAt: 2000 }, 1000)).toBe(false)
+  })
+  it('conta da TV: nome e foto https do provedor; sem foto, backend antigo ou URL insegura = avatar padrão', () => {
+    expect(parseAccountIdentity({ profiles: [], account: { name: 'Ana', photoUrl: 'https://lh3.googleusercontent.com/a/x' } })).toEqual({ name: 'Ana', photoUrl: 'https://lh3.googleusercontent.com/a/x' })
+    expect(parseAccountIdentity({ account: { name: 'Bia', photoUrl: null } })).toEqual({ name: 'Bia', photoUrl: null })
+    expect(parseAccountIdentity({ account: { name: 'Cris', photoUrl: 'http://example.com/a.png' } })?.photoUrl).toBeNull()
+    expect(parseAccountIdentity({ account: { name: 'Davi', photoUrl: 'javascript:alert(1)' } })?.photoUrl).toBeNull()
+    expect(parseAccountIdentity({ profiles: [] })).toBeNull()
+    expect(parseAccountIdentity({ account: { photoUrl: 'https://a.example/x' } })).toBeNull()
+    expect(parseAccountIdentity(null)).toBeNull()
+  })
+  it('pedido "Continuar assistindo": resume só para filmes/séries e vira r=1 na reprodução', () => {
+    const base = { id: 'pr_1', status: 'delivered', request: { sourceId: 's1', itemId: 'i1', episodeId: null, kind: 'movie', title: 'Filme', requesterName: 'Ana', resume: true } }
+    const claim = parsePlayRequestClaim(base)
+    expect(claim.status === 'delivered' && claim.request.resume).toBe(true)
+    if (claim.status === 'delivered') expect(playRequestPath('pr_1', claim.request)).toContain('r=1')
+    const channel = parsePlayRequestClaim({ ...base, request: { ...base.request, kind: 'channel' } })
+    expect(channel.status === 'delivered' && channel.request.resume).toBeFalsy()
+    const plain = parsePlayRequestClaim({ ...base, request: { ...base.request, resume: undefined } })
+    if (plain.status === 'delivered') expect(playRequestPath('pr_1', plain.request)).not.toContain('r=1')
   })
 })

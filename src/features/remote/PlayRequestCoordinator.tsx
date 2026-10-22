@@ -28,7 +28,7 @@ const TOAST_MS = 7_000
 
 export function playRequestPath(id: string, r: PlayRequestContent): string {
   if (r.kind === 'series' && !r.episodeId) return PATHS.details(r.sourceId, r.itemId, r.title)
-  const path = PATHS.watch({ sourceId: r.sourceId, itemId: r.itemId, kind: r.kind, title: r.title, ...(r.episodeId ? { episodeId: r.episodeId } : {}) })
+  const path = PATHS.watch({ sourceId: r.sourceId, itemId: r.itemId, kind: r.kind, title: r.title, ...(r.episodeId ? { episodeId: r.episodeId } : {}), ...(r.resume ? { resume: true } : {}), ...(r.resume && r.resumePositionSec ? { resumeAtSec: r.resumePositionSec } : {}) })
   return `${path}&pr=${encodeURIComponent(id)}`
 }
 

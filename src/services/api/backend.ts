@@ -7,6 +7,7 @@
  * acontece no backend. O cliente apenas reflete as respostas.
  */
 import type {
+  AccountIdentity,
   CatalogPage,
   ContentKind,
   DeviceIdentity,
@@ -52,6 +53,23 @@ export interface ProgressWrite {
   durationSec: number
   generation: number
   watchedGeneration?: number
+  /** Sessão de reprodução (ver progressSession.ts). */
+  session?: { playId: string; startedAt: number; seq: number; origin: 'start' | 'resume' | 'restart'; userSeek?: true }
+}
+
+/** `ignored`: o backend descartou o evento (atrasado, fora de ordem, inicialização, retomada não aplicada). */
+export interface ProgressResult {
+  ignored?: string
+}
+
+export interface PlaybackStatusWrite {
+  sessionId: string
+  sourceId: string
+  itemId: string
+  episodeId?: string
+  state: 'playing' | 'paused' | 'stopped'
+  positionSec?: number
+  durationSec?: number
 }
 
 export interface HeartbeatResult {
@@ -71,6 +89,8 @@ export interface Backend {
   getAppCheckToken(): Promise<string | null>
 
   listProfiles(): Promise<Profile[]>
+  /** Conta vinculada à TV, vinda da última listagem de perfis (null = ainda desconhecida ou sem dado). */
+  accountIdentity(): AccountIdentity | null
   /**
    * PIN parental (perfil adulto quando há perfil infantil). Validado no backend,
    * com limite de tentativas; o acquireSession seguinte é liberado só para este perfil.
@@ -80,6 +100,8 @@ export interface Backend {
   acquireSession(profileId: string): Promise<Lease>
   /** Renova o lease; devolve um pedido de reprodução pendente (reserva do ouvinte). */
   heartbeat(sessionId: string): Promise<HeartbeatResult>
+  /** Publica o que a TV está tocando (somente status, para o Control). */
+  reportPlayback(input: PlaybackStatusWrite): Promise<void>
   /** `suspend`: multitarefa — mantém a liberação por PIN para retomar o mesmo perfil. */
   releaseSession(sessionId: string, options?: { suspend?: boolean }): Promise<void>
 
@@ -101,6 +123,6 @@ export interface Backend {
   readLibrary(identity: DeviceIdentity, profileId: string): Promise<Library>
   readGenerations(identity: DeviceIdentity, profileId: string): Promise<Profile['generations'] | null>
   setFavorite(input: { profileId: string; contentId: string; title: string; generation: number; remove: boolean }): Promise<void>
-  saveProgress(input: ProgressWrite): Promise<void>
+  saveProgress(input: ProgressWrite): Promise<ProgressResult | void>
   markWatched(input: { profileId: string; contentId: string; title: string; generation: number }): Promise<void>
 }

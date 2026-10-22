@@ -24,6 +24,16 @@ export interface Profile {
   pinRequired?: boolean
 }
 
+/**
+ * Identidade da CONTA vinculada à TV (a conta autenticada no Gestor), distinta dos
+ * perfis de visualização. Só nome e foto do provedor (https); sem credenciais.
+ * `photoUrl` null = avatar padrão (sem foto, p.ex. Apple).
+ */
+export interface AccountIdentity {
+  name: string
+  photoUrl: string | null
+}
+
 /** verifyProfilePin: resultado do backend. O PIN nunca é comparado no cliente. */
 export interface PinCheck {
   verified: boolean
@@ -55,6 +65,11 @@ export interface PlayRequestContent {
   kind: ContentKind
   title: string
   requesterName: string
+  /** "Continuar assistindo" no Control: retoma do progresso salvo do perfil ativo da TV. */
+  resume?: boolean
+  /** Posição (s) a retomar, resolvida pelo backend; ausente = começar do início. */
+  resumePositionSec?: number
+  resumeDurationSec?: number
 }
 
 export type PlayRequestClaim =

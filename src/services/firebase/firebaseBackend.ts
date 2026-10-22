@@ -26,6 +26,7 @@ import { EMULATOR_HOST, FUNCTIONS_REGION, type FirebaseWebConfig } from '../../c
 import type { Backend, CatalogQuery, HeartbeatResult, PairingRequest, ProgressWrite } from '../api/backend'
 import { AppError, toAppError } from '../api/errors'
 import type {
+  AccountIdentity,
   CatalogCategory,
   CatalogItem,
   CatalogPage,
@@ -46,7 +47,7 @@ import type {
   StreamGrant,
 } from '../api/types'
 import { normalizeSeriesDetails } from '../catalog/normalize'
-import { parseHeartbeat, parsePinCheck, parsePlayRequestClaim, parseProfiles } from '../api/validation'
+import { parseAccountIdentity, parseHeartbeat, parsePinCheck, parsePlayRequestClaim, parseProfiles } from '../api/validation'
 import { diag } from '../../platform/diagnostics'
 
 interface Context {
@@ -60,6 +61,7 @@ export const PLAYER_CALLABLE = 'player'
 
 export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
   let ctx: Context | null = null
+  let account: AccountIdentity | null = null
   const context = (): Context => {
     if (ctx) return ctx
     const app = initializeApp(config)
@@ -160,7 +162,14 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
     },
 
     async listProfiles(): Promise<Profile[]> {
-      return parseProfiles(await call<unknown>('listPlayerProfiles'))
+      const raw = await call<unknown>('listPlayerProfiles')
+      const profiles = parseProfiles(raw)
+      account = parseAccountIdentity(raw)
+      return profiles
+    },
+
+    accountIdentity() {
+      return account
     },
 
     async verifyProfilePin(profileId: string, pin: string): Promise<PinCheck> {
@@ -172,6 +181,10 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
       const lease = await call<{ id: string; profileId: string; expiresAt: number }>('acquireSession', { profileId })
       return { id: lease.id, profileId: lease.profileId, expiresAt: lease.expiresAt }
     },
+    async reportPlayback(input) {
+      await call('reportPlayback', { ...input })
+    },
+
     async heartbeat(sessionId: string): Promise<HeartbeatResult> {
       return parseHeartbeat(await call<unknown>('heartbeat', { sessionId }))
     },
@@ -288,13 +301,14 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
     },
 
     async saveProgress(input: ProgressWrite) {
-      await call('watchProgress', {
+      return call<{ ignored?: string }>('watchProgress', {
         profileId: input.profileId,
         contentId: input.contentId,
         position: input.positionSec,
         duration: input.durationSec,
         generation: input.generation,
         ...(input.watchedGeneration !== undefined ? { watchedGeneration: input.watchedGeneration } : {}),
+        ...(input.session ?? {}),
       })
     },
 

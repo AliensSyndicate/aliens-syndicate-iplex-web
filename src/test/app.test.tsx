@@ -67,6 +67,23 @@ describe('perfis', () => {
     expect(screen.getByRole('button', { name: /Demonstração, protegido por PIN/ })).toBeTruthy()
   })
 
+  it('seleção de perfis identifica a conta vinculada sem substituir os avatares dos perfis', async () => {
+    const { container } = start('/', 'default', { accountIdentity: () => ({ name: 'Conta Ana', photoUrl: 'https://lh3.googleusercontent.com/a/ana' }) })
+    expect(await find('Quem está assistindo?')).toBeTruthy()
+    expect(screen.getByText('Conta Ana')).toBeTruthy()
+    expect(container.querySelector('.iplex-account-badge img')?.getAttribute('src')).toBe('https://lh3.googleusercontent.com/a/ana')
+    // Perfis de visualização continuam com a própria identidade (inicial), sem a foto da conta.
+    expect(container.querySelectorAll('.iplex-profile img').length).toBe(0)
+    expect(screen.getByRole('button', { name: /Infantil Demo, Infantil/ })).toBeTruthy()
+  })
+
+  it('conta sem foto usa o avatar padrão (inicial)', async () => {
+    const { container } = start('/', 'default', { accountIdentity: () => ({ name: 'Bia', photoUrl: null }) })
+    expect(await find('Quem está assistindo?')).toBeTruthy()
+    expect(container.querySelector('.iplex-account-badge img')).toBeNull()
+    expect(container.querySelector('.iplex-account-badge .iplex-avatar')?.textContent).toBe('B')
+  })
+
   it('último perfil infantil entra direto, sem seletor', async () => {
     start('/', 'kids-last')
     await waitFor(() => expect(window.location.pathname).toBe('/meu-iplex'), { timeout: 5000 })

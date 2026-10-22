@@ -11,6 +11,7 @@ import { usePlatform } from '../../app/providers/PlatformProvider'
 import { useReadySession, useSession } from '../../app/providers/SessionProvider'
 import { ConfirmDialog } from '../../components/dialogs/ConfirmDialog'
 import { ERROR_COPY } from '../../components/feedback/errorCopy'
+import { AccountBadge } from '../../components/navigation/AccountBadge'
 import { IplexButton } from '../../components/ui/IplexButton'
 import { IplexCard } from '../../components/ui/IplexCard'
 import { IplexText } from '../../components/ui/IplexText'
@@ -38,6 +39,7 @@ export default function SettingsScreen() {
   const [confirm, setConfirm] = useState(false)
   useInitialFocus('/configuracoes', true)
 
+  const account = backend.accountIdentity()
   const masked = (id: string) => (id.length > 8 ? `${id.slice(0, 4)}••••${id.slice(-4)}` : id)
   const sourceState = ready.spacesError
     ? ERROR_COPY[ready.spacesError.kind].title
@@ -62,6 +64,13 @@ export default function SettingsScreen() {
             </IplexButton>
           </div>
         </IplexCard>
+
+        {account && account.name && (
+          <IplexCard compact className="iplex-settings__card">
+            <IplexText variant="section-title">Conta</IplexText>
+            <AccountBadge account={account} />
+          </IplexCard>
+        )}
 
         <IplexCard compact className="iplex-settings__card">
           <IplexText variant="section-title">Dispositivo</IplexText>

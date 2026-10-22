@@ -22,5 +22,9 @@ export function createProgressTracker(policy: ProgressPolicy, now: () => number 
       lastSavedAt = now()
       lastSavedPosition = positionMs
     },
+    /** Falha (rede/Firebase): mantém o intervalo, mas a mesma posição pode ser gravada de novo. */
+    markFailed() {
+      lastSavedPosition = -Infinity
+    },
   }
 }

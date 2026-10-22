@@ -13,6 +13,7 @@ export function ContentCarousel({
   onNearEnd,
   count,
   shape = 'poster',
+  onSeeAll,
 }: {
   title: string
   id: string
@@ -20,13 +21,22 @@ export function ContentCarousel({
   onNearEnd?: () => void
   count?: number
   shape?: 'poster' | 'landscape' | 'channel'
+  /** "Ver tudo": abre a tela Catálogo (ou a seção) com o contexto da fileira. */
+  onSeeAll?: () => void
 }) {
   const headingId = `row-${id}`
   return (
     <section className={`iplex-row iplex-row--${shape}`} aria-labelledby={headingId} data-nav-group-root={id}>
-      <IplexText variant="section-title" id={headingId} className="iplex-row__title">
-        {title}
-      </IplexText>
+      <div className="iplex-row__head">
+        <IplexText variant="section-title" id={headingId} className="iplex-row__title">
+          {title}
+        </IplexText>
+        {onSeeAll && (
+          <button type="button" className="iplex-chip iplex-focusable iplex-row__see-all" onClick={onSeeAll} data-nav="" data-nav-id={`see-all-${id}`} data-nav-group={`${id}-head`}>
+            Ver tudo
+          </button>
+        )}
+      </div>
       <div
         className="iplex-row__track"
         data-nav-scroll="x"

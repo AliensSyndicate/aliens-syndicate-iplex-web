@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { ERROR_COPY } from '../../components/feedback/errorCopy'
+import { AccountBadge } from '../../components/navigation/AccountBadge'
+import { useBackend } from '../../app/providers/BackendProvider'
 import { IplexLogo } from '../../components/ui/IplexLogo'
 import { IplexText } from '../../components/ui/IplexText'
 import { initialTarget, focusElement } from '../../navigation/spatial'
@@ -9,6 +11,8 @@ import { ProfileGrid } from './ProfileGrid'
 
 /** Seleção de perfis. A edição de perfis é do iPlex Gestor (não existe aqui). */
 export function ProfileSelectScreen({ profiles, notice }: { profiles: Profile[]; notice: AppError | null }) {
+  const { backend } = useBackend()
+  const account = backend.accountIdentity()
   useEffect(() => {
     const id = setTimeout(() => {
       const target = initialTarget()
@@ -19,6 +23,7 @@ export function ProfileSelectScreen({ profiles, notice }: { profiles: Profile[];
   return (
     <main className="iplex-screen iplex-profile-select">
       <IplexLogo size="small" className="iplex-profile-select__logo" />
+      {account && account.name && <AccountBadge account={account} className="iplex-profile-select__account" />}
       <IplexText variant="page-title" className="iplex-profile-select__title">
         Quem está assistindo?
       </IplexText>

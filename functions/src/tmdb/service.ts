@@ -19,6 +19,8 @@ export interface TmdbImageSet {
 }
 
 export interface TmdbPerson {
+  /** TMDB person id (abre a tela da pessoa no iPlex Control); null quando ausente. */
+  id: number | null
   name: string
   role: string
   photo: string | null
@@ -31,6 +33,8 @@ export interface TmdbSummary extends TmdbImageSet {
   originalTitle: string
   overview: string
   year: number | null
+  /** Data completa de lançamento/estreia (AAAA-MM-DD), quando o TMDB a fornece. */
+  releaseDate: string | null
   rating: number | null
   genres: string[]
 }
@@ -40,9 +44,31 @@ export interface TmdbDetails extends TmdbSummary {
   seasonCount: number | null
   episodeCount: number | null
   certification: string | null
+  /** Motivos da classificação indicativa no Brasil (ex.: "Violência", "Drogas"), quando o TMDB os publica. */
+  certificationDescriptors: string[]
+  /** Pôster na resolução original (fundo da tela de detalhes do Control). */
+  posterOriginal: string | null
   cast: TmdbPerson[]
   crew: TmdbPerson[]
   seasons: { seasonNumber: number; name: string; episodeCount: number; poster: string | null }[]
+  /** "Você também pode gostar": TMDB recommendations (adult excluded). */
+  recommendations: TmdbRecommendation[]
+}
+
+export interface TmdbRecommendation {
+  tmdbId: number
+  kind: MatchKind
+  title: string
+  year: number | null
+  poster: string | null
+}
+
+/** Actor search result (Busca → Atores). */
+export interface TmdbPersonResult {
+  tmdbId: number
+  name: string
+  knownFor: string
+  photo: string | null
 }
 
 export interface TmdbEpisode {
@@ -61,6 +87,54 @@ export interface TmdbSeason {
   name: string
   overview: string
   episodes: TmdbEpisode[]
+}
+
+/** Participação de uma pessoa (filmografia). */
+export interface TmdbCredit {
+  tmdbId: number
+  kind: MatchKind
+  title: string
+  originalTitle: string
+  character: string
+  job: string
+  date: string | null
+  year: number | null
+  poster: string | null
+  episodeCount: number | null
+}
+
+export type SocialNetwork = 'instagram' | 'x' | 'facebook' | 'tiktok' | 'youtube' | 'imdb'
+
+/** Só identificadores simples; nunca uma URL vinda do TMDB. */
+const SOCIAL: { network: SocialNetwork; key: string; url: (id: string) => string; id: RegExp }[] = [
+  { network: 'instagram', key: 'instagram_id', url: (id) => `https://www.instagram.com/${id}/`, id: /^[A-Za-z0-9._]{1,30}$/ },
+  { network: 'x', key: 'twitter_id', url: (id) => `https://x.com/${id}`, id: /^[A-Za-z0-9_]{1,15}$/ },
+  { network: 'facebook', key: 'facebook_id', url: (id) => `https://www.facebook.com/${id}`, id: /^[A-Za-z0-9.]{1,80}$/ },
+  { network: 'tiktok', key: 'tiktok_id', url: (id) => `https://www.tiktok.com/@${id}`, id: /^[A-Za-z0-9._]{1,24}$/ },
+  { network: 'youtube', key: 'youtube_id', url: (id) => `https://www.youtube.com/${id.startsWith('UC') ? `channel/${id}` : `@${id}`}`, id: /^[A-Za-z0-9_.-]{1,100}$/ },
+  { network: 'imdb', key: 'imdb_id', url: (id) => `https://www.imdb.com/name/${id}/`, id: /^nm\d{1,10}$/ },
+]
+
+export function socialLinks(ids: Json): { network: SocialNetwork; url: string }[] {
+  return SOCIAL.flatMap(({ network, key, url, id }) => {
+    const value = str(ids?.[key]).trim().replace(/^@/, '')
+    return id.test(value) ? [{ network, url: url(value) }] : []
+  })
+}
+
+export interface TmdbPersonDetails {
+  tmdbId: number
+  name: string
+  biography: string
+  birthday: string | null
+  deathday: string | null
+  placeOfBirth: string | null
+  knownFor: string
+  photo: string | null
+  /** Perfis oficiais (TMDB external_ids); URLs montadas aqui com hosts fixos. */
+  social: { network: SocialNetwork; url: string }[]
+  /** Ordem cronológica decrescente; sem data ficam no fim. Conteúdo adulto excluído. */
+  credits: TmdbCredit[]
 }
 
 export interface TmdbMatchResult {
@@ -170,6 +244,7 @@ export function createTmdbService({ readAccessToken, fetchImpl, cache = new TtlC
       originalTitle: str(kind === 'movie' ? row.original_title : row.original_name),
       overview: str(row.overview),
       year: yearOf(kind === 'movie' ? row.release_date : row.first_air_date),
+      releaseDate: str(kind === 'movie' ? row.release_date : row.first_air_date) || null,
       rating: num(row.vote_average) && row.vote_count > 0 ? Math.round(row.vote_average * 10) / 10 : null,
       genres: genreNames.length ? genreNames : Array.isArray(row.genres) ? row.genres.map((g: Json) => str(g.name)).filter(Boolean) : [],
       poster: image(row.poster_path, 'w342'),
@@ -224,27 +299,35 @@ export function createTmdbService({ readAccessToken, fetchImpl, cache = new TtlC
     return result
   }
 
-  async function movie(id: number): Promise<TmdbDetails> {
-    const row = await withFallback(`/movie/${id}`, { append_to_response: 'credits,release_dates' })
+  async function movie(id: number, editorial = false): Promise<TmdbDetails> {
+    const row = await withFallback(`/movie/${id}`, { append_to_response: 'credits,release_dates,recommendations' })
+    // Descoberta editorial nunca devolve conteúdo adulto.
+    if (editorial && row.adult === true) throw new TmdbError(404, 'not_found')
     const br = (row.release_dates?.results ?? []).find((r: Json) => r.iso_3166_1 === 'BR')
-    const certification = str((br?.release_dates ?? []).map((d: Json) => d.certification).find((c: unknown) => str(c))) || null
+    // Certificação e motivos vêm do mesmo lançamento brasileiro.
+    const rated = (br?.release_dates ?? []).find((d: Json) => str(d.certification))
+    const certification = str(rated?.certification) || null
     return {
       ...summaryFrom('movie', row),
       runtimeMinutes: num(row.runtime) || null,
       seasonCount: null,
       episodeCount: null,
       certification,
+      certificationDescriptors: descriptors(rated?.descriptors),
+      posterOriginal: image(row.poster_path, 'original'),
       cast: people(row.credits?.cast, 'character'),
       crew: (row.credits?.crew ?? [])
         .filter((p: Json) => p.job === 'Director')
         .slice(0, 3)
-        .map((p: Json) => ({ name: str(p.name), role: 'Direção', photo: image(p.profile_path, 'w185') })),
+        .map((p: Json) => ({ id: num(p.id), name: str(p.name), role: 'Direção', photo: image(p.profile_path, 'w185') })),
       seasons: [],
+      recommendations: recommendations(row.recommendations, 'movie'),
     }
   }
 
-  async function tv(id: number): Promise<TmdbDetails> {
-    const row = await withFallback(`/tv/${id}`, { append_to_response: 'credits,content_ratings' })
+  async function tv(id: number, editorial = false): Promise<TmdbDetails> {
+    const row = await withFallback(`/tv/${id}`, { append_to_response: 'credits,content_ratings,recommendations' })
+    if (editorial && row.adult === true) throw new TmdbError(404, 'not_found')
     const br = (row.content_ratings?.results ?? []).find((r: Json) => r.iso_3166_1 === 'BR')
     return {
       ...summaryFrom('series', row),
@@ -252,11 +335,14 @@ export function createTmdbService({ readAccessToken, fetchImpl, cache = new TtlC
       seasonCount: num(row.number_of_seasons),
       episodeCount: num(row.number_of_episodes),
       certification: str(br?.rating) || null,
+      certificationDescriptors: descriptors(br?.descriptors),
+      posterOriginal: image(row.poster_path, 'original'),
       cast: people(row.credits?.cast, 'character'),
-      crew: (row.created_by ?? []).slice(0, 3).map((p: Json) => ({ name: str(p.name), role: 'Criação', photo: image(p.profile_path, 'w185') })),
+      crew: (row.created_by ?? []).slice(0, 3).map((p: Json) => ({ id: num(p.id), name: str(p.name), role: 'Criação', photo: image(p.profile_path, 'w185') })),
       seasons: (row.seasons ?? [])
         .filter((s: Json) => typeof s.season_number === 'number')
         .map((s: Json) => ({ seasonNumber: s.season_number, name: str(s.name), episodeCount: num(s.episode_count) ?? 0, poster: image(s.poster_path, 'w342') })),
+      recommendations: recommendations(row.recommendations, 'series'),
     }
   }
 
@@ -279,11 +365,89 @@ export function createTmdbService({ readAccessToken, fetchImpl, cache = new TtlC
     }
   }
 
-  return { match, movie, tv, season }
+  async function person(id: number): Promise<TmdbPersonDetails> {
+    const row = await get(`/person/${id}`, { language: PRIMARY_LANGUAGE, append_to_response: 'combined_credits,external_ids' })
+    if (row.adult === true) throw new TmdbError(404, 'not_found')
+    let biography = str(row.biography)
+    if (!biography) {
+      try { biography = str((await get(`/person/${id}`, { language: FALLBACK_LANGUAGE })).biography) } catch { /* sem biografia */ }
+    }
+    const credits = new Map<string, TmdbCredit>()
+    for (const [group, role] of [['cast', 'character'], ['crew', 'job']] as const) {
+      for (const c of (row.combined_credits?.[group] ?? []) as Json[]) {
+        if (c.adult === true || typeof c.id !== 'number' || (c.media_type !== 'movie' && c.media_type !== 'tv')) continue
+        const kind: MatchKind = c.media_type === 'movie' ? 'movie' : 'series'
+        const key = `${kind}:${c.id}`
+        const date = str(kind === 'movie' ? c.release_date : c.first_air_date) || null
+        const previous = credits.get(key)
+        const value = str(c[role])
+        if (previous) {
+          // Mesma obra com vários papéis: um item só.
+          if (value && group === 'cast' && !previous.character) previous.character = value
+          if (value && group === 'crew' && !previous.job) previous.job = value
+          continue
+        }
+        credits.set(key, {
+          tmdbId: c.id, kind,
+          title: str(kind === 'movie' ? c.title : c.name),
+          originalTitle: str(kind === 'movie' ? c.original_title : c.original_name),
+          character: group === 'cast' ? value : '',
+          job: group === 'crew' ? value : '',
+          date, year: yearOf(date),
+          poster: image(c.poster_path, 'w342'),
+          episodeCount: num(c.episode_count),
+        })
+      }
+    }
+    return {
+      tmdbId: row.id,
+      name: str(row.name),
+      biography,
+      birthday: str(row.birthday) || null,
+      deathday: str(row.deathday) || null,
+      placeOfBirth: str(row.place_of_birth) || null,
+      knownFor: str(row.known_for_department),
+      photo: image(row.profile_path, 'h632'),
+      social: socialLinks(row.external_ids),
+      credits: [...credits.values()]
+        .filter((c) => c.title)
+        .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || a.title.localeCompare(b.title))
+        .slice(0, 300),
+    }
+  }
+
+  async function searchPeople(query: string): Promise<TmdbPersonResult[]> {
+    const rows = ((await get('/search/person', { query, language: PRIMARY_LANGUAGE, include_adult: 'false' }, CACHE_TTL.match)).results ?? []) as Json[]
+    return rows
+      .filter((p) => p.adult !== true && typeof p.id === 'number' && str(p.name))
+      .slice(0, 20)
+      .map((p) => ({ tmdbId: p.id, name: str(p.name), knownFor: str(p.known_for_department), photo: image(p.profile_path, 'w185') }))
+  }
+
+  return { match, movie, tv, season, person, searchPeople }
+}
+
+function recommendations(block: Json, kind: MatchKind): TmdbRecommendation[] {
+  return ((block?.results ?? []) as Json[])
+    .filter((r) => r.adult !== true && typeof r.id === 'number')
+    .slice(0, 12)
+    .map((r) => ({
+      tmdbId: r.id,
+      kind,
+      title: str(kind === 'movie' ? r.title : r.name),
+      year: yearOf(kind === 'movie' ? r.release_date : r.first_air_date),
+      poster: image(r.poster_path, 'w342'),
+    }))
+    .filter((r) => r.title)
+}
+
+function descriptors(rows: Json): string[] {
+  return (Array.isArray(rows) ? rows : []).map(str).map((d: string) => d.trim()).filter(Boolean).slice(0, 8)
 }
 
 function people(rows: Json, roleKey: string): TmdbPerson[] {
-  return (Array.isArray(rows) ? rows : []).slice(0, 12).map((p: Json) => ({
+  return (Array.isArray(rows) ? rows : []).slice(0, 20).map((p: Json) => ({
+    id: num(p.id),
     name: str(p.name),
     role: str(p[roleKey]),
     photo: image(p.profile_path, 'w185'),

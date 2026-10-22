@@ -235,6 +235,29 @@
 .iplex-avatar--kids {
   background-color: var(--iplex-text-secondary);
 }
+/* Foto da conta (provedor): recorta no círculo do avatar. */
+.iplex-avatar--photo {
+  overflow: hidden;
+}
+.iplex-avatar--photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.iplex-account-badge {
+  display: -webkit-inline-flex;
+  display: inline-flex;
+  -webkit-align-items: center;
+  align-items: center;
+}
+.iplex-account-badge__name {
+  margin-left: var(--iplex-space-3);
+}
+.iplex-profile-select__account {
+  position: absolute;
+  top: var(--iplex-safe-area-top);
+  right: var(--iplex-safe-area-x);
+}
 
 /* ---- Fileiras e cards ------------------------------------------------ */
 .iplex-row {

@@ -28,6 +28,8 @@ import { episodeContentId } from '../../services/catalog/normalize'
 import { indexFromItem } from '../../services/library/libraryStore'
 import { hasPersonalLibrary } from '../profiles/profileRules'
 import { createProgressTracker } from './progressTracker'
+import { createStatusReporter, type PlaybackStatusPayload } from './playbackStatus'
+import { createProgressSession, resolveResumeMs, type ProgressSession } from './progressSession'
 import { playRequestErrorCode, reportPlayRequest, setPlaybackActive } from '../remote/playRequestReport'
 
 type Phase = { status: 'preparing' } | { status: 'playing' } | { status: 'error'; error: AppError }
@@ -46,6 +48,9 @@ export default function PlayerScreen() {
   const title = q.get('t') ?? ''
   const episodeId = q.get('e')
   const wantsResume = q.get('r') === '1'
+  /** Posição de retomada (s) entregue pelo backend junto do pedido do Control. */
+  const resumeAtParam = Number(q.get('ra'))
+  const resumeAtSec = Number.isFinite(resumeAtParam) && resumeAtParam > 0 ? resumeAtParam : null
   /** Pedido do iPlex Control que abriu esta reprodução (o resultado volta ao celular). */
   const playRequestId = q.get('pr')
   const live = kind === 'channel'
@@ -69,6 +74,10 @@ export default function PlayerScreen() {
   useEffect(() => {
     timeRef.current = time
   }, [time])
+  const progressSession = useRef<ProgressSession | null>(null)
+  const statusRef = useRef<((payload: PlaybackStatusPayload) => void) | null>(null)
+  const saveInFlight = useRef(false)
+  const saveQueued = useRef(false)
   const tracker = useMemo(() => createProgressTracker({ intervalMs: TIMING.progressSaveIntervalMs, minDeltaMs: TIMING.progressMinDeltaMs }), [])
   const contentId = kind === 'series' && episodeId ? episodeContentId(itemId, episodeId) : itemId
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -79,19 +88,37 @@ export default function PlayerScreen() {
     hideTimer.current = setTimeout(() => setControls(false), TIMING.playerControlsHideMs)
   }, [])
 
+  const saveRef = useRef<(force: boolean) => void>(() => undefined)
   const saveProgress = useCallback(
     (force: boolean) => {
-      if (!personal || live || !item) return
+      const sessionState = progressSession.current
+      if (!personal || live || !item || !sessionState) return
       const { positionMs, durationMs } = timeRef.current
+      // Inicialização, retomada ainda não confirmada e stream sem seek nunca gravam (apagariam o progresso).
+      if (!sessionState.canSave(positionMs, durationMs)) return
       if (!tracker.shouldSave(positionMs, durationMs, force)) return
+      // Uma gravação por vez: a posição mais recente segue na próxima (pausa/saída forçam).
+      if (saveInFlight.current) {
+        if (force) saveQueued.current = true
+        return
+      }
+      saveInFlight.current = true
       tracker.markSaved(positionMs)
       const label = episode ? `T${episode.season} E${episode.episodeNum ?? '?'}${episode.title ? ` · ${episode.title}` : ''}` : ''
       const meta = indexFromItem(item, episode ? { id: episode.id, label, contentId } : undefined)
-      void session.library.saveProgress(contentId, positionMs / 1000, durationMs / 1000, meta).catch(() => undefined)
+      void session.library
+        .saveProgress(contentId, positionMs / 1000, durationMs / 1000, meta, sessionState.next())
+        .catch(() => tracker.markFailed())
+        .finally(() => {
+          saveInFlight.current = false
+          if (saveQueued.current) {
+            saveQueued.current = false
+            saveRef.current(true)
+          }
+        })
     },
     [personal, live, item, episode, contentId, session.library, tracker],
   )
-  const saveRef = useRef(saveProgress)
   useEffect(() => {
     saveRef.current = saveProgress
   }, [saveProgress])
@@ -104,6 +131,14 @@ export default function PlayerScreen() {
     const root = document.documentElement
     setPhase({ status: 'preparing' })
     setBuffering(true)
+    progressSession.current = null
+    // Status para o Control ("Reproduzindo"): só informa, nunca recebe comando.
+    const reporter = createStatusReporter((payload) =>
+      backend.reportPlayback({ sessionId: session.lease.id, sourceId, itemId, ...(episodeId ? { episodeId } : {}), ...payload }),
+    )
+    statusRef.current = (payload) => reporter.report(payload)
+    saveInFlight.current = false
+    saveQueued.current = false
     ;(async () => {
       try {
         const found = await session.catalog.findItem(sourceId, itemId, title)
@@ -123,6 +158,11 @@ export default function PlayerScreen() {
         if (adapter.kind === 'native-bridge') root.classList.add('is-native-playback')
         offs.push(
           adapter.on('state', ({ state }) => {
+            progressSession.current?.onState(state === 'playing' ? 'playing' : state === 'paused' ? 'paused' : 'other')
+            if (state === 'playing' || state === 'paused') {
+              const { positionMs, durationMs } = timeRef.current
+              statusRef.current?.({ state, ...(!live && durationMs > 0 ? { positionSec: positionMs / 1000, durationSec: durationMs / 1000 } : {}) })
+            }
             setPlaying(state === 'playing')
             if (state === 'playing') reportPlayRequest(backend, playRequestId, 'started')
             if (state === 'playing' || state === 'paused') setBuffering(false)
@@ -131,6 +171,11 @@ export default function PlayerScreen() {
           adapter.on('time', (t) => {
             setTime(t)
             timeRef.current = t
+            // Retomada: confirma que o player chegou ao ponto salvo e reaplica o seek se ainda não.
+            if (adapterRef.current && !live && t.durationMs > 0) statusRef.current?.({ state: 'playing', positionSec: t.positionMs / 1000, durationSec: t.durationMs / 1000 })
+            else if (live) statusRef.current?.({ state: 'playing' })
+            const again = progressSession.current?.onTime(t.positionMs)
+            if (again && adapter) void Promise.resolve(adapter.seek?.(again.seek)).catch(() => undefined)
             saveRef.current(false)
           }),
           adapter.on('buffering', ({ active }) => setBuffering(active)),
@@ -146,9 +191,23 @@ export default function PlayerScreen() {
             setTimeout(() => setCue((c) => (c === text ? null : c)), durationMs || 3000)
           }),
         )
-        const resumeFrom = wantsResume && personal && !live ? session.library.progressFor(contentId) : null
+        // Posição de retomada: a do backend (pedido do Control) ou, na TV, a da biblioteca já carregada.
+        let resumeMs: number | null = null
+        if (wantsResume && personal && !live) {
+          if (resumeAtSec === null) await session.library.whenLoaded(4000)
+          if (!alive) return
+          resumeMs = resolveResumeMs(resumeAtSec, resumeAtSec === null ? session.library.progressFor(contentId) : null)
+        }
+        const playId = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+        progressSession.current = createProgressSession({
+          playId,
+          startedAt: Date.now(),
+          // Sem posição a restaurar, o início é intencional (reinício ou título sem progresso).
+          origin: resumeMs !== null ? 'resume' : wantsResume && resumeAtSec === null && !session.library.loaded ? 'resume' : 'restart',
+          ...(resumeMs !== null ? { targetMs: resumeMs } : {}),
+        })
         await adapter.load(
-          { url: grant.url, live, autoplay: true, ...(resumeFrom ? { startPositionMs: resumeFrom.position * 1000 } : {}) },
+          { url: grant.url, live, autoplay: true, ...(resumeMs !== null ? { startPositionMs: resumeMs } : {}) },
           containerRef.current,
         )
         if (!alive) return
@@ -162,6 +221,8 @@ export default function PlayerScreen() {
     return () => {
       alive = false
       saveRef.current(true)
+      statusRef.current?.({ state: 'stopped' })
+      statusRef.current = null
       offs.forEach((off) => off())
       root.classList.remove('is-native-playback')
       if (adapter) void adapter.destroy()
@@ -213,7 +274,10 @@ export default function PlayerScreen() {
   const seekBy = (delta: number) => {
     const a = adapterRef.current
     if (!a?.seek || live) return
+    progressSession.current?.onUserSeek()
     void a.seek(Math.max(0, Math.min(time.durationMs || Infinity, time.positionMs + delta)))
+    // O ponto novo é gravado assim que o player assenta (seek manual, para frente ou para trás).
+    setTimeout(() => saveRef.current(true), 1500)
     showControls()
   }
   const zapChannel = (direction: 1 | -1) => {

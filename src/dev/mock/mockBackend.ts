@@ -156,6 +156,10 @@ export function createMockBackend(): Backend {
       await delay(250)
       return profiles
     },
+    accountIdentity() {
+      // Conta de demonstração, sem foto (avatar padrão).
+      return { name: 'Conta Demonstração', photoUrl: null }
+    },
     async verifyProfilePin(_profileId, pin) {
       await delay(300)
       return { verified: (await sha256(pin)) === DEMO_PIN_SHA256, required: true }
@@ -167,6 +171,8 @@ export function createMockBackend(): Backend {
       lease = { id: `lease-${Date.now()}`, profileId, expiresAt: Date.now() + 90_000 }
       return lease
     },
+    async reportPlayback() {},
+
     async heartbeat() {
       requireLease()
       return { playRequest: null }

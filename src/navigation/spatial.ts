@@ -189,7 +189,9 @@ export function ensureVisible(el: HTMLElement, win: Window = window) {
         if (r.left < box.left + startPad) node.scrollLeft -= box.left + startPad - r.left
         else if (r.right > box.right - pad) node.scrollLeft += r.right - (box.right - pad)
       } else {
-        if (r.top < box.top + pad) node.scrollTop -= box.top + pad - r.top
+        // 'padding': o início da área rolável fica sob o menu transparente (padding-top).
+        const startPad = node.getAttribute('data-nav-scroll-pad') === 'padding' ? parseFloat(getComputedStyle(node).paddingTop) || pad : pad
+        if (r.top < box.top + startPad) node.scrollTop -= box.top + startPad - r.top
         else if (r.bottom > box.bottom - pad) node.scrollTop += r.bottom - (box.bottom - pad)
       }
     }

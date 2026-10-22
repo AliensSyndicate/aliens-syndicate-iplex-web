@@ -14,6 +14,7 @@
  */
 import type { Backend } from '../api/backend'
 import { toAppError } from '../api/errors'
+import type { ProgressWrite } from '../api/backend'
 import type { CatalogItem, ContentKind, DeviceIdentity, Generations, Library, Profile, ProgressEntry } from '../api/types'
 import { readJson, writeJson } from '../../utils/storage'
 
@@ -65,8 +66,23 @@ export class LibraryStore {
     }
   }
   getSnapshot = () => this.snapshot
+  get loaded(): boolean {
+    return this.snapshot.loaded
+  }
+  private loading: Promise<void> | null = null
 
-  async load(): Promise<void> {
+  /** Aguarda a primeira carga da biblioteca (no máximo `timeoutMs`); nunca rejeita. */
+  async whenLoaded(timeoutMs: number): Promise<void> {
+    if (this.snapshot.loaded || !this.loading) return
+    await Promise.race([this.loading.catch(() => undefined), new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))])
+  }
+
+  load(): Promise<void> {
+    this.loading = this.read()
+    return this.loading
+  }
+
+  private async read(): Promise<void> {
     if (!this.persistent) {
       this.set(EMPTY, true)
       return
@@ -129,7 +145,7 @@ export class LibraryStore {
   }
 
   /** Grava progresso autorizado (o chamador controla a frequência). */
-  async saveProgress(contentId: string, positionSec: number, durationSec: number, meta: IndexedItem): Promise<void> {
+  async saveProgress(contentId: string, positionSec: number, durationSec: number, meta: IndexedItem, playback?: ProgressWrite['session']): Promise<void> {
     if (!this.persistent || !(durationSec > 0) || positionSec < 0) return
     const position = Math.min(positionSec, durationSec)
     this.remember(meta)
@@ -137,14 +153,17 @@ export class LibraryStore {
     const library = this.snapshot.library
     this.set({ ...library, progress: [entry, ...library.progress.filter((p) => p.contentId !== contentId)] }, true)
     try {
-      await this.backend.saveProgress({
+      const result = await this.backend.saveProgress({
         profileId: this.profile.id,
         contentId,
         positionSec: position,
         durationSec,
         generation: this.generations.progress,
         watchedGeneration: this.generations.watched,
+        ...(playback ? { session: playback } : {}),
       })
+      // O backend descartou o evento (atrasado/inicialização/retomada não aplicada): o progresso salvo vale.
+      if (result && result.ignored) this.set(library, true)
     } catch (error) {
       const appError = toAppError(error)
       if (appError.code === 'stale-generation') await this.load()
