@@ -1,9 +1,12 @@
-import { Search01Icon } from '@hugeicons/core-free-icons'
+import { Search01Icon, Settings01Icon } from '@hugeicons/core-free-icons'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useBackend } from '../../app/providers/BackendProvider'
+import { PATHS } from '../../app/routes/paths'
 import { SECTION_PATHS, sectionForPath, visibleSections } from '../../features/profiles/profileRules'
 import type { Profile, SectionId } from '../../services/api/types'
 import { IplexIcon } from '../ui/IplexIcon'
 import { NavigationTab } from './NavigationTab'
+import { AccountAvatar } from './AccountBadge'
 import { ProfileAvatar } from './ProfileAvatar'
 
 const LABELS: Record<SectionId, string> = {
@@ -17,11 +20,13 @@ const LABELS: Record<SectionId, string> = {
 /**
  * Menu principal: horizontal, no topo, à esquerda, com o avatar num halo
  * translúcido e as abas numa cápsula translúcida (o conteúdo passa por trás).
- * Ordem oficial: Avatar, Meu iPlex, Busca (só ícone), Ao Vivo, Filmes, Séries.
+ * Ordem oficial: Avatar, Meu iPlex, Busca (só ícone), Ao Vivo, Filmes, Séries; Configurações no extremo direito.
  * Visitante: Avatar, Busca, Ao Vivo, Filmes, Séries.
  */
 export function IplexHeader({ profile, onAvatar }: { profile: Profile; onAvatar: () => void }) {
   const navigate = useNavigate()
+  const { backend } = useBackend()
+  const account = backend.accountIdentity()
   const location = useLocation()
   const current = sectionForPath(location.pathname)
   const sections = visibleSections(profile)
@@ -39,7 +44,7 @@ export function IplexHeader({ profile, onAvatar }: { profile: Profile; onAvatar:
           data-nav-id="tab-avatar"
           data-nav-group="header"
         >
-          <ProfileAvatar profile={profile} />
+          {account && account.name ? <AccountAvatar account={account} /> : <ProfileAvatar profile={profile} />}
         </button>
         <div className="iplex-header__capsule">
           {sections.map((section) =>
@@ -53,6 +58,11 @@ export function IplexHeader({ profile, onAvatar }: { profile: Profile; onAvatar:
               </NavigationTab>
             ),
           )}
+        </div>
+        <div className="iplex-header__capsule iplex-header__capsule--end">
+          <NavigationTab id="settings" active={location.pathname === PATHS.settings} onSelect={() => navigate(PATHS.settings)} label="Configurações" iconOnly>
+            <IplexIcon icon={Settings01Icon} />
+          </NavigationTab>
         </div>
       </nav>
     </header>

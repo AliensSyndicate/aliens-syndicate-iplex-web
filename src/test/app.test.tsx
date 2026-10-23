@@ -91,7 +91,7 @@ describe('seis conjuntos', () => {
 })
 
 describe('menu principal', () => {
-  it('ordem oficial: Avatar, Meu iPlex, Busca (só ícone), Ao Vivo, Filmes, Séries', async () => {
+  it('ordem oficial: Avatar, Meu iPlex, Busca (só ícone), Ao Vivo, Filmes, Séries, Configurações', async () => {
     start('/', 'single')
     const nav = await screen.findByRole('navigation', { name: 'Menu principal' }, { timeout: 5000 })
     const buttons = within(nav).getAllByRole('button')
@@ -102,6 +102,7 @@ describe('menu principal', () => {
       'Ao Vivo',
       'Filmes',
       'Séries',
+      'Configurações',
     ])
     // Busca: só ícone, sem rótulo visível; demais abas sem ícone.
     expect(buttons[2]!.textContent).toBe('')
@@ -135,11 +136,11 @@ describe('perfis', () => {
     expect(screen.getByRole('button', { name: /Infantil Demo, Infantil/ })).toBeTruthy()
   })
 
-  it('conta sem foto usa o avatar padrão (inicial)', async () => {
-    const { container } = start('/', 'default', { accountIdentity: () => ({ name: 'Bia', photoUrl: null }) })
+  it('conta sem foto usa o avatar padrão (iniciais)', async () => {
+    const { container } = start('/', 'default', { accountIdentity: () => ({ name: 'Bia Souza', photoUrl: null }) })
     expect(await find('Quem está assistindo?')).toBeTruthy()
     expect(container.querySelector('.iplex-account-badge img')).toBeNull()
-    expect(container.querySelector('.iplex-account-badge .iplex-avatar')?.textContent).toBe('B')
+    expect(container.querySelector('.iplex-account-badge .iplex-avatar')?.textContent).toBe('BS')
   })
 
   it('último perfil infantil entra direto, sem seletor', async () => {

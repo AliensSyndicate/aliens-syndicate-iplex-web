@@ -134,8 +134,8 @@
   position: fixed;
   top: var(--iplex-safe-area-top);
   left: var(--iplex-safe-area-x);
+  right: var(--iplex-safe-area-x);
   z-index: 50;
-  max-width: calc(100% - 2 * var(--iplex-safe-area-x));
 }
 .iplex-header::before {
   content: '';
@@ -156,6 +156,7 @@
 .iplex-header__bar {
   display: -webkit-flex;
   display: flex;
+  width: 100%;
   -webkit-align-items: center;
   align-items: center;
 }
@@ -210,7 +211,33 @@
   transition: background-color 100ms ease-out, border-color 100ms ease-out, color 100ms ease-out;
 }
 .iplex-tab--icon {
-  padding: 0 var(--iplex-space-4);
+  /* 100% redondo: largura = altura */
+  justify-content: center;
+  -webkit-justify-content: center;
+  width: calc(var(--iplex-header-height) - 16px);
+  padding: 0;
+}
+/* Configurações: mesma cápsula e mesma aba só-ícone da busca (3 estados idênticos), no extremo direito. */
+.iplex-header__capsule--end {
+  -webkit-flex: none;
+  flex: none;
+  -webkit-justify-content: center;
+  justify-content: center;
+  width: var(--iplex-header-height);
+  margin-left: auto;
+  padding: 0;
+}
+/* Foco/hover do botão de perfil: borda só na foto, não no halo. */
+.iplex-header__avatar.iplex-focusable:focus {
+  box-shadow: none;
+}
+.iplex-header__avatar.iplex-focusable:focus .iplex-avatar {
+  box-shadow: 0 0 0 var(--iplex-state-border-width) var(--iplex-button-primary-bg);
+}
+@media (hover: hover) {
+  :root:not([data-iplex-platform='tv']) .iplex-header__avatar:hover .iplex-avatar {
+    box-shadow: 0 0 0 var(--iplex-state-border-width) var(--iplex-button-primary-bg);
+  }
 }
 /* Estados compartilhados por menu principal, menu lateral e ordenação (sem mudar a geometria):
  * normal = texto branco, sem fundo, borda transparente;
