@@ -37,6 +37,8 @@ export interface PlaybackEventMap {
   error: PlaybackErrorInfo
   ended: Record<string, never>
   subtitle: { text: string; durationMs: number }
+  /** Dimensões reais do vídeo decodificado (só quando o player as conhece; o AVPlay pela ponte não informa). */
+  media: { width: number; height: number }
 }
 
 export type PlaybackEventName = keyof PlaybackEventMap

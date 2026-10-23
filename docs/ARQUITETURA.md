@@ -113,13 +113,46 @@ Um único adaptador por vez (`createPlaybackAdapter`):
 - **Shell Samsung** (capacidade `nativePlayer`): ponte → AVPlay (`player.open`,
   eventos `player.*`). Durante a reprodução, `html.is-native-playback` deixa os
   fundos transparentes (o AVPlay desenha atrás da camada web).
-- **Navegador**: Clappr (`@clappr/player`, carregado sob demanda), sem interface
-  própria (`chromeless`), hls.js sem worker (CSP).
+- **Navegador**: `<video>` nativo + hls.js (carregado sob demanda, sem worker: CSP).
 
-Controles iPlex: play/pausa, ±10 s e linha do tempo (só VOD), faixas de áudio e
-legendas quando existirem; ao vivo sem avanço/retrocesso. Teclas de mídia só
-quando o shell as registra. Progresso: perfis com biblioteca, VOD, a cada 30 s
-com deslocamento mínimo de 10 s, e na pausa/saída.
+Player de filmes e séries (`features/playback/PlayerScreen.tsx`, regras puras em
+`playerRules.ts`, temporizador em `useOverlayTimer.ts`, visual em
+`components/player/`):
+
+- **Overlay 1** (`PlayerOverlay`): título; séries com `T1:E3` + nome do episódio
+  (TMDB, senão o da fonte); tempo decorrido — barra — duração (tempos reais);
+  selos só com dado confiável (resolução decodificada pelo `<video>` → SD/HD/
+  Full HD/4K; "Legendado" só por marcação explícita da fonte IPTV). Aparece ao
+  iniciar e some após 5 s sem interação (fade, sem tocar no vídeo/áudio).
+- **OK/Enter** abre o modo interativo: −10 s, reproduzir/pausar (estado real do
+  player), +10 s, barra navegável. Setas só agem com o overlay interativo
+  aberto; fechado, Esquerda/Direita não fazem seek. OK passa pela pilha de
+  teclas do `FocusProvider` antes do clique nativo.
+- **Seek** sempre limitado à duração/posição válida e só exibido quando o player
+  confirma (`createSeekGate`: evento de tempo, `seeked` do `<video>` ou o status
+  devolvido por `player.seek` no AVPlay); sem confirmação em 10 s, desiste.
+  Barra: Esquerda/Direita movem uma prévia, OK confirma, Voltar descarta; passo
+  configurável em `PLAYER.scrubStep` (PROPOSTA).
+- **Próximo episódio** (`NextEpisodeCard`): só séries, só se a fonte IPTV lista
+  um próximo episódio (`readSeries`, nunca o TMDB); aparece nos últimos 30 s e a
+  contagem é o tempo restante real da mídia (pausa congela). Ao escolher ou ao
+  chegar a zero: grava o episódio atual como concluído e abre o próximo do zero.
+  O painel do overlay reserva o canto do cartão (sem sobreposição).
+- **Saída**: Voltar salva, encerra o adaptador e abre os detalhes (pelo
+  histórico quando veio dos detalhes; senão substitui o player pelos detalhes).
+  Fim natural: conclui e volta à origem. Fim muito antes da duração = erro com
+  nova tentativa (não conclui). Ao vivo mantém o comportamento anterior.
+- **Progresso**: perfis com biblioteca, VOD, a cada 30 s com deslocamento mínimo
+  de 10 s, e na pausa/saída/seek confirmado (`progressSession` + backend
+  `decideProgressWrite`). Conclusão = posição igual à duração na mesma sessão;
+  o backend marca "Assistidos" (≥ 90%) e a retomada deixa de valer (≥ 95%).
+
+Detalhes (`features/details/DetailsScreen.tsx`) mostram o conteúdo do Control
+(título original, classificação e motivos, gêneros, avaliação, elenco/equipe,
+informações, temporadas/episódios, recomendações) e nunca resolvem mídia.
+Pessoas (`/pessoa/:id?s=&i=`) usam `/api/tmdb/person/:id` escopado ao título
+autorizado (a pessoa precisa estar creditada nele); títulos da filmografia e
+recomendações só abrem se existirem no catálogo IPTV (`tmdbAvailability.ts`).
 
 ## Ponte com o shell
 

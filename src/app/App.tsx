@@ -25,8 +25,10 @@ const SearchScreen = lazy(() => import('../features/search/SearchScreen'))
 const LiveTvScreen = lazy(() => import('../features/live-tv/LiveTvScreen'))
 const MoviesScreen = lazy(() => import('../features/movies/MoviesScreen'))
 const SeriesScreen = lazy(() => import('../features/series/SeriesScreen'))
+const CatalogRoute = lazy(() => import('../features/catalog/CatalogRoute'))
 const DetailsScreen = lazy(() => import('../features/details/DetailsScreen'))
 const PlayerScreen = lazy(() => import('../features/playback/PlayerScreen'))
+const PersonScreen = lazy(() => import('../features/details/PersonScreen'))
 const SettingsScreen = lazy(() => import('../features/settings/SettingsScreen'))
 
 const STEP_LABEL: Record<StartupStep, string> = {
@@ -61,7 +63,9 @@ function SessionGate() {
         <Route path={SECTION_PATHS.live} element={<LiveTvScreen />} />
         <Route path={SECTION_PATHS.movies} element={<MoviesScreen />} />
         <Route path={SECTION_PATHS.series} element={<SeriesScreen />} />
+        <Route path="/catalogo" element={<CatalogRoute />} />
         <Route path="/titulo/:sourceId/:itemId" element={<DetailsScreen />} />
+        <Route path="/pessoa/:personId" element={<PersonScreen />} />
         <Route path="/assistir" element={<PlayerScreen />} />
         <Route path="/configuracoes" element={<SettingsScreen />} />
         <Route path="*" element={<StartRedirect />} />

@@ -1,5 +1,5 @@
-import { CatalogBrowseScreen } from '../catalog/CatalogBrowseScreen'
+import { CatalogScreen } from '../catalog/CatalogScreen'
 
 export default function MoviesScreen() {
-  return <CatalogBrowseScreen kind="movie" title="Filmes" />
+  return <CatalogScreen kinds={['movie']} title="Filmes" initial="all" />
 }

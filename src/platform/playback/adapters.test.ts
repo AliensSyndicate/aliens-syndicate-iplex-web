@@ -26,6 +26,17 @@ describe('adaptador AVPlay (ponte)', () => {
     expect(call).toHaveBeenCalledWith('player.pause')
     expect(call).toHaveBeenCalledWith('player.play')
   })
+  it('seek: a posição devolvida pelo AVPlay confirma o seek (também pausado)', async () => {
+    const { bridge, call } = fakeBridge()
+    call.mockImplementation(async (method: string) => (method === 'player.seek' ? { state: 'paused', positionMs: 130_000, durationMs: 600_000, url: null } : { state: 'ready', positionMs: 0, durationMs: 0, url: null }))
+    const adapter = createBridgePlaybackAdapter(bridge, BRIDGE_METHODS)
+    const times: Array<{ positionMs: number; durationMs: number }> = []
+    adapter.on('time', (t) => times.push(t))
+    await adapter.load({ url: 'https://x/a.m3u8', live: false }, null)
+    await adapter.seek!(130_000)
+    expect(call).toHaveBeenCalledWith('player.seek', { positionMs: 130_000 })
+    expect(times).toEqual([{ positionMs: 130_000, durationMs: 600_000 }])
+  })
   it('ao vivo: sem seek e sem posição inicial', async () => {
     const { bridge, call } = fakeBridge()
     const adapter = createBridgePlaybackAdapter(bridge, BRIDGE_METHODS)

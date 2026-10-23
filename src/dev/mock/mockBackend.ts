@@ -13,7 +13,7 @@ import { AppError } from '../../services/api/errors'
 import type { CatalogItem, Lease, Library, Profile, SeriesDetails, Space } from '../../services/api/types'
 import { delay } from '../../utils/async'
 
-type Scenario = 'default' | 'unpaired' | 'subscription' | 'no-iptv' | 'iptv-down' | 'single' | 'kids-last' | 'session-limit' | 'guest-only' | 'remote'
+type Scenario = 'default' | 'unpaired' | 'subscription' | 'no-iptv' | 'iptv-down' | 'single' | 'kids-last' | 'session-limit' | 'guest-only' | 'remote' | 'many'
 
 const SCENARIO_KEY = 'iplex.mock.scenario'
 function scenario(): Scenario {
@@ -87,6 +87,12 @@ const SERIES: Record<string, SeriesDetails> = {
   },
 }
 
+/** Cenário 'many': catálogo extenso (teste de desempenho e de categorias do fornecedor). */
+const CATEGORIES = ['Ação', 'Comédia', 'Drama', 'Terror', 'Romance', 'Documentário', 'Aventura', 'Fantasia', 'Guerra', 'Suspense', 'Animação', 'Adulto +18']
+const MANY: CatalogItem[] = Array.from({ length: 900 }, (_, n) =>
+  item(`m-many-${n}`, n % 4 === 3 ? 'series' : 'movie', `Título ${String(n).padStart(3, '0')} ${CATEGORIES[n % CATEGORIES.length]}`, CATEGORIES[n % CATEGORIES.length]!, { year: 1990 + (n % 35), ageRating: n % CATEGORIES.length === 11 ? '18' : 'L' }),
+)
+
 const kidsVisible = (i: CatalogItem) => i.ageRating === 'L' || /infantil/i.test(i.category)
 
 // SHA-256 do PIN de demonstração "1234" (nunca em texto puro).
@@ -119,7 +125,7 @@ export function createMockBackend(): Backend {
   const requireLease = () => {
     if (!lease) throw new AppError('session-expired')
   }
-  const visible = () => ITEMS.filter((i) => (viewer()?.type === 'kids' ? kidsVisible(i) : true))
+  const visible = () => (mode === 'many' ? [...ITEMS, ...MANY] : ITEMS).filter((i) => (viewer()?.type === 'kids' ? kidsVisible(i) : true))
 
   return {
     label: 'mock',

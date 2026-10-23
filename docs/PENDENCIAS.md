@@ -25,6 +25,18 @@ coordenada (relatório de integração, seção "Implantação").
 - Desvinculação refletida na TV em ~1 s (antes: até 30 s, no heartbeat).
 - Tela de erro do Clappr não fica mais no DOM por baixo da do iPlex.
 
+## Player de filmes e séries (local, não publicado)
+
+- **Deploy da Function `iplexWebTmdb`** necessário para `/api/tmdb/person/:id`
+  (biografia/filmografia na TV). Sem ele, a tela de pessoa mostra erro com nova
+  tentativa; o resto dos detalhes funciona.
+- **Teste em TV Samsung real** (AVPlay pela ponte) ainda não executado nesta
+  etapa; validado no navegador (hls.js) com eventos de teclado reais.
+- **Selos de qualidade no AVPlay**: a ponte v1 não informa a resolução; sem selo
+  na TV até o shell expor esse dado (contrato copiado, não alterado aqui).
+- **Próximo episódio "reproduzível"** = listado por `readSeries`. Uma URL que
+  falhe só é detectada ao tentar tocar (o player mostra o erro).
+
 ## Backend (repositório do Control/Gestor)
 
 | # | Pendência | Efeito atual no Web |

@@ -55,6 +55,18 @@ export const TIMING = {
   startupStepTimeoutMs: 20_000,
 } as const
 
+export const PLAYER = {
+  /** APROVADO (player de filmes e séries): saltos dos botões laterais. */
+  skipMs: 10_000,
+  /**
+   * PROPOSTA (granularidade da barra ainda não definida): passo de cada toque
+   * Esquerda/Direita na barra = fração da duração, limitado a [minMs, maxMs].
+   */
+  scrubStep: { fraction: 0.01, minMs: 5_000, maxMs: 60_000 },
+  /** APROVADO: o botão "Próximo episódio" aparece nos últimos 30 s do episódio. */
+  nextEpisodeWindowMs: 30_000,
+} as const
+
 export const CATALOG = {
   /** Páginas iniciais por espaço (a API devolve 30 itens por página). */
   initialPages: 6,

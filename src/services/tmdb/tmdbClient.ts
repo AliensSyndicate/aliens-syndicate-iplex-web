@@ -1,8 +1,8 @@
 /** Metadados somente para itens autorizados pelo backend do Player. */
-import type { TmdbDetails, TmdbMatchResult, TmdbSeason } from '../../../functions/src/tmdb/service'
+import type { TmdbDetails, TmdbMatchResult, TmdbPersonDetails, TmdbSeason } from '../../../functions/src/tmdb/service'
 import { CATALOG } from '../../config/features'
 import { createLimiter } from '../../utils/limiter'
-export type { TmdbDetails, TmdbMatchResult, TmdbSeason, TmdbSummary } from '../../../functions/src/tmdb/service'
+export type { TmdbCredit, TmdbDetails, TmdbMatchResult, TmdbPerson, TmdbPersonDetails, TmdbRecommendation, TmdbSeason, TmdbSummary } from '../../../functions/src/tmdb/service'
 export interface TmdbAuth { getIdToken(): Promise<string | null>; getAppCheckToken(): Promise<string | null> }
 export interface MetadataItem { sourceId: string; id: string }
 export function createTmdbClient(auth: TmdbAuth, fetchImpl: typeof fetch = (...args) => fetch(...args)) {
@@ -30,6 +30,10 @@ export function createTmdbClient(auth: TmdbAuth, fetchImpl: typeof fetch = (...a
     },
     season(tmdbId: number, seasonNumber: number, item: MetadataItem): Promise<TmdbSeason> {
       return request(`/api/tmdb/tv/${tmdbId}/season/${seasonNumber}`, item)
+    },
+    /** Pessoa creditada no título autorizado `item` (biografia e filmografia). */
+    person(personId: number, item: MetadataItem): Promise<TmdbPersonDetails> {
+      return request(`/api/tmdb/person/${personId}`, item)
     },
   }
 }

@@ -33,6 +33,19 @@ describe('TMDB authorization', () => {
     expect(movie).toHaveBeenCalledWith(12)
     expect(match).toHaveBeenCalledWith('movie', 'Authorized title', 2020)
   })
+  it('TV: pessoa só quando creditada no título autorizado', async () => {
+    const match = vi.fn(async () => ({ status: 'matched', summary: { tmdbId: 12 } }))
+    const movie = vi.fn(async () => ({ cast: [{ id: 6384, name: 'Keanu Reeves' }], crew: [{ id: 7, name: 'Lana' }] }))
+    const person = vi.fn(async () => ({ tmdbId: 6384 }))
+    const service = { match, movie, person } as unknown as TmdbService
+    expect((await routeAuthorizedTmdb(service, '/api/tmdb/person/6384', query, item)).status).toBe(200)
+    expect((await routeAuthorizedTmdb(service, '/api/tmdb/person/7', query, item)).status).toBe(200)
+    expect((await routeAuthorizedTmdb(service, '/api/tmdb/person/999', query, item)).status).toBe(403)
+    expect(person).toHaveBeenCalledTimes(2)
+    const unmatched = { match: vi.fn(async () => ({ status: 'not_found', summary: null })), movie, person } as unknown as TmdbService
+    expect((await routeAuthorizedTmdb(unmatched, '/api/tmdb/person/6384', query, item)).status).toBe(403)
+    expect(person).toHaveBeenCalledTimes(2)
+  })
   it('iPlex Control: App Check token routes to the manager (with the family context); never to the Player', async () => {
     const player = vi.fn(async () => item), control = vi.fn(async () => item)
     const access = createTmdbAccess(player, control)

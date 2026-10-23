@@ -31,6 +31,9 @@ export async function routeTmdb(service: TmdbService, pathname: string, query: U
     if (m && ID.test(m[1]!)) return ok(await service.tv(Number(m[1])), 86400)
     m = /^\/tv\/(\d+)\/season\/(\d{1,3})$/.exec(path)
     if (m && ID.test(m[1]!)) return ok(await service.season(Number(m[1]), Number(m[2])), 86400)
+    // Pessoa creditada num título autorizado (o escopo é verificado em routeAuthorizedTmdb).
+    m = /^\/person\/(\d+)$/.exec(path)
+    if (m && ID.test(m[1]!)) return ok(await service.person(Number(m[1])), 86400)
     return { status: 404, body: { error: 'unknown_endpoint' }, maxAge: 0 }
   } catch (error) {
     if (error instanceof TmdbError) {

@@ -131,6 +131,25 @@
   z-index: 50;
   max-width: calc(100% - 2 * var(--iplex-safe-area-x));
 }
+.iplex-header::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: -1;
+  height: calc(var(--iplex-safe-area-top) + var(--iplex-header-height) + 1.5rem);
+  background-image: linear-gradient(180deg, rgba(15, 15, 15, 0.85) 0%, rgba(15, 15, 15, 0) 100%);
+  pointer-events: none;
+}
+/* Barra: avatar com halo translúcido + cápsula translúcida com as abas (referência Google TV).
+ * Translucidez = camadas do card-bg oficial (3 × 5% ≈ 14%) sobre o conteúdo que passa por trás. */
+.iplex-header__bar {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+}
 .iplex-header__capsule {
   display: -webkit-flex;
   display: flex;
@@ -139,11 +158,8 @@
   height: var(--iplex-header-height);
   padding: 0 var(--iplex-space-2);
   border-radius: var(--iplex-radius-full);
-  /* Cápsula escura e opaca: superfície oficial (card-bg) composta sobre o
-   * fundo oficial. "linear-gradient" de uma cor só = camada sólida, não é
-   * gradiente decorativo; nenhuma cor nova. */
-  background-color: var(--iplex-bg);
-  background-image: linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg));
+  background-color: transparent;
+  background-image: linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg)), linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg)), linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg));
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -154,11 +170,12 @@
 .iplex-header__avatar {
   -webkit-flex: none;
   flex: none;
-  padding: 0;
-  margin-right: var(--iplex-space-2);
+  padding: var(--iplex-space-2);
+  margin-right: var(--iplex-space-5);
   border: none;
   border-radius: var(--iplex-radius-full);
-  background: transparent;
+  background-color: transparent;
+  background-image: linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg)), linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg)), linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg));
   cursor: pointer;
 }
 .iplex-tab {
@@ -186,8 +203,8 @@
   padding: 0 var(--iplex-space-4);
 }
 .iplex-tab.is-active {
-  color: var(--iplex-text-primary);
-  background-color: var(--iplex-card-bg);
+  color: var(--iplex-button-primary-text);
+  background-color: var(--iplex-button-primary-bg);
 }
 /* Foco nas abas: pílula branca com texto escuro (como o Primary). */
 .iplex-tab:focus {
@@ -200,8 +217,8 @@
   color: var(--iplex-text-secondary);
 }
 :root:not([data-iplex-platform='tv']) .iplex-tab.is-active:focus:not(:focus-visible) {
-  background-color: var(--iplex-card-bg);
-  color: var(--iplex-text-primary);
+  background-color: var(--iplex-button-primary-bg);
+  color: var(--iplex-button-primary-text);
 }
 @media (hover: hover) {
   :root:not([data-iplex-platform='tv']) .iplex-tab:hover {
@@ -667,6 +684,149 @@
   color: var(--iplex-text-secondary);
 }
 
+.iplex-details__original {
+  color: var(--iplex-text-secondary);
+}
+.iplex-details .iplex-row {
+  position: relative;
+}
+.iplex-details__facts {
+  position: relative;
+  margin-top: var(--iplex-space-7);
+  max-width: 1400px;
+}
+.iplex-details__notice {
+  position: relative;
+  margin-top: var(--iplex-space-4);
+  color: var(--iplex-text-primary);
+}
+.iplex-facts {
+  margin: var(--iplex-space-4) 0 0;
+}
+.iplex-facts__row {
+  display: -webkit-flex;
+  display: flex;
+  padding: var(--iplex-space-2) 0;
+  font-size: var(--iplex-type-meta);
+}
+.iplex-facts__row dt {
+  -webkit-flex: none;
+  flex: none;
+  width: 22rem;
+  color: var(--iplex-text-secondary);
+}
+.iplex-facts__row dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--iplex-text-primary);
+}
+
+/* ---- Pessoa (elenco/equipe) ----------------------------------------- */
+.iplex-person__header {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: flex-start;
+  align-items: flex-start;
+  padding-top: var(--iplex-content-top);
+}
+.iplex-person__photo {
+  position: relative;
+  -webkit-flex: none;
+  flex: none;
+  width: 22rem;
+  height: 33rem;
+  overflow: hidden;
+  border-radius: var(--iplex-radius-medium);
+  background-color: var(--iplex-card-bg);
+}
+.iplex-person__info {
+  min-width: 0;
+  max-width: 1100px;
+  padding-left: var(--iplex-space-7);
+}
+.iplex-person__info > * + * {
+  margin-top: var(--iplex-space-3);
+}
+.iplex-person__career {
+  margin-top: var(--iplex-space-7);
+}
+.iplex-timeline {
+  list-style: none;
+  margin: var(--iplex-space-4) 0 0;
+  padding: 0;
+  max-width: 1400px;
+}
+.iplex-timeline__year {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: flex-start;
+  align-items: flex-start;
+  padding-top: var(--iplex-space-3);
+  border-top: 2px solid var(--iplex-card-bg);
+}
+.iplex-timeline__label {
+  -webkit-flex: none;
+  flex: none;
+  width: 9rem;
+  padding-top: var(--iplex-space-4);
+  font-size: var(--iplex-type-card-title);
+  font-weight: var(--iplex-font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.iplex-timeline__credits {
+  -webkit-flex: 1;
+  flex: 1;
+  min-width: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.iplex-credit {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  width: 100%;
+  margin: 0 0 var(--iplex-space-2);
+  padding: var(--iplex-space-3);
+  border: none;
+  border-radius: var(--iplex-radius-medium);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.iplex-credit:focus {
+  background-color: var(--iplex-card-bg);
+}
+.iplex-credit__poster {
+  position: relative;
+  -webkit-flex: none;
+  flex: none;
+  width: 4.5rem;
+  height: 6.75rem;
+  overflow: hidden;
+  border-radius: var(--iplex-radius-small);
+  background-color: var(--iplex-card-bg);
+}
+.iplex-credit__text {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  min-width: 0;
+  padding-left: var(--iplex-space-5);
+}
+.iplex-credit__title {
+  font-size: var(--iplex-type-card-title);
+  font-weight: var(--iplex-font-weight-medium);
+}
+.iplex-credit__meta {
+  margin-top: var(--iplex-space-1);
+  font-size: var(--iplex-type-meta);
+  color: var(--iplex-text-secondary);
+}
+
 /* ---- Ao Vivo --------------------------------------------------------- */
 .iplex-live__info {
   display: -webkit-flex;
@@ -1088,19 +1248,45 @@
   width: 100%;
   height: 100%;
 }
+/* Overlay 1: painel inferior (identificação, tempo, selos) + controles
+ * centrais no modo interativo. Fade suave; nunca toca no vídeo/áudio. */
+.iplex-player {
+  --iplex-player-next-width: 32rem;
+}
 .iplex-player__overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  opacity: 0;
+  pointer-events: none;
+  -webkit-transition: opacity 400ms ease-out, background-color 400ms ease-out;
+  transition: opacity 400ms ease-out, background-color 400ms ease-out;
+}
+.iplex-player__overlay.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.iplex-player__overlay.is-interactive {
+  background-color: rgba(15, 15, 15, 0.35);
+}
+.iplex-player__panel {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   padding: 18vh var(--iplex-safe-area-x) var(--iplex-safe-area-top);
-  background-image: linear-gradient(0deg, rgba(15, 15, 15, 0.9) 0%, rgba(15, 15, 15, 0) 100%);
-  opacity: 0;
-  -webkit-transition: opacity 200ms ease-out;
-  transition: opacity 200ms ease-out;
+  background-image: linear-gradient(0deg, rgba(15, 15, 15, 0.92) 0%, rgba(15, 15, 15, 0) 100%);
 }
-.iplex-player__overlay.is-visible {
-  opacity: 1;
+/* O cartão "Próximo episódio" ocupa o canto inferior direito: o painel nunca passa por baixo dele. */
+.iplex-player__overlay.has-next .iplex-player__panel {
+  padding-right: calc(var(--iplex-safe-area-x) + var(--iplex-player-next-width) + var(--iplex-space-7));
+}
+.iplex-player__episode .iplex-player__code {
+  margin-right: var(--iplex-space-3);
+  font-weight: var(--iplex-font-weight-bold);
+  color: var(--iplex-text-primary);
 }
 .iplex-player__live {
   display: inline-block;
@@ -1115,6 +1301,8 @@
 .iplex-player__timeline {
   display: -webkit-flex;
   display: flex;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
   -webkit-align-items: center;
   align-items: center;
   margin-top: var(--iplex-space-5);
@@ -1124,9 +1312,10 @@
   flex: none;
   min-width: 90px;
   font-size: var(--iplex-type-meta);
+  font-variant-numeric: tabular-nums;
   color: var(--iplex-text-secondary);
 }
-.iplex-player__time:last-child {
+.iplex-player__bar + .iplex-player__time {
   text-align: right;
 }
 .iplex-progress.iplex-player__bar {
@@ -1138,19 +1327,75 @@
   flex: 1;
   height: 6px;
   margin: 0 var(--iplex-space-4);
+  -webkit-transition: height var(--iplex-transition);
+  transition: height var(--iplex-transition);
 }
-.iplex-player__buttons {
+.iplex-player__bar--seekable:focus {
+  height: 12px;
+  outline: none;
+  box-shadow: var(--iplex-focus-ring);
+}
+/* Prévia (seleção na barra) ou seek aguardando confirmação do player. */
+.iplex-player__marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  margin-left: -2px;
+  background-color: var(--iplex-button-primary-bg);
+}
+.iplex-player__marker.is-pending {
+  opacity: 0.6;
+}
+.iplex-player__seek-hint {
+  -webkit-flex-basis: 100%;
+  flex-basis: 100%;
+  margin-top: var(--iplex-space-2);
+  text-align: center;
+  font-size: var(--iplex-type-meta);
+  color: var(--iplex-text-primary);
+}
+.iplex-player__footer {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
+  -webkit-align-items: center;
+  align-items: center;
+  margin-top: var(--iplex-space-4);
+}
+.iplex-player__badges {
+  display: -webkit-flex;
+  display: flex;
+  margin: 0 var(--iplex-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.iplex-player__badge {
+  margin-right: var(--iplex-space-3);
+  padding: 2px var(--iplex-space-3);
+  border: 2px solid var(--iplex-text-secondary);
+  border-radius: var(--iplex-radius-full);
+  font-size: var(--iplex-type-meta);
+  font-weight: var(--iplex-font-weight-medium);
+  color: var(--iplex-text-secondary);
+}
+.iplex-player__footer .iplex-button {
+  margin-right: var(--iplex-space-4);
+}
+.iplex-player__transport {
+  position: absolute;
+  top: 50%;
+  left: 50%;
   display: -webkit-flex;
   display: flex;
   -webkit-align-items: center;
   align-items: center;
-  margin-top: var(--iplex-space-5);
+  -webkit-transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%);
 }
-.iplex-player__buttons > * {
-  margin-right: var(--iplex-space-4);
-}
-.iplex-player__buttons .iplex-button + .iplex-button {
-  margin-left: 0;
+.iplex-player__transport > * + * {
+  margin-left: var(--iplex-space-7);
 }
 .iplex-player__icon-button {
   display: -webkit-inline-flex;
@@ -1167,9 +1412,61 @@
   color: var(--iplex-text-primary);
   cursor: pointer;
 }
+.iplex-player__icon-button--primary {
+  width: calc(var(--iplex-icon-size) * 2.8);
+  height: calc(var(--iplex-icon-size) * 2.8);
+}
 .iplex-player__icon-button:focus {
   background-color: var(--iplex-button-primary-bg);
   color: var(--iplex-button-primary-text);
+}
+/* Próximo episódio: canto inferior direito, alinhado à base do painel. */
+.iplex-player__next {
+  position: absolute;
+  right: var(--iplex-safe-area-x);
+  bottom: var(--iplex-safe-area-top);
+  z-index: 2;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  width: var(--iplex-player-next-width);
+  padding: var(--iplex-space-5);
+  border-radius: var(--iplex-radius-medium);
+  background-color: rgba(15, 15, 15, 0.88);
+}
+.iplex-player__next-text {
+  -webkit-flex: 1;
+  flex: 1;
+  min-width: 0;
+}
+.iplex-player__next-label {
+  margin-bottom: var(--iplex-space-3);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--iplex-text-secondary);
+}
+.iplex-player__next .iplex-button {
+  margin: 0;
+}
+.iplex-player__countdown {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex: none;
+  flex: none;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  margin-left: var(--iplex-space-5);
+  border: 3px solid var(--iplex-text-primary);
+  border-radius: var(--iplex-radius-full);
+  font-size: var(--iplex-type-card-title);
+  font-weight: var(--iplex-font-weight-bold);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- Pedido de reprodução do iPlex Control (aviso) ------------------- */
@@ -1250,4 +1547,96 @@
     padding: var(--iplex-space-5);
     margin: 0 var(--iplex-space-4);
   }
+}
+
+/* ---- Fileiras: cabeçalho com "Ver tudo" ------------------------------ */
+.iplex-row__head {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  margin-bottom: var(--iplex-space-3);
+}
+.iplex-row__head .iplex-row__title {
+  margin: 0 var(--iplex-space-5) 0 0;
+}
+.iplex-row__see-all {
+  margin: 0;
+}
+
+/* ---- Tela Catálogo (menu lateral + grid) ------------------------------ */
+.iplex-page--catalog {
+  --iplex-side-width: 26rem;
+  --iplex-grid-gap: 1.25rem;
+  display: -webkit-flex;
+  display: flex;
+  height: 100vh;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+/* As duas colunas rolam por trás do menu transparente e desvanecem sob ele. */
+.iplex-catalog__side,
+.iplex-catalog__content {
+  position: relative;
+  box-sizing: border-box;
+  height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: -webkit-linear-gradient(top, transparent calc(var(--iplex-content-top) - 4rem), var(--iplex-bg) calc(var(--iplex-content-top) - 0.5rem));
+  mask-image: linear-gradient(180deg, transparent calc(var(--iplex-content-top) - 4rem), var(--iplex-bg) calc(var(--iplex-content-top) - 0.5rem));
+}
+.iplex-catalog__side::-webkit-scrollbar,
+.iplex-catalog__content::-webkit-scrollbar {
+  display: none;
+}
+.iplex-catalog__side {
+  -webkit-flex: none;
+  flex: none;
+  width: var(--iplex-side-width);
+  padding: var(--iplex-content-top) var(--iplex-space-4) 60vh var(--iplex-safe-area-x);
+}
+.iplex-side__item {
+  display: -webkit-flex;
+  display: flex;
+  width: 100%;
+  margin: 0 0 var(--iplex-space-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.iplex-catalog__content {
+  -webkit-flex: 1 1 0;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: var(--iplex-content-top) var(--iplex-safe-area-x) var(--iplex-space-8) var(--iplex-space-6);
+}
+.iplex-catalog__title {
+  margin-bottom: var(--iplex-space-4);
+}
+.iplex-catalog__sort {
+  display: -webkit-flex;
+  display: flex;
+  padding: 10px 0 var(--iplex-space-4);
+}
+.iplex-catalog__grid {
+  position: relative;
+}
+.iplex-catalog__row {
+  display: -webkit-flex;
+  display: flex;
+  margin-bottom: var(--iplex-grid-gap);
+}
+.iplex-catalog__row .iplex-tile--poster {
+  width: calc((100% - 5 * var(--iplex-grid-gap)) / 6);
+  margin-right: var(--iplex-grid-gap);
+}
+.iplex-catalog__row .iplex-tile--poster:last-child {
+  margin-right: 0;
+}
+.iplex-catalog__row .iplex-tile.iplex-focusable:focus {
+  position: relative;
+  z-index: 2;
 }

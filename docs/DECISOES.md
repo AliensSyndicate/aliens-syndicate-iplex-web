@@ -53,3 +53,31 @@ Gestor separado; projeto institucional intocado; pagamentos desligados.
    importava uma URL `data:`; o build troca por `/assets/import-meta-resolve-guard.js`
    antes do hash (`server/legacy-guard-plugin.ts`) e não gera polyfills
    modernos. A CSP segue só com `'self'` + hashes.
+
+## Navegação e catálogo (2026-10-22)
+
+- **Menu principal** transparente (avatar isolado à esquerda); o conteúdo passa por trás, com véu na cor de fundo.
+- **Tela Catálogo reutilizável** (`features/catalog/CatalogScreen`): Filmes, Séries e `/catalogo?c=<coleção>&k=<tipos>` (Ver tudo do Meu iPlex). Menu lateral: Continuar assistindo, Favoritos, Todos, categorias do fornecedor (A–Z) e, por último, as adultas (só perfil admin/regular; o backend já filtra por perfil).
+- **Foco ≠ seleção**: OK/Enter seleciona; setas só movem o foco. Grid de 6 colunas, ortogonal, janelado por linhas.
+- **Pendências de dados (não inventadas):**
+  - *Lista de desejos*: o backend só tem favoritos/assistidos/progresso. Fora do menu e do Meu iPlex até existir a coleção.
+  - *Ordenação por data de adição*: `CatalogItem` não traz data de inclusão e a direção não foi definida. Só A–Z e Z–A por ora.
+  - *Adulto*: não há flag no backend; a categoria é reconhecida pelo nome (adulto, xxx, +18…).
+  - *Recentes* (Meu iPlex) usa o progresso salvo (atividade recente).
+
+## Player de filmes e séries (2026-10-22)
+
+- **Passo da barra de progresso (PROPOSTA).** A granularidade não foi definida:
+  `PLAYER.scrubStep` = 1% da duração por toque, entre 5 s e 60 s. Os botões
+  laterais seguem 10 s (aprovado).
+- **Overlay fechado.** Só OK abre os controles. Setas não fazem seek nem movem
+  foco. Exceção: com o cartão "Próximo episódio" focado (OK o aciona), Cima abre
+  os controles. Teclas de mídia (quando o shell as registra) mantêm ±30 s.
+- **Áudio/Legendas.** Nenhum controle novo foi adicionado; os botões textuais
+  que já existiam continuam no painel inferior, só quando há faixas.
+- **Pessoas no perfil infantil.** Elenco aparece, mas biografia/filmografia não
+  abrem (como a descoberta do Control, que exclui perfis infantis).
+- **Episódio com progresso.** Na lista de episódios, abrir um episódio iniciado
+  pergunta "Continuar" ou "Assistir do início". Pedidos do Control seguem a
+  escolha feita no celular (retomada com a posição enviada pelo backend).
+

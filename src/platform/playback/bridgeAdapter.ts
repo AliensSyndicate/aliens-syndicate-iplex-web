@@ -62,7 +62,9 @@ export function createBridgePlaybackAdapter(bridge: BridgeClient, methods: reado
     },
     async seek(positionMs: number) {
       if (live || !has('player.seek')) return
-      await bridge.call('player.seek', { positionMs: Math.max(0, Math.floor(positionMs)) })
+      const status = await bridge.call('player.seek', { positionMs: Math.max(0, Math.floor(positionMs)) })
+      // Posição devolvida pelo AVPlay após o seek (confirmação real, inclusive pausado).
+      if (status && Number.isFinite(status.positionMs)) emitter.emit('time', { positionMs: status.positionMs, durationMs: live ? 0 : status.durationMs })
     },
     async getTracks(): Promise<PlaybackTrack[]> {
       if (!has('player.getTracks')) return []

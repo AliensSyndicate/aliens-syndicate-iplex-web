@@ -9,7 +9,12 @@ export const PATHS = {
     if (ref.resume && ref.resumeAtSec && ref.resumeAtSec > 0) qs.set('ra', String(Math.floor(ref.resumeAtSec)))
     return `/assistir?${qs.toString()}`
   },
+  /** Pessoa do elenco/equipe, sempre no escopo de um título autorizado (s, i). */
+  person: (personId: number, scope: { sourceId: string; itemId: string; title: string }) =>
+    `/pessoa/${personId}?${new URLSearchParams({ s: scope.sourceId, i: scope.itemId, t: scope.title }).toString()}`,
   settings: '/configuracoes',
+  /** Tela Catálogo reutilizável: coleção (c) e tipos (k) de entrada. */
+  catalog: (collection: string, kinds: string[] = ['movie', 'series']) => `/catalogo?c=${encodeURIComponent(collection)}&k=${kinds.join(',')}`,
 } as const
 
 export function contentPath(item: CatalogItem): string {

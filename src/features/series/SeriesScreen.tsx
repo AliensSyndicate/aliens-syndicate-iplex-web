@@ -1,5 +1,5 @@
-import { CatalogBrowseScreen } from '../catalog/CatalogBrowseScreen'
+import { CatalogScreen } from '../catalog/CatalogScreen'
 
 export default function SeriesScreen() {
-  return <CatalogBrowseScreen kind="series" title="Séries" />
+  return <CatalogScreen kinds={['series']} title="Séries" initial="all" />
 }

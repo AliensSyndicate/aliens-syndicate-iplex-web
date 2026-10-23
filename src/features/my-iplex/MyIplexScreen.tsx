@@ -1,12 +1,10 @@
 /**
- * Meu iPlex: área pessoal do perfil regular (o visitante não tem acesso).
- * Seções (propostas funcionais, documentadas em docs/DECISOES.md):
- *  - Continuar assistindo: progresso salvo (filmes e episódios);
- *  - Minha lista: filmes e séries salvos (coleção "favorites" do backend);
- *  - Canais favoritos;
- *  - Assistidos recentemente;
- *  - Recomendações: itens JÁ carregados do catálogo autorizado, das mesmas
- *    categorias dos itens da lista/progresso, ainda não assistidos.
+ * Meu iPlex: rolagem vertical com seções horizontais de até 10 itens, todas
+ * com "Ver tudo" (tela Catálogo ou a própria seção).
+ * Seções, com dados reais do perfil e do catálogo:
+ *  - Recentes: progresso salvo (o que o perfil começou há pouco);
+ *  - Favoritos; Recentemente assistidos; Filmes; Séries; Canais favoritos.
+ * Sem "Lista de desejos": o backend ainda não tem essa coleção (docs/DECISOES.md).
  * Sem histórico: mensagens curtas e atalhos — nunca cards fictícios.
  */
 import { useMemo } from 'react'
@@ -19,26 +17,15 @@ import { PosterCard } from '../../components/catalog/PosterCard'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import { IplexText } from '../../components/ui/IplexText'
-import { CATALOG } from '../../config/features'
 import { useCatalog } from '../../hooks/useCatalog'
 import { useLibrary } from '../../hooks/useLibrary'
 import { useInitialFocus } from '../../navigation/FocusProvider'
 import type { CatalogItem } from '../../services/api/types'
 import type { IndexedItem } from '../../services/library/libraryStore'
+import { itemFromIndexed } from '../catalog/collections'
 import { SECTION_PATHS } from '../profiles/profileRules'
 
-function toItem(meta: IndexedItem): CatalogItem {
-  return {
-    id: meta.itemId,
-    sourceId: meta.sourceId,
-    kind: meta.kind,
-    title: meta.title,
-    category: meta.category ?? '',
-    providerRef: '',
-    version: '',
-    ...(meta.year !== undefined ? { year: meta.year } : {}),
-  }
-}
+const ROW = 10
 
 export default function MyIplexScreen() {
   const navigate = useNavigate()
@@ -54,25 +41,21 @@ export default function MyIplexScreen() {
         .filter((p) => p.duration > 0 && p.position / p.duration < 0.95)
         .map((p) => ({ entry: p, meta: store.indexed(p.contentId) }))
         .filter((x): x is { entry: typeof x.entry; meta: IndexedItem } => !!x.meta)
-        .slice(0, CATALOG.rowLimit),
+        .slice(0, ROW),
     [library.progress, store],
   )
   const favorites = useMemo(
     () => library.favorites.map((f) => store.indexed(f.contentId)).filter((m): m is IndexedItem => !!m),
     [library.favorites, store],
   )
-  const myList = favorites.filter((m) => m.kind !== 'channel')
-  const channels = favorites.filter((m) => m.kind === 'channel')
+  const myList = useMemo(() => favorites.filter((m) => m.kind !== 'channel').slice(0, ROW), [favorites])
+  const channels = useMemo(() => favorites.filter((m) => m.kind === 'channel').slice(0, ROW), [favorites])
   const watched = useMemo(
-    () => library.watched.map((w) => store.indexed(w.contentId)).filter((m): m is IndexedItem => !!m && m.kind !== 'channel').slice(0, CATALOG.rowLimit),
+    () => library.watched.map((w) => store.indexed(w.contentId)).filter((m): m is IndexedItem => !!m && m.kind !== 'channel').slice(0, ROW),
     [library.watched, store],
   )
-  const recommendations = useMemo(() => {
-    const seeds = new Set([...myList, ...continueRow.map((c) => c.meta)].map((m) => m.category).filter(Boolean) as string[])
-    if (!seeds.size) return []
-    const exclude = new Set([...library.watched.map((w) => w.contentId), ...library.favorites.map((f) => f.contentId)])
-    return [...movies.items, ...series.items].filter((i) => seeds.has(i.category) && !exclude.has(i.id)).slice(0, CATALOG.rowLimit)
-  }, [myList, continueRow, library.watched, library.favorites, movies.items, series.items])
+  const movieRow = useMemo(() => movies.items.slice(0, ROW), [movies.items])
+  const seriesRow = useMemo(() => series.items.slice(0, ROW), [series.items])
 
   useInitialFocus(`${location.pathname}${location.search}`, loaded)
   const openMeta = (m: IndexedItem) =>
@@ -94,7 +77,7 @@ export default function MyIplexScreen() {
         />
       )}
       {continueRow.length > 0 && (
-        <ContentCarousel title="Continuar assistindo" id="my-continue" shape="landscape">
+        <ContentCarousel title="Recentes" id="my-continue" shape="landscape" onSeeAll={() => navigate(PATHS.catalog('continue'))}>
           {continueRow.map(({ entry, meta }, i) => (
             <LandscapeCard
               key={entry.contentId}
@@ -113,35 +96,38 @@ export default function MyIplexScreen() {
           ))}
         </ContentCarousel>
       )}
-      {loaded && (
-        myList.length > 0 ? (
-          <ContentCarousel title="Minha lista" id="my-list">
-            {myList.map((m, i) => (
-              <PosterCard key={m.contentId} item={toItem(m)} navId={`my-list-${m.contentId}`} navGroup="my-list" onSelect={() => openMeta(m)} autoFocus={!continueRow.length && i === 0} />
-            ))}
-          </ContentCarousel>
-        ) : (
-          !empty && <EmptyState title="Minha lista está vazia" description="Use “Adicionar à lista” nos detalhes de um filme ou série." />
-        )
-      )}
-      {channels.length > 0 && (
-        <ContentCarousel title="Canais favoritos" id="my-channels" shape="landscape">
-          {channels.map((m) => (
-            <LandscapeCard key={m.contentId} title={m.title} kind="channel" image={null} navId={`my-ch-${m.contentId}`} navGroup="my-channels" onSelect={() => openMeta(m)} />
+      {myList.length > 0 && (
+        <ContentCarousel title="Favoritos" id="my-list" onSeeAll={() => navigate(PATHS.catalog('favorites'))}>
+          {myList.map((m, i) => (
+            <PosterCard key={m.contentId} item={itemFromIndexed(m)} navId={`my-list-${m.contentId}`} navGroup="my-list" onSelect={() => openMeta(m)} autoFocus={!continueRow.length && i === 0} />
           ))}
         </ContentCarousel>
       )}
       {watched.length > 0 && (
-        <ContentCarousel title="Assistidos recentemente" id="my-watched">
+        <ContentCarousel title="Recentemente assistidos" id="my-watched" onSeeAll={() => navigate(PATHS.catalog('watched'))}>
           {watched.map((m) => (
-            <PosterCard key={m.contentId} item={toItem(m)} navId={`my-watched-${m.contentId}`} navGroup="my-watched" onSelect={() => openMeta(m)} />
+            <PosterCard key={m.contentId} item={itemFromIndexed(m)} navId={`my-watched-${m.contentId}`} navGroup="my-watched" onSelect={() => openMeta(m)} />
           ))}
         </ContentCarousel>
       )}
-      {recommendations.length > 0 && (
-        <ContentCarousel title="Recomendações" id="my-recs">
-          {recommendations.map((item) => (
-            <PosterCard key={item.id} item={item} navId={`my-rec-${item.id}`} navGroup="my-recs" onSelect={openItem} />
+      {movieRow.length > 0 && (
+        <ContentCarousel title="Filmes" id="my-movies" onSeeAll={() => navigate(SECTION_PATHS.movies)}>
+          {movieRow.map((item) => (
+            <PosterCard key={item.id} item={item} navId={`my-movie-${item.id}`} navGroup="my-movies" onSelect={openItem} />
+          ))}
+        </ContentCarousel>
+      )}
+      {seriesRow.length > 0 && (
+        <ContentCarousel title="Séries" id="my-series" onSeeAll={() => navigate(SECTION_PATHS.series)}>
+          {seriesRow.map((item) => (
+            <PosterCard key={item.id} item={item} navId={`my-series-${item.id}`} navGroup="my-series" onSelect={openItem} />
+          ))}
+        </ContentCarousel>
+      )}
+      {channels.length > 0 && (
+        <ContentCarousel title="Canais" id="my-channels" shape="landscape" onSeeAll={() => navigate(SECTION_PATHS.live)}>
+          {channels.map((m) => (
+            <LandscapeCard key={m.contentId} title={m.title} kind="channel" image={null} navId={`my-ch-${m.contentId}`} navGroup="my-channels" onSelect={() => openMeta(m)} />
           ))}
         </ContentCarousel>
       )}

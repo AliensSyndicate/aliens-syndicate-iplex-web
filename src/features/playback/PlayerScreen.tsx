@@ -4,8 +4,14 @@
  * 1. O item é relido do catálogo autorizado (perfil do lease).
  * 2. O backend resolve a URL autorizada (resolveSourceStream), revalidando
  *    assinatura, lease, permissões e a fonte. Credenciais IPTV não chegam aqui.
+ *    A mídia só é resolvida/carregada aqui: a tela de detalhes nunca pré-carrega.
  * 3. Um único adaptador toca: AVPlay (shell Samsung) ou <video> + hls.js (navegador).
- * 4. Progresso: só perfis com biblioteca, só VOD, com frequência controlada.
+ * 4. Progresso: só perfis com biblioteca, só VOD, com frequência controlada
+ *    (progressSession/progressTracker; o backend impõe as mesmas regras).
+ * 5. Overlay 1 (PlayerOverlay): aparece ao iniciar e some após 5 s sem interação;
+ *    OK abre o modo interativo. Setas só agem com o overlay interativo aberto.
+ * 6. Séries: "Próximo episódio" nos últimos 30 s, contados pelo tempo real da mídia.
+ * 7. Saída: Voltar → detalhes do conteúdo; término natural → tela de origem.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -16,29 +22,38 @@ import { PATHS } from '../../app/routes/paths'
 import { Dialog } from '../../components/dialogs/Dialog'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { Spinner } from '../../components/feedback/LoadingState'
-import { PlaybackControls } from '../../components/player/PlaybackControls'
-import { TIMING } from '../../config/features'
+import { NextEpisodeCard } from '../../components/player/NextEpisodeCard'
+import { PlayerOverlay } from '../../components/player/PlayerOverlay'
+import { PLAYER, TIMING } from '../../config/features'
+import { useMatch } from '../../hooks/useMetadata'
 import { useBackHandler, useKeyHandler } from '../../navigation/FocusProvider'
-import { focusElement, initialTarget } from '../../navigation/spatial'
+import { focusElement } from '../../navigation/spatial'
 import { createPlaybackAdapter } from '../../platform/playback/createAdapter'
 import type { PlaybackAdapter, PlaybackTrack } from '../../platform/playback/types'
 import { AppError, toAppError } from '../../services/api/errors'
-import type { CatalogItem, ContentKind, SeriesEpisode } from '../../services/api/types'
+import type { CatalogItem, ContentKind, SeriesDetails, SeriesEpisode } from '../../services/api/types'
 import { episodeContentId } from '../../services/catalog/normalize'
 import { indexFromItem } from '../../services/library/libraryStore'
 import { hasPersonalLibrary } from '../profiles/profileRules'
 import { createProgressTracker } from './progressTracker'
 import { createStatusReporter, type PlaybackStatusPayload } from './playbackStatus'
 import { createProgressSession, resolveResumeMs, type ProgressSession } from './progressSession'
+import { SEEK_CONFIRM_TIMEOUT_MS, clampSeek, createSeekGate, endedEarly, episodeCode, findNextEpisode, nextEpisodeCountdown, qualityLabel, scrubStepMs, subtitledFromSource } from './playerRules'
+import { useOverlayTimer } from './useOverlayTimer'
 import { playRequestErrorCode, reportPlayRequest, setPlaybackActive } from '../remote/playRequestReport'
 
 type Phase = { status: 'preparing' } | { status: 'playing' } | { status: 'error'; error: AppError }
+
+/** Estado de navegação levado pela tela de detalhes (Voltar retorna a ela pelo histórico). */
+export interface PlayerNavState {
+  from?: 'details'
+}
 
 export default function PlayerScreen() {
   const location = useLocation()
   const navigate = useNavigate()
   const platform = usePlatform()
-  const { backend } = useBackend()
+  const { backend, tmdb } = useBackend()
   const session = useReadySession()
   const sessionApi = useSession()
   const q = new URLSearchParams(location.search)
@@ -55,44 +70,63 @@ export default function PlayerScreen() {
   const playRequestId = q.get('pr')
   const live = kind === 'channel'
   const personal = hasPersonalLibrary(session.profile)
+  const navState = (location.state ?? null) as PlayerNavState | null
+  const fromDetails = navState?.from === 'details'
 
+  const rootRef = useRef<HTMLElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const adapterRef = useRef<PlaybackAdapter | null>(null)
   const [phase, setPhase] = useState<Phase>({ status: 'preparing' })
   const [attempt, setAttempt] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [buffering, setBuffering] = useState(true)
-  const [time, setTime] = useState({ positionMs: 0, durationMs: 0 })
+  /** Tempo real do player, marcado com o conteúdo que o produziu (eventos de outra mídia nunca contam). */
+  const [time, setTime] = useState({ positionMs: 0, durationMs: 0, key: '' })
   const [tracks, setTracks] = useState<PlaybackTrack[]>([])
   const [canSeek, setCanSeek] = useState(false)
   const [trackMenu, setTrackMenu] = useState<'audio' | 'text' | null>(null)
-  const [controls, setControls] = useState(true)
   const [cue, setCue] = useState<string | null>(null)
   const [item, setItem] = useState<CatalogItem | null>(null)
+  const [series, setSeries] = useState<SeriesDetails | null>(null)
   const [episode, setEpisode] = useState<SeriesEpisode | null>(null)
+  const [episodeMeta, setEpisodeMeta] = useState<{ id: string; name: string } | null>(null)
+  const [videoSize, setVideoSize] = useState<{ width: number; height: number } | null>(null)
+  const [previewMs, setPreviewMs] = useState<number | null>(null)
+  const [pendingMs, setPendingMs] = useState<number | null>(null)
+  const overlay = useOverlayTimer(TIMING.playerControlsHideMs)
   const timeRef = useRef(time)
   useEffect(() => {
     timeRef.current = time
   }, [time])
   const progressSession = useRef<ProgressSession | null>(null)
   const statusRef = useRef<((payload: PlaybackStatusPayload) => void) | null>(null)
-  const saveInFlight = useRef(false)
+  const saveInFlight = useRef<Promise<void> | null>(null)
   const saveQueued = useRef(false)
+  /** Conteúdo concluído (fim natural ou troca de episódio): nenhuma gravação depois disso. */
+  const finished = useRef(false)
   const tracker = useMemo(() => createProgressTracker({ intervalMs: TIMING.progressSaveIntervalMs, minDeltaMs: TIMING.progressMinDeltaMs }), [])
+  const seekGate = useMemo(() => createSeekGate(), [])
+  const overlayRef = useRef(overlay)
+  useEffect(() => {
+    overlayRef.current = overlay
+  }, [overlay])
+  /** Fim da mídia (definido abaixo, depende do próximo episódio). */
+  const endedRef = useRef<() => void>(() => undefined)
   const contentId = kind === 'series' && episodeId ? episodeContentId(itemId, episodeId) : itemId
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const contentKey = `${sourceId}|${itemId}|${episodeId ?? ''}|${attempt}`
 
-  const showControls = useCallback(() => {
-    setControls(true)
-    if (hideTimer.current) clearTimeout(hideTimer.current)
-    hideTimer.current = setTimeout(() => setControls(false), TIMING.playerControlsHideMs)
-  }, [])
+  const progressMeta = useCallback(() => {
+    if (!item) return null
+    const label = episode ? `T${episode.season} E${episode.episodeNum ?? '?'}${episode.title ? ` · ${episode.title}` : ''}` : ''
+    return indexFromItem(item, episode ? { id: episode.id, label, contentId } : undefined)
+  }, [item, episode, contentId])
 
   const saveRef = useRef<(force: boolean) => void>(() => undefined)
   const saveProgress = useCallback(
     (force: boolean) => {
       const sessionState = progressSession.current
-      if (!personal || live || !item || !sessionState) return
+      const meta = progressMeta()
+      if (!personal || live || !meta || !sessionState || finished.current) return
       const { positionMs, durationMs } = timeRef.current
       // Inicialização, retomada ainda não confirmada e stream sem seek nunca gravam (apagariam o progresso).
       if (!sessionState.canSave(positionMs, durationMs)) return
@@ -102,42 +136,82 @@ export default function PlayerScreen() {
         if (force) saveQueued.current = true
         return
       }
-      saveInFlight.current = true
       tracker.markSaved(positionMs)
-      const label = episode ? `T${episode.season} E${episode.episodeNum ?? '?'}${episode.title ? ` · ${episode.title}` : ''}` : ''
-      const meta = indexFromItem(item, episode ? { id: episode.id, label, contentId } : undefined)
-      void session.library
+      saveInFlight.current = session.library
         .saveProgress(contentId, positionMs / 1000, durationMs / 1000, meta, sessionState.next())
         .catch(() => tracker.markFailed())
         .finally(() => {
-          saveInFlight.current = false
+          saveInFlight.current = null
           if (saveQueued.current) {
             saveQueued.current = false
             saveRef.current(true)
           }
         })
     },
-    [personal, live, item, episode, contentId, session.library, tracker],
+    [personal, live, progressMeta, contentId, session.library, tracker],
   )
   useEffect(() => {
     saveRef.current = saveProgress
   }, [saveProgress])
 
+  /**
+   * Conclusão: grava posição = duração na MESMA sessão (seq maior que qualquer
+   * gravação anterior). O backend marca "Assistidos" a partir de 90% (regra dele,
+   * não duplicada aqui) e a retomada deixa de ser oferecida (≥ 95%).
+   */
+  const completeProgress = useCallback(() => {
+    if (finished.current) return
+    finished.current = true
+    saveQueued.current = false
+    const sessionState = progressSession.current
+    const meta = progressMeta()
+    const { durationMs } = timeRef.current
+    if (!personal || live || !meta || !sessionState || !(durationMs > 0)) return
+    const durationSec = durationMs / 1000
+    const before = saveInFlight.current ?? Promise.resolve()
+    void before
+      .catch(() => undefined)
+      .then(() => session.library.saveProgress(contentId, durationSec, durationSec, meta, sessionState.next()))
+      .catch(() => undefined)
+  }, [personal, live, progressMeta, contentId, session.library])
+
+  /** Voltar → detalhes; término natural → origem (detalhes, Meu iPlex, tela anterior ao pedido do Control). */
+  const exit = useCallback(
+    (target: 'details' | 'origin') => {
+      if (live || fromDetails) {
+        navigate(-1)
+        return
+      }
+      const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0
+      if (target === 'origin' && idx > 0) navigate(-1)
+      else navigate(PATHS.details(sourceId, itemId, item?.title ?? title), { replace: true })
+    },
+    [live, fromDetails, navigate, sourceId, itemId, item, title],
+  )
+
   // Prepara e inicia a reprodução.
   useEffect(() => {
     let alive = true
     let adapter: PlaybackAdapter | null = null
+    let firstPlay = true
     const offs: Array<() => void> = []
     const root = document.documentElement
     setPhase({ status: 'preparing' })
     setBuffering(true)
+    setTime({ positionMs: 0, durationMs: 0, key: contentKey })
+    timeRef.current = { positionMs: 0, durationMs: 0, key: contentKey }
+    setVideoSize(null)
+    setPreviewMs(null)
+    setPendingMs(null)
+    seekGate.cancel()
     progressSession.current = null
+    finished.current = false
     // Status para o Control ("Reproduzindo"): só informa, nunca recebe comando.
     const reporter = createStatusReporter((payload) =>
       backend.reportPlayback({ sessionId: session.lease.id, sourceId, itemId, ...(episodeId ? { episodeId } : {}), ...payload }),
     )
     statusRef.current = (payload) => reporter.report(payload)
-    saveInFlight.current = false
+    saveInFlight.current = null
     saveQueued.current = false
     ;(async () => {
       try {
@@ -148,13 +222,15 @@ export default function PlayerScreen() {
         if (found.kind === 'series' && episodeId) {
           const details = await backend.readSeries(session.profile.id, found.sourceId, found.providerRef).catch(() => null)
           const ep = details?.seasons.flatMap((s) => s.episodes).find((e) => e.id === episodeId) ?? null
-          if (alive) setEpisode(ep)
+          if (!alive) return
+          setSeries(details)
+          setEpisode(ep)
         }
         const grant = await backend.resolveStream(session.profile.id, { sourceId: found.sourceId, itemId: found.id, ...(episodeId ? { episodeId } : {}) })
         if (!alive) return
         adapter = createPlaybackAdapter(platform)
         adapterRef.current = adapter
-        setCanSeek(adapter.capabilities.seek && !live)
+        setCanSeek(!!adapter.capabilities.seek && !!adapter.seek && !live)
         if (adapter.kind === 'native-bridge') root.classList.add('is-native-playback')
         offs.push(
           adapter.on('state', ({ state }) => {
@@ -164,27 +240,39 @@ export default function PlayerScreen() {
               statusRef.current?.({ state, ...(!live && durationMs > 0 ? { positionSec: positionMs / 1000, durationSec: durationMs / 1000 } : {}) })
             }
             setPlaying(state === 'playing')
-            if (state === 'playing') reportPlayRequest(backend, playRequestId, 'started')
+            if (state === 'playing') {
+              reportPlayRequest(backend, playRequestId, 'started')
+              // Overlay 1 aparece ao iniciar cada conteúdo e some sozinho após 5 s.
+              if (firstPlay) {
+                firstPlay = false
+                overlayRef.current.reveal('info')
+              }
+            }
             if (state === 'playing' || state === 'paused') setBuffering(false)
             if (state === 'paused') saveRef.current(true)
           }),
-          adapter.on('time', (t) => {
+          adapter.on('time', (raw) => {
+            const t = { positionMs: raw.positionMs, durationMs: raw.durationMs, key: contentKey }
             setTime(t)
             timeRef.current = t
-            // Retomada: confirma que o player chegou ao ponto salvo e reaplica o seek se ainda não.
             if (adapterRef.current && !live && t.durationMs > 0) statusRef.current?.({ state: 'playing', positionSec: t.positionMs / 1000, durationSec: t.durationMs / 1000 })
             else if (live) statusRef.current?.({ state: 'playing' })
+            // Retomada: confirma que o player chegou ao ponto salvo e reaplica o seek se ainda não.
             const again = progressSession.current?.onTime(t.positionMs)
             if (again && adapter) void Promise.resolve(adapter.seek?.(again.seek)).catch(() => undefined)
-            saveRef.current(false)
+            // Seek do usuário: a posição só é aplicada na interface quando o player confirma.
+            const confirmed = seekGate.onTime(t.positionMs)
+            setPendingMs(seekGate.pending)
+            saveRef.current(confirmed)
           }),
           adapter.on('buffering', ({ active }) => setBuffering(active)),
+          adapter.on('media', (size) => setVideoSize(size)),
           adapter.on('error', (info) => {
             setPhase({ status: 'error', error: new AppError(info.unsupported ? 'format-unsupported' : 'playback-error', info.code) })
           }),
           adapter.on('ended', () => {
-            saveRef.current(true)
             setPlaying(false)
+            endedRef.current()
           }),
           adapter.on('subtitle', ({ text, durationMs }) => {
             setCue(text)
@@ -213,7 +301,6 @@ export default function PlayerScreen() {
         if (!alive) return
         setPhase((p) => (p.status === 'error' ? p : { status: 'playing' }))
         adapter.getTracks().then((t) => alive && setTracks(t), () => undefined)
-        showControls()
       } catch (raw) {
         if (alive) setPhase({ status: 'error', error: toAppError(raw) })
       }
@@ -227,10 +314,24 @@ export default function PlayerScreen() {
       root.classList.remove('is-native-playback')
       if (adapter) void adapter.destroy()
       adapterRef.current = null
-      if (hideTimer.current) clearTimeout(hideTimer.current)
     }
     // A reprodução reinicia ao mudar o conteúdo ou ao tentar novamente.
   }, [sourceId, itemId, episodeId, kind, attempt]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Nome do episódio (TMDB, só metadados); sem correspondência, o nome da fonte.
+  const match = useMatch(kind === 'series' ? item : null)
+  const tmdbId = match.status === 'ready' ? match.summary.tmdbId : null
+  useEffect(() => {
+    if (!item || !episode || !tmdbId) return
+    let alive = true
+    tmdb.season(tmdbId, episode.season, item).then(
+      (s) => alive && setEpisodeMeta({ id: episode.id, name: s.episodes.find((e) => e.episodeNumber === episode.episodeNum)?.name ?? '' }),
+      () => undefined,
+    )
+    return () => {
+      alive = false
+    }
+  }, [tmdb, tmdbId, item, episode])
 
   // Só há "reprodução em andamento" com mídia carregada (nunca em erro ou preparando).
   useEffect(() => {
@@ -255,31 +356,82 @@ export default function PlayerScreen() {
     }
   }, [platform.visible])
 
+  const seekable = canSeek && !live && time.durationMs > 0 && time.key === contentKey && phase.status === 'playing'
+
+  // ---- Próximo episódio (somente séries; disponibilidade = lista da fonte IPTV) ----
+  const nextEpisode = useMemo(() => (kind === 'series' ? findNextEpisode(series, episodeId) : null), [kind, series, episodeId])
+  const countdown = nextEpisode && phase.status === 'playing' && time.key === contentKey ? nextEpisodeCountdown(time.positionMs, time.durationMs) : null
+  const nextVisible = countdown !== null
+
+  const playNext = useCallback(() => {
+    if (!nextEpisode || finished.current) return
+    completeProgress()
+    // Do zero (sem retomada); substitui a entrada do player, então Voltar continua indo aos detalhes.
+    navigate(PATHS.watch({ sourceId, itemId, kind: 'series', title, episodeId: nextEpisode.id }), { replace: true, state: navState })
+  }, [nextEpisode, completeProgress, navigate, sourceId, itemId, title, navState])
+
+  // Contagem chegou a zero (a mídia chegou ao fim real).
   useEffect(() => {
-    if (controls && phase.status === 'playing') {
-      const id = setTimeout(() => {
-        const target = initialTarget(document.querySelector('.iplex-player__controls') ?? document)
-        if (target && !document.activeElement?.closest('.iplex-player__controls')) focusElement(target)
-      }, 0)
-      return () => clearTimeout(id)
+    if (countdown === 0) playNext()
+  }, [countdown, playNext])
+
+  useEffect(() => {
+    endedRef.current = () => {
+      if (live || finished.current) return
+      const { positionMs, durationMs } = timeRef.current
+      // Fim muito antes da duração: conexão/stream interrompidos, não conclusão.
+      if (endedEarly(positionMs, durationMs)) {
+        saveRef.current(true)
+        setPhase({ status: 'error', error: new AppError('playback-error', 'ended-early') })
+        return
+      }
+      if (nextEpisode) {
+        playNext()
+        return
+      }
+      completeProgress()
+      exit('origin')
     }
-  }, [controls, phase.status])
+  }, [live, nextEpisode, playNext, completeProgress, exit])
+
+  // ---- Seek (botões ±10 s e barra): sempre confirmado pelo player ----
+  const requestSeek = (targetMs: number) => {
+    const a = adapterRef.current
+    if (!a?.seek || !seekable) return
+    const target = clampSeek(targetMs, time.durationMs)
+    if (target === null) return
+    progressSession.current?.onUserSeek()
+    seekGate.request(target)
+    setPendingMs(target)
+    void Promise.resolve(a.seek(target)).catch(() => {
+      seekGate.cancel()
+      setPendingMs(null)
+    })
+  }
+  // Sem confirmação no prazo (stream sem seek preciso), o marcador some e fica só a posição real.
+  useEffect(() => {
+    if (pendingMs === null) return
+    const id = setTimeout(() => setPendingMs(seekGate.pending), SEEK_CONFIRM_TIMEOUT_MS + 100)
+    return () => clearTimeout(id)
+  }, [pendingMs, seekGate])
+  const skip = (deltaMs: number) => requestSeek((seekGate.pending ?? time.positionMs) + deltaMs)
+  const scrub = (direction: 1 | -1) => {
+    if (!seekable) return
+    const base = previewMs ?? seekGate.pending ?? time.positionMs
+    setPreviewMs(clampSeek(base + direction * scrubStepMs(time.durationMs), time.durationMs))
+  }
+  const commitScrub = () => {
+    if (previewMs === null) return
+    requestSeek(previewMs)
+    setPreviewMs(null)
+  }
 
   const toggle = () => {
     const a = adapterRef.current
     if (!a) return
     void (playing ? a.pause() : a.play())
-    showControls()
   }
-  const seekBy = (delta: number) => {
-    const a = adapterRef.current
-    if (!a?.seek || live) return
-    progressSession.current?.onUserSeek()
-    void a.seek(Math.max(0, Math.min(time.durationMs || Infinity, time.positionMs + delta)))
-    // O ponto novo é gravado assim que o player assenta (seek manual, para frente ou para trás).
-    setTimeout(() => saveRef.current(true), 1500)
-    showControls()
-  }
+
   const zapChannel = (direction: 1 | -1) => {
     if (!live) return
     const channels = session.catalog.items('channel')
@@ -288,28 +440,57 @@ export default function PlayerScreen() {
     if (next && next.id !== itemId) navigate(PATHS.watch({ sourceId: next.sourceId, itemId: next.id, kind: 'channel', title: next.title }), { replace: true })
   }
 
+  // ---- Foco: controles ao abrir o modo interativo; cartão do próximo episódio fora dele ----
+  const { mode } = overlay
+  useEffect(() => {
+    const active = document.activeElement
+    const inOverlay = active instanceof HTMLElement && !!active.closest('.iplex-player__overlay')
+    if (mode === 'interactive') {
+      if (!inOverlay) {
+        const target = document.querySelector<HTMLElement>('[data-nav-id="pc-toggle"]')
+        if (target) focusElement(target)
+      }
+    } else if (inOverlay) {
+      // Controles ocultos nunca guardam o foco: OK não pode acionar um botão invisível
+      // (o blur da barra também descarta uma prévia de posição não confirmada).
+      rootRef.current?.focus()
+    }
+  }, [mode, phase.status])
+  useEffect(() => {
+    if (!nextVisible || mode === 'interactive') return
+    const target = document.querySelector<HTMLElement>('[data-nav-id="pc-next"]')
+    if (target && document.activeElement !== target) focusElement(target)
+  }, [nextVisible, mode])
+
   useKeyHandler((key) => {
     if (trackMenu) return false
+    const active = document.activeElement
+    const focusedId = active instanceof HTMLElement ? active.dataset.navId : undefined
+    const interactive = mode === 'interactive'
     switch (key) {
       case 'MediaPlayPause':
         toggle()
+        overlay.reveal('info')
         return true
       case 'MediaPlay':
         void adapterRef.current?.play()
-        showControls()
+        overlay.reveal('info')
         return true
       case 'MediaPause':
         void adapterRef.current?.pause()
-        showControls()
+        overlay.reveal('info')
         return true
       case 'MediaStop':
-        navigate(-1)
+        saveRef.current(true)
+        exit('details')
         return true
       case 'MediaFastForward':
-        seekBy(30_000)
+        skip(30_000)
+        overlay.reveal('info')
         return true
       case 'MediaRewind':
-        seekBy(-30_000)
+        skip(-30_000)
+        overlay.reveal('info')
         return true
       case 'ChannelUp':
         zapChannel(1)
@@ -317,12 +498,36 @@ export default function PlayerScreen() {
       case 'ChannelDown':
         zapChannel(-1)
         return true
-      default:
-        if (!controls) {
-          showControls()
-          return true // a primeira tecla só revela os controles
+      case 'Enter':
+        if (!interactive) {
+          // Cartão do próximo episódio focado: OK o aciona (clique nativo).
+          if (focusedId === 'pc-next' && nextVisible) return false
+          overlay.reveal('interactive')
+          return true
         }
-        showControls()
+        overlay.touch()
+        if (focusedId === 'pc-timeline') {
+          commitScrub()
+          return true
+        }
+        return false
+      case 'ArrowLeft':
+      case 'ArrowRight':
+      case 'ArrowUp':
+      case 'ArrowDown':
+        if (!interactive) {
+          // Overlay fechado: setas nunca fazem seek. Canais mantêm o comportamento anterior (revelam os controles);
+          // com o cartão do próximo episódio focado (OK o aciona), Cima abre os controles.
+          if (live || (key === 'ArrowUp' && focusedId === 'pc-next')) overlay.reveal('interactive')
+          return true
+        }
+        overlay.touch()
+        if (focusedId === 'pc-timeline' && (key === 'ArrowLeft' || key === 'ArrowRight')) {
+          scrub(key === 'ArrowRight' ? 1 : -1)
+          return true
+        }
+        return false
+      default:
         return false
     }
   })
@@ -332,7 +537,13 @@ export default function PlayerScreen() {
       setTrackMenu(null)
       return true
     }
-    navigate(-1)
+    if (previewMs !== null) {
+      setPreviewMs(null)
+      overlay.touch()
+      return true
+    }
+    saveRef.current(true)
+    exit('details')
     return true
   })
 
@@ -348,10 +559,13 @@ export default function PlayerScreen() {
     a.getTracks().then(setTracks, () => undefined)
   }
 
-  const episodeLabel = episode ? `T${episode.season} · E${episode.episodeNum ?? '?'}${episode.title ? ` · ${episode.title}` : ''}` : undefined
+  const quality = videoSize ? qualityLabel(videoSize.width, videoSize.height) : null
+  const badges = live ? [] : [quality, subtitledFromSource(item?.title ?? title, item?.category) ? 'Legendado' : null].filter((b): b is string => !!b)
+  const episodeTitle = (episodeMeta && episodeMeta.id === episode?.id ? episodeMeta.name : '') || episode?.title || undefined
+  const nextLabel = nextEpisode ? `${episodeCode(nextEpisode)}${nextEpisode.title ? ` · ${nextEpisode.title}` : ''}` : ''
 
   return (
-    <main className="iplex-player" aria-label={`Reproduzindo ${title}`} onMouseMove={showControls}>
+    <main ref={rootRef} className="iplex-player" aria-label={`Reproduzindo ${title}`} tabIndex={-1} onMouseMove={() => overlay.reveal('interactive')}>
       <div ref={containerRef} className="iplex-player__surface" />
       {phase.status === 'preparing' || (buffering && phase.status === 'playing') ? (
         <div className="iplex-player__buffering">
@@ -372,25 +586,39 @@ export default function PlayerScreen() {
                   }
                 : undefined
             }
-            secondary={{ label: 'Voltar', onClick: () => navigate(-1) }}
+            secondary={{ label: 'Voltar', onClick: () => exit('details') }}
           />
         </div>
       ) : (
-        <div className={controls ? 'iplex-player__overlay is-visible' : 'iplex-player__overlay'} aria-hidden={!controls}>
-          <PlaybackControls
+        <>
+          <PlayerOverlay
+            mode={mode}
             title={item?.title ?? title}
-            subtitle={episodeLabel}
+            episodeCode={episode ? episodeCode(episode) : undefined}
+            episodeTitle={episodeTitle}
             live={live}
             playing={playing}
             positionMs={time.positionMs}
             durationMs={time.durationMs}
-            canSeek={canSeek}
+            seekable={seekable}
+            previewMs={previewMs}
+            pendingMs={pendingMs}
+            badges={badges}
             tracks={tracks}
-            onToggle={toggle}
-            onSeekBy={seekBy}
+            reserveNext={nextVisible}
+            onToggle={() => {
+              toggle()
+              overlay.touch()
+            }}
+            onSkip={(direction) => {
+              skip(direction * PLAYER.skipMs)
+              overlay.touch()
+            }}
             onOpenTracks={setTrackMenu}
+            onTimelineBlur={() => setPreviewMs(null)}
           />
-        </div>
+          {nextVisible && <NextEpisodeCard label={nextLabel} seconds={countdown} onPlay={playNext} />}
+        </>
       )}
       {trackMenu && (
         <Dialog title={trackMenu === 'audio' ? 'Áudio' : 'Legendas'} onClose={() => setTrackMenu(null)}>

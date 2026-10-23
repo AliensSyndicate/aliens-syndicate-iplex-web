@@ -145,6 +145,8 @@ export interface CatalogItem {
   year?: string | number
   rating?: string | number
   ageRating?: string
+  /** Data de inclusão no catálogo (epoch ms), quando o backend fornecer. Ausente = sem data. */
+  addedAt?: number
   version: string
 }
 

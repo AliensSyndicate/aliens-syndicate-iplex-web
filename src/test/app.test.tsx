@@ -194,7 +194,9 @@ describe('conteúdo', () => {
   it('Meu iPlex vazio: mensagem curta, sem cards fictícios', async () => {
     start('/', 'single')
     expect(await find('Sua área pessoal está vazia')).toBeTruthy()
-    expect(screen.queryAllByRole('button', { name: /Big Buck Bunny/ })).toHaveLength(0)
+    // Nenhum card pessoal fictício: só as seções do catálogo real podem ter pôsteres.
+    expect(screen.queryByText('Recentes')).toBeNull()
+    expect(screen.queryByText('Favoritos')).toBeNull()
   })
   it('Filmes lista somente itens do catálogo autorizado', async () => {
     start('/', 'single')

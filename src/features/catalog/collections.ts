@@ -7,12 +7,16 @@ import type { CatalogItem, ContentKind } from '../../services/api/types'
 import type { IndexedItem } from '../../services/library/libraryStore'
 
 export type CollectionId = 'continue' | 'favorites' | 'watched' | 'all' | `cat:${string}`
-export type SortId = 'az' | 'za'
+export type SortId = 'az' | 'za' | 'added'
 
 export const SORT_OPTIONS: Array<{ id: SortId; label: string }> = [
   { id: 'az', label: 'A–Z' },
   { id: 'za', label: 'Z–A' },
+  { id: 'added', label: 'Mais recentes' },
 ]
+
+/** "Mais recentes" só existe com datas reais de inclusão vindas do catálogo. */
+export const sortOptionsFor = (items: CatalogItem[]) => (items.some((i) => typeof i.addedAt === 'number') ? SORT_OPTIONS : SORT_OPTIONS.filter((o) => o.id !== 'added'))
 
 export interface SideEntry {
   id: CollectionId
@@ -60,6 +64,10 @@ export function buildSidebar(opts: { personal: boolean; allowAdult: boolean; cat
 
 export function sortItems(items: CatalogItem[], sort: SortId): CatalogItem[] {
   const out = [...items]
+  if (sort === 'added') {
+    // Mais recentes primeiro; sem data, no fim (A–Z entre si).
+    return out.sort((a, b) => (b.addedAt ?? -Infinity) - (a.addedAt ?? -Infinity) || compareText(a.title, b.title))
+  }
   out.sort((a, b) => (sort === 'az' ? compareText(a.title, b.title) : compareText(b.title, a.title)))
   return out
 }

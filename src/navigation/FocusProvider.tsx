@@ -1,7 +1,8 @@
 /**
  * Integração do controle remoto com o React:
  *  - setas → navegação espacial;
- *  - OK/Enter → ativa o elemento focado (botões nativos já tratam);
+ *  - OK/Enter → manipuladores registrados (player) e, sem tratamento, ativa
+ *    o elemento focado (botões nativos já tratam);
  *  - Return/Back → pilha de manipuladores (diálogo, player, tela) e, por fim,
  *    o comportamento padrão da rota;
  *  - teclas de mídia → manipuladores registrados (player);
@@ -95,6 +96,13 @@ export function FocusProvider({
         return
       }
       if (key === 'Enter') {
+        // Telas com OK contextual (player: OK revela os controles antes de acionar um botão).
+        for (let i = keyStack.current.length - 1; i >= 0; i -= 1) {
+          if (keyStack.current[i]!(key)) {
+            event.preventDefault()
+            return
+          }
+        }
         if (active instanceof HTMLElement && active.hasAttribute('data-nav') && !(active instanceof HTMLButtonElement) && !(active instanceof HTMLAnchorElement) && !isTextInput(active)) {
           event.preventDefault()
           active.click()

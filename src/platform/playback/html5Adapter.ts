@@ -93,7 +93,12 @@ export function createHtml5Adapter(load: () => Promise<HlsClass> = loadHls): Pla
         detach.push(() => v.removeEventListener(event, listener))
       }
       let usingHls = false
+      const size = () => {
+        if (v.videoWidth > 0 && v.videoHeight > 0) emitter.emit('media', { width: v.videoWidth, height: v.videoHeight })
+      }
+      on('resize', size)
       on('loadedmetadata', () => {
+        size()
         emitter.emit('state', { state: 'ready' })
         if (!usingHls && source.startPositionMs && !live) v.currentTime = source.startPositionMs / 1000
       })
@@ -105,9 +110,11 @@ export function createHtml5Adapter(load: () => Promise<HlsClass> = loadHls): Pla
         emitter.emit('state', { state: 'ended' })
         emitter.emit('ended', {})
       })
-      on('timeupdate', () =>
-        emitter.emit('time', { positionMs: Math.max(0, v.currentTime * 1000), durationMs: live || !Number.isFinite(v.duration) ? 0 : v.duration * 1000 }),
-      )
+      const time = () =>
+        emitter.emit('time', { positionMs: Math.max(0, v.currentTime * 1000), durationMs: live || !Number.isFinite(v.duration) ? 0 : v.duration * 1000 })
+      on('timeupdate', time)
+      // Pausado não há timeupdate: o seek concluído confirma a posição nova.
+      on('seeked', time)
       on('waiting', () => emitter.emit('buffering', { active: true, percent: 0 }))
       on('canplay', () => emitter.emit('buffering', { active: false, percent: 100 }))
       on('error', () => {
