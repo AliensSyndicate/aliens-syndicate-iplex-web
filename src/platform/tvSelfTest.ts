@@ -7,6 +7,8 @@
  * (foco, rolagem, estilos, sobreposição). Não altera dados nem a conta: só
  * navega, troca categoria/ordenação na própria tela e abre/volta de um detalhe.
  */
+import type { Backend } from '../services/api/backend'
+import { probeCatalogCache, probeCatalogSets } from './catalogSetsProbe'
 import { diag } from './diagnostics'
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -300,6 +302,8 @@ export async function runTvSelfTest() {
       const chips = all('.iplex-chips .iplex-chip').map((c) => (c.textContent ?? '').trim()).join('|')
       for (let i = 0; i < chips.length; i += 360) diag(`st:live-chips-${Math.floor(i / 360)}`, chips.slice(i, i + 360))
     }
+    await probeCatalogSets((window as unknown as { __iplexBackend?: Backend }).__iplexBackend, diag)
+    await probeCatalogCache((window as unknown as { __iplexBackend?: Backend }).__iplexBackend, diag)
     diag('st:skeleton', (window as unknown as { __st: () => string }).__st())
     diag('st:done', 'ok')
   } catch (error) {

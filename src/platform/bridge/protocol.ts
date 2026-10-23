@@ -99,7 +99,14 @@ export interface PlayerErrorInfo {
 /** Métodos que o frontend pode chamar no shell. */
 export interface BridgeMethods {
   /** Handshake obrigatório: o frontend avisa que está pronto; o shell remove a tela de carregamento. */
-  'app.ready': { params: { version?: string }; result: PlatformInfo }
+  'app.ready': { params: { version?: string; unifiedStartup?: boolean }; result: PlatformInfo }
+  /**
+   * Inicialização única (aditivo): o frontend informa a etapa real em andamento e o shell a
+   * mostra na própria tela de carregamento. Só vale quando o app.ready declarou `unifiedStartup`.
+   */
+  'app.status': { params: { text: string }; result: void }
+  /** Inicialização única: o frontend terminou o preparo; o shell revela o iframe. */
+  'app.show': { params: void; result: void }
   'platform.getInfo': { params: void; result: PlatformInfo }
   'app.exit': { params: void; result: void }
   'player.open': { params: { url: string; autoplay?: boolean; startPositionMs?: number }; result: PlayerStatus }
@@ -120,6 +127,8 @@ export type BridgeResult<M extends BridgeMethod> = BridgeMethods[M]['result']
 /** Lista de comandos permitidos (tudo fora dela é recusado). */
 export const BRIDGE_METHODS: readonly BridgeMethod[] = [
   'app.ready',
+  'app.status',
+  'app.show',
   'platform.getInfo',
   'app.exit',
   'player.open',

@@ -7,6 +7,7 @@ import { SHELL_ORIGINS } from '../config/env'
 import { WEB_VERSION } from '../config/env'
 import { createBridgeClient, isInsideFrame, type BridgeClient } from './bridge/client'
 import type { BridgeMethod, PlatformInfo, RemoteKeyMap } from './bridge/protocol'
+import { enableUnifiedStartup } from './startup'
 
 export type RuntimeKind = 'tizen' | 'webos' | 'browser'
 
@@ -73,7 +74,10 @@ export async function detectPlatform({ timeoutMs, win = window }: { timeoutMs: n
   if (!isInsideFrame(win)) return browserContext()
   const bridge = createBridgeClient({ win, allowedOrigins: SHELL_ORIGINS, timeoutMs })
   try {
-    const info = await bridge.call('app.ready', { version: WEB_VERSION })
+    // `unifiedStartup`: shells novos mantêm a própria tela de carregamento até o app.show; os antigos ignoram.
+    const info = await bridge.call('app.ready', { version: WEB_VERSION, unifiedStartup: true })
+    const methods = info.bridge?.methods ?? []
+    if (methods.includes('app.status') && methods.includes('app.show')) enableUnifiedStartup(bridge)
     const kind: RuntimeKind = info.platform === 'tizen' || info.platform === 'webos' ? info.platform : 'browser'
     return {
       kind,

@@ -58,6 +58,25 @@ export class CatalogStore {
     })
   }
 
+  /**
+   * Carrega uma fonte inteira a partir dos seis conjuntos (preparados na inicialização, do cache
+   * local ou do backend). Fica completa: sem páginas pendentes e sem carregamento progressivo.
+   */
+  hydrate(sourceId: string, sets: Record<'live' | 'vod' | 'series' | 'live_categories' | 'vod_categories' | 'series_categories', Array<Record<string, unknown>>>, version: string) {
+    const state = this.states.get(sourceId)
+    if (!state) return
+    state.items.clear()
+    for (const records of [sets.live, sets.vod, sets.series]) {
+      for (const record of records) state.items.set(String(record.id), { ...(record as unknown as CatalogItem), sourceId })
+    }
+    state.categories = [...sets.live_categories, ...sets.vod_categories, ...sets.series_categories].map((c) => ({ id: String(c.id), name: String(c.name), kind: c.kind as ContentKind }))
+    state.version = version
+    state.pages = CATALOG.maxPages
+    state.hasMore = false
+    state.error = null
+    this.bump()
+  }
+
   subscribe = (listener: () => void) => {
     this.listeners.add(listener)
     return () => {

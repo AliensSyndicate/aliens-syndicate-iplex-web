@@ -33,12 +33,13 @@ const PersonScreen = lazy(screenLoaders.person)
 const SettingsScreen = lazy(screenLoaders.settings)
 
 const STEP_LABEL: Record<StartupStep, string> = {
-  device: 'Verificando este dispositivo',
-  profiles: 'Configurando usuários',
-  session: 'Configurando usuários',
-  content: 'Configurando conteúdo',
-  media: 'Configurando filmes e séries',
-  live: 'Configurando canais ao vivo',
+  device: 'Verificando dispositivo...',
+  connection: 'Verificando conexão com o Control...',
+  account: 'Configurando conta...',
+  movies: 'Configurando filmes...',
+  series: 'Configurando séries...',
+  channels: 'Configurando canais...',
+  done: 'Tudo pronto!',
 }
 
 function SessionGate() {

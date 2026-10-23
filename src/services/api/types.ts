@@ -48,7 +48,6 @@ export interface PinCheck {
  * Solicitação de reprodução enviada pelo iPlex Control (contrato v1,
  * docs/CONTRACTS.md do Control). Só identificadores estáveis do catálogo.
  */
-export type PlayRequestStatus = 'pending' | 'delivered' | 'confirming' | 'started' | 'declined' | 'failed' | 'expired' | 'superseded'
 
 export interface PlayRequestNotice {
   id: string
@@ -156,6 +155,33 @@ export interface CatalogPage {
   categories: CatalogCategory[]
   cursor: number
   hasMore: boolean
+}
+
+/** Seis conjuntos do catálogo (blocos por callable, já filtrados para o perfil ativo). */
+export type CatalogSetName = 'live_categories' | 'live' | 'vod_categories' | 'vod' | 'series_categories' | 'series'
+export interface CatalogManifest {
+  version: string
+  previousVersion: string | null
+  /** Impressão digital das permissões do perfil: mudou → o cache local é refeito. */
+  viewerKey: string
+  sets: Record<CatalogSetName, { chunks: number; hash: string }>
+  deltaAvailable: boolean
+}
+export type CatalogRecord = Record<string, unknown> & { id: string }
+export interface CatalogChunk {
+  version: string
+  set: CatalogSetName
+  n: number
+  chunks: number
+  records: CatalogRecord[]
+}
+export interface CatalogDelta {
+  from: string
+  to: string
+  /** true: não há histórico confiável; reconstruir o cache inteiro. */
+  full: boolean
+  reason?: string
+  steps: Array<{ version: string; sets: Partial<Record<CatalogSetName, { upserts: CatalogRecord[]; deletes: string[] }>> }>
 }
 
 export interface SeriesEpisode {

@@ -8,7 +8,11 @@
  */
 import type {
   AccountIdentity,
+  CatalogChunk,
+  CatalogDelta,
+  CatalogManifest,
   CatalogPage,
+  CatalogSetName,
   ContentKind,
   DeviceIdentity,
   EpgResult,
@@ -116,6 +120,10 @@ export interface Backend {
 
   listSpaces(profileId: string): Promise<Space[]>
   readCatalog(profileId: string, query: CatalogQuery): Promise<CatalogPage>
+  /** Seis conjuntos do catálogo: manifesto, blocos e diferenças desde uma versão. */
+  readCatalogManifest(profileId: string, sourceId: string): Promise<CatalogManifest>
+  readCatalogChunk(profileId: string, sourceId: string, set: CatalogSetName, n: number, version: string): Promise<CatalogChunk>
+  readCatalogDelta(profileId: string, sourceId: string, from: string): Promise<CatalogDelta>
   readSeries(profileId: string, sourceId: string, seriesId: string): Promise<SeriesDetails | null>
   readEpg(sourceId: string, channelId: string): Promise<EpgResult>
   resolveStream(profileId: string, input: { sourceId: string; itemId: string; episodeId?: string }): Promise<StreamGrant>

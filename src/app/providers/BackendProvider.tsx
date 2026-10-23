@@ -6,7 +6,7 @@ import { createFirebaseBackend } from '../../services/firebase/firebaseBackend'
 import { createTmdbClient, type TmdbClient } from '../../services/tmdb/tmdbClient'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { SplashScreen } from '../../features/startup/SplashScreen'
-import { diag } from '../../platform/diagnostics'
+import { diag, diagnosticsEnabled } from '../../platform/diagnostics'
 
 interface BackendApi {
   backend: Backend
@@ -34,7 +34,11 @@ export function BackendProvider({ children, backend: injected }: { children: Rea
     if (injected) return
     let alive = true
     createBackend().then(
-      (backend) => alive && setApi({ backend, tmdb: createTmdbClient(backend) }),
+      (backend) => {
+        // Somente no modo de diagnóstico da TV (?diag=1): o roteiro de verificação usa o mesmo backend.
+        if (diagnosticsEnabled()) (window as unknown as { __iplexBackend?: Backend }).__iplexBackend = backend
+        if (alive) setApi({ backend, tmdb: createTmdbClient(backend) })
+      },
       (e) => {
         diag('backend-init', `${e instanceof Error ? `${e.name}: ${e.message}` : String(e)} ${(e as Error)?.stack?.split('\n').slice(0, 3).join(' | ') ?? ''}`)
         if (alive) setError(e instanceof AppError ? e : new AppError('not-configured'))

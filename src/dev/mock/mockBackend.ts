@@ -207,6 +207,17 @@ export function createMockBackend(): Backend {
       const kinds = (['channel', 'movie', 'series'] as const).filter((k) => visible().some((i) => i.kind === k))
       return [{ sourceId: SOURCE, name: 'Fonte de demonstração', kinds: [...kinds] }]
     },
+    // Seis conjuntos: o demonstrativo não os tem (o app cai no formato paginado).
+    async readCatalogManifest() {
+      throw new AppError('backend-outdated', 'catalog-sets-unavailable')
+    },
+    async readCatalogChunk() {
+      throw new AppError('backend-outdated', 'catalog-sets-unavailable')
+    },
+    async readCatalogDelta() {
+      throw new AppError('backend-outdated', 'catalog-sets-unavailable')
+    },
+
     async readCatalog(_profileId, q: CatalogQuery) {
       requireLease()
       await delay(300)

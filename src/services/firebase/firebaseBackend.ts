@@ -29,7 +29,11 @@ import type {
   AccountIdentity,
   CatalogCategory,
   CatalogItem,
+  CatalogChunk,
+  CatalogDelta,
+  CatalogManifest,
   CatalogPage,
+  CatalogSetName,
   DeviceIdentity,
   EpgResult,
   Generations,
@@ -239,6 +243,18 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
         cursor: raw.cursor,
         hasMore: raw.hasMore,
       }
+    },
+
+    async readCatalogManifest(profileId: string, sourceId: string): Promise<CatalogManifest> {
+      return call<CatalogManifest>('readCatalogManifest', { id: sourceId, profileId })
+    },
+
+    async readCatalogChunk(profileId: string, sourceId: string, set: CatalogSetName, n: number, version: string): Promise<CatalogChunk> {
+      return call<CatalogChunk>('readCatalogChunk', { id: sourceId, profileId, set, n, version })
+    },
+
+    async readCatalogDelta(profileId: string, sourceId: string, from: string): Promise<CatalogDelta> {
+      return call<CatalogDelta>('readCatalogDelta', { id: sourceId, profileId, from })
     },
 
     async readSeries(profileId: string, sourceId: string, seriesId: string): Promise<SeriesDetails | null> {

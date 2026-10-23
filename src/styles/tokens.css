@@ -100,7 +100,6 @@
   --iplex-safe-area-top: 2.5rem;
   --iplex-header-height: 5.25rem;
   --iplex-content-top: 10rem;
-  --iplex-hero-height: 56vh;
   --iplex-row-gap: 3.25rem;
   --iplex-card-gap: 1.75rem;
   --iplex-poster-width: 14.75rem;
@@ -127,6 +126,5 @@ html {
   }
   :root {
     --iplex-safe-area-x: 16px;
-    --iplex-hero-height: 48vh;
   }
 }

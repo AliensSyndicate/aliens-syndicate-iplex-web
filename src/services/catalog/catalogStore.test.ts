@@ -96,3 +96,37 @@ describe('normalize', () => {
     expect(parseEpisodeContentId(id)).toEqual({ seriesItemId: 'a'.repeat(64), episodeId: '12345' })
   })
 })
+
+describe('CatalogStore.hydrate (seis conjuntos)', () => {
+  const sets = {
+    live: [{ id: 'c1', kind: 'channel', title: 'Canal', category: 'NOTICIAS', categoryId: '5', providerRef: '1' }],
+    live_categories: [{ id: '5', name: 'NOTICIAS', kind: 'channel' }],
+    vod: [
+      { id: 'm1', kind: 'movie', title: 'A', category: 'AÇAO', categoryId: '10', providerRef: '1' },
+      { id: 'm2', kind: 'movie', title: 'B', category: 'Action', categoryId: '11', providerRef: '2' },
+    ],
+    vod_categories: [
+      { id: '10', name: 'AÇAO', kind: 'movie' },
+      { id: '11', name: 'Action', kind: 'movie' },
+    ],
+    series: [],
+    series_categories: [],
+  }
+  it('entrega a fonte completa, sem páginas pendentes, e agrupa categorias pelo nome padronizado', () => {
+    const store = new CatalogStore({ readCatalog: vi.fn() }, 'p', [{ sourceId: 's1', name: 'F', kinds: ['movie', 'channel', 'series'] }])
+    store.hydrate('s1', sets, 'v1')
+    expect(store.items('movie')).toHaveLength(2)
+    expect(store.items('channel')).toHaveLength(1)
+    expect(store.hasMore('movie')).toBe(false)
+    expect(store.isLoading('movie')).toBe(false)
+    const groups = store.categories('movie')
+    expect(groups.map((g) => g.name)).toEqual(['Ação'])
+    expect(groups[0]!.items).toHaveLength(2)
+    expect(store.categories('channel')[0]!.name).toBe('Notícias')
+  })
+  it('ids de categoria originais continuam distintos nos registros (só a exibição é unificada)', () => {
+    const store = new CatalogStore({ readCatalog: vi.fn() }, 'p', [{ sourceId: 's1', name: 'F', kinds: ['movie'] }])
+    store.hydrate('s1', sets, 'v1')
+    expect(store.items('movie').map((i) => i.categoryId).sort()).toEqual(['10', '11'])
+  })
+})

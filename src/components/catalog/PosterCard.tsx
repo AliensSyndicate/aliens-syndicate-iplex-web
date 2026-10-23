@@ -50,5 +50,3 @@ export function PosterCard({ item, navId, navGroup, onSelect, progress, autoFocu
   )
 }
 
-export const MovieCard = PosterCard
-export const SeriesCard = PosterCard

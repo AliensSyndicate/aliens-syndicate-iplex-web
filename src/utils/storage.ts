@@ -18,11 +18,3 @@ export function writeJson(key: string, value: unknown): void {
     // armazenamento cheio, bloqueado ou indisponível: segue sem cache
   }
 }
-
-export function removeKey(key: string): void {
-  try {
-    window.localStorage.removeItem(key)
-  } catch {
-    // ignorado
-  }
-}

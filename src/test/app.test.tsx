@@ -46,7 +46,7 @@ describe('carregamento inicial', () => {
       release = resolve
     })
     start('/', 'single', { ...real, readCatalog: async (profileId, query) => (await gate, real.readCatalog(profileId, query)) })
-    expect(await find('Configurando filmes e séries')).toBeTruthy()
+    expect(await find('Configurando filmes...')).toBeTruthy()
     expect(screen.queryByRole('navigation', { name: 'Menu principal' })).toBeNull()
     release()
     expect(await screen.findByRole('navigation', { name: 'Menu principal' }, { timeout: 15000 })).toBeTruthy()
@@ -66,6 +66,28 @@ describe('carregamento inicial', () => {
     retry.click()
     expect(await screen.findByRole('navigation', { name: 'Menu principal' }, { timeout: 15000 })).toBeTruthy()
   }, 30000)
+})
+
+describe('seis conjuntos', () => {
+  it('com o backend novo a inicialização usa manifesto/blocos e não o formato paginado', async () => {
+    const real = scenarioBackend('single')
+    const readCatalog = vi.fn(real.readCatalog)
+    const manifest = vi.fn(async () => ({
+      version: 'v1', previousVersion: null, viewerKey: 'k', deltaAvailable: false,
+      sets: { live_categories: { chunks: 1, hash: 'a' }, live: { chunks: 1, hash: 'a' }, vod_categories: { chunks: 1, hash: 'a' }, vod: { chunks: 1, hash: 'a' }, series_categories: { chunks: 1, hash: 'a' }, series: { chunks: 1, hash: 'a' } },
+    }))
+    const chunk = vi.fn(async (_p: string, sourceId: string, set: string) => ({
+      version: 'v1', set, n: 0, chunks: 1,
+      records: set === 'vod' ? [{ id: 'm9', sourceId, kind: 'movie', title: 'Filme do bloco', category: 'AÇAO', categoryId: '10', providerRef: '9', version: 'v1' }] : set === 'vod_categories' ? [{ id: '10', name: 'AÇAO', kind: 'movie' }] : [],
+    }))
+    start('/', 'single', { ...real, readCatalog, readCatalogManifest: manifest, readCatalogChunk: chunk as never, readCatalogDelta: vi.fn() as never })
+    await screen.findByRole('navigation', { name: 'Menu principal' }, { timeout: 15000 })
+    expect(manifest).toHaveBeenCalled()
+    expect(chunk).toHaveBeenCalled()
+    expect(readCatalog).not.toHaveBeenCalled()
+    screen.getByRole('button', { name: 'Filmes' }).click()
+    expect(await screen.findByRole('button', { name: 'Filme do bloco' }, { timeout: 8000 })).toBeTruthy()
+  }, 40000)
 })
 
 describe('menu principal', () => {

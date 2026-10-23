@@ -17,6 +17,8 @@ import type { DeviceIdentity, Lease, Profile, Space } from '../../services/api/t
 import { CatalogStore } from '../../services/catalog/catalogStore'
 import { CATALOG } from '../../config/features'
 import { prefetchScreens } from '../screens'
+import { getCatalogCache } from '../../services/catalog/catalogCache'
+import { syncSources } from '../../services/catalog/catalogSync'
 import { LibraryStore } from '../../services/library/libraryStore'
 import { LeaseManager } from '../../services/session/leaseManager'
 import { readJson, writeJson } from '../../utils/storage'
@@ -25,7 +27,8 @@ import { diag } from '../../platform/diagnostics'
 import { useBackend } from './BackendProvider'
 import { usePlatform } from './PlatformProvider'
 
-export type StartupStep = 'device' | 'profiles' | 'session' | 'content' | 'media' | 'live'
+/** Etapas reais da inicialização (cada uma só aparece quando de fato começa). */
+export type StartupStep = 'device' | 'connection' | 'account' | 'movies' | 'series' | 'channels' | 'done'
 
 export interface ReadySession {
   status: 'ready'
@@ -94,6 +97,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const toPairing = useCallback(async () => {
     leases.dispose()
+    // Perdeu o acesso: nenhum catálogo local sobrevive à conta/dispositivo.
+    await getCatalogCache().clearAll().catch(() => undefined)
     await backend.forgetDevice().catch(() => undefined)
     setState({ status: 'pairing' })
   }, [backend, leases])
@@ -111,7 +116,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         current.catalog.dispose()
         if (current.profile.id !== profile.id) await leases.release()
       }
-      setState({ status: 'starting', step: 'session' })
+      setState({ status: 'starting', step: 'account' })
       let lease: Lease
       try {
         lease = await step(leases.acquire(profile.id))
@@ -136,7 +141,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (error.kind === 'device-unpaired') return void toPairing()
         setState({ status: 'blocked', error: error.kind === 'unknown' ? new AppError('iptv-unavailable', error.code) : error, identity, profiles, retryProfile: profile })
       }
-      setState({ status: 'starting', step: 'content' })
       let spaces: Space[]
       try {
         spaces = await backend.listSpaces(profile.id)
@@ -165,12 +169,39 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       }
       try {
-        setState({ status: 'starting', step: 'media' })
-        await loadKinds(['movie', 'series'])
-        if (!alive()) return catalog.dispose()
-        setState({ status: 'starting', step: 'live' })
-        await loadKinds(['channel'])
+        // Seis conjuntos (cache local + diferenças); o formato paginado só entra se o backend for antigo.
+        let prepared = false
+        try {
+          const results = await syncSources(
+            { backend, cache: getCatalogCache(), diag },
+            `${identity.familyId}:${profile.id}`,
+            profile.id,
+            spaces.map((space) => space.sourceId),
+            (group) => {
+              if (alive()) setState({ status: 'starting', step: group })
+            },
+          )
+          for (const result of results) {
+            catalog.hydrate(result.sourceId, result.sets, result.version)
+            diag('sync', `fonte=${result.sourceId.slice(0, 8)} modo=${result.mode} ${result.ms}ms`)
+          }
+          prepared = true
+        } catch (raw) {
+          if (toAppError(raw).kind !== 'backend-outdated') throw raw
+          diag('sync', 'backend sem seis conjuntos: formato paginado')
+        }
+        if (!prepared) {
+          setState({ status: 'starting', step: 'movies' })
+          await loadKinds(['movie'])
+          setState({ status: 'starting', step: 'series' })
+          await loadKinds(['series'])
+          setState({ status: 'starting', step: 'channels' })
+          await loadKinds(['channel'])
+        }
         await prefetchScreens()
+        if (alive()) setState({ status: 'starting', step: 'done' })
+        // O texto final precisa ser legível antes de entrar na interface.
+        await new Promise((resolve) => setTimeout(resolve, 400))
       } catch (raw) {
         catalog.dispose()
         if (alive()) fail(raw)
@@ -183,7 +214,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   )
 
   const loadProfiles = useCallback(async (identity: DeviceIdentity, alive: () => boolean) => {
-    setState({ status: 'starting', step: 'profiles' })
+    setState({ status: 'starting', step: 'connection' })
     let profiles: Profile[]
     try {
       profiles = sortProfiles(await step(backend.listProfiles()))
