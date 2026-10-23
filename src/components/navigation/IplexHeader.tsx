@@ -32,7 +32,7 @@ export function IplexHeader({ profile, onAvatar }: { profile: Profile; onAvatar:
   const sections = visibleSections(profile)
 
   return (
-    <header className={`iplex-header${current === 'movies' || current === 'series' || location.pathname.startsWith('/catalogo') ? ' iplex-header--see-through' : ''}`} data-nav-fixed="">
+    <header className={`iplex-header${current === 'live' || current === 'movies' || current === 'series' || location.pathname.startsWith('/catalogo') ? ' iplex-header--see-through' : ''}`} data-nav-fixed="">
       <nav className="iplex-header__bar" aria-label="Menu principal">
         <button
           type="button"

@@ -14,7 +14,7 @@ export function Artwork({ src, alt, fallback, className }: { src: string | null 
           <span className="iplex-artwork__text">{fallback}</span>
         </span>
       )}
-      {show && <img src={src} alt={alt} loading="lazy" decoding="async" onLoad={() => setLoaded(true)} onError={() => setFailed(true)} />}
+      {show && <img src={src} alt={alt} loading="lazy" decoding="async" referrerPolicy="no-referrer" onLoad={() => setLoaded(true)} onError={() => setFailed(true)} />}
     </div>
   )
 }

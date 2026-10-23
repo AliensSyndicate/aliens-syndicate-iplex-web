@@ -1,4 +1,5 @@
 import type { CatalogItem, ContentRef } from '../../services/api/types'
+import { isAdultItem } from '../../services/catalog/adult'
 
 export const PATHS = {
   details: (sourceId: string, itemId: string, title: string) => `/titulo/${encodeURIComponent(sourceId)}/${encodeURIComponent(itemId)}?t=${encodeURIComponent(title)}`,
@@ -18,8 +19,13 @@ export const PATHS = {
   catalog: (collection: string, kinds: string[] = ['movie', 'series']) => `/catalogo?c=${encodeURIComponent(collection)}&k=${kinds.join(',')}`,
 } as const
 
+/** Para onde um item abre. Conteúdo adulto nunca abre a tela de detalhes: filme e canal tocam direto; série vai aos episódios. */
 export function contentPath(item: CatalogItem): string {
-  return item.kind === 'channel'
-    ? PATHS.watch({ sourceId: item.sourceId, itemId: item.id, kind: 'channel', title: item.title })
-    : PATHS.details(item.sourceId, item.id, item.title)
+  if (item.kind === 'channel') return PATHS.watch({ sourceId: item.sourceId, itemId: item.id, kind: 'channel', title: item.title })
+  if (isAdultItem(item)) {
+    return item.kind === 'series'
+      ? PATHS.seasons(item.sourceId, item.id, item.title)
+      : PATHS.watch({ sourceId: item.sourceId, itemId: item.id, kind: 'movie', title: item.title })
+  }
+  return PATHS.details(item.sourceId, item.id, item.title)
 }

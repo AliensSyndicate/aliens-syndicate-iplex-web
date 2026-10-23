@@ -24,7 +24,7 @@ import {
 import { connectFunctionsEmulator, getFunctions, httpsCallable, type Functions } from 'firebase/functions'
 import { EMULATOR_HOST, FUNCTIONS_REGION, type FirebaseWebConfig } from '../../config/env'
 import type { Backend, CatalogQuery, HeartbeatResult, PairingRequest, ProgressWrite } from '../api/backend'
-import { AppError, toAppError } from '../api/errors'
+import { AppError, isAmbiguousAuthFailure, toAppError } from '../api/errors'
 import type {
   AccountIdentity,
   CatalogCategory,
@@ -79,7 +79,7 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
     return ctx
   }
 
-  async function call<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
+  async function call<T>(action: string, payload: Record<string, unknown> = {}, recheck = true): Promise<T> {
     const { functions, auth } = context()
     try {
       const player = httpsCallable<{ action: string; payload: Record<string, unknown> }, T>(functions, PLAYER_CALLABLE, { timeout: 60000 })
@@ -91,7 +91,17 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
     } catch (error) {
       const e = error as { code?: string; message?: string }
       diag('call', `${action} fail ${e?.code ?? ''} ${e?.message ?? ''}`)
-      throw toAppError(error, { authenticated: !!auth.currentUser })
+      const mapped = toAppError(error, { authenticated: !!auth.currentUser })
+      if (isAmbiguousAuthFailure(mapped) && auth.currentUser) {
+        // Não desvincula por um erro ambíguo: renova a credencial e tenta uma vez; se persistir, é
+        // falha recuperável ("tentar novamente"), nunca um pedido para vincular de novo.
+        if (recheck) {
+          await auth.currentUser.getIdToken(true).catch(() => undefined)
+          return call<T>(action, payload, false)
+        }
+        throw new AppError('server-unavailable', `auth-unconfirmed:${mapped.code}`)
+      }
+      throw mapped
     }
   }
 

@@ -17,6 +17,7 @@ import { toAppError } from '../api/errors'
 import type { ProgressWrite } from '../api/backend'
 import type { CatalogItem, ContentKind, DeviceIdentity, Generations, Library, Profile, ProgressEntry } from '../api/types'
 import { readJson, writeJson } from '../../utils/storage'
+import { isAdultItem } from '../catalog/adult'
 
 export interface IndexedItem {
   contentId: string
@@ -127,7 +128,8 @@ export class LibraryStore {
   }
 
   async setFavorite(item: CatalogItem, favorite: boolean): Promise<void> {
-    if (!this.persistent) return
+    // Conteúdo adulto nunca é guardado (favoritos, lista, recentes).
+    if (!this.persistent || (favorite && isAdultItem(item))) return
     const previous = this.snapshot.library
     this.remember(indexFromItem(item))
     const favorites = favorite
@@ -146,7 +148,7 @@ export class LibraryStore {
 
   /** Grava progresso autorizado (o chamador controla a frequência). */
   async saveProgress(contentId: string, positionSec: number, durationSec: number, meta: IndexedItem, playback?: ProgressWrite['session']): Promise<void> {
-    if (!this.persistent || !(durationSec > 0) || positionSec < 0) return
+    if (!this.persistent || !(durationSec > 0) || positionSec < 0 || isAdultItem(meta)) return
     const position = Math.min(positionSec, durationSec)
     this.remember(meta)
     const entry: ProgressEntry = { contentId, position, duration: durationSec, generation: this.generations.progress, updatedAt: Date.now() }

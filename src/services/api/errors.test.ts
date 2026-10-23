@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { kindForDomainCode, toAppError } from './errors'
+import { isAmbiguousAuthFailure, kindForDomainCode, toAppError } from './errors'
 
 const fn = (message: string, code = 'functions/failed-precondition') => ({ code, message })
 
@@ -43,4 +43,17 @@ it('ignora o status HTTP que o SDK do Firebase acrescenta à mensagem', () => {
   expect(toAppError(fn('subscription-required [400]')).kind).toBe('subscription-inactive')
   expect(toAppError(fn('invalid-token [400]'), { authenticated: false }).kind).toBe('pairing-pending')
   expect(toAppError(fn('device-revoked [400]')).kind).toBe('device-unpaired')
+})
+
+
+describe('desvínculo só por revogação explícita', () => {
+  it('unauthenticated/permission-denied com credencial são ambíguos (não desvinculam)', () => {
+    expect(isAmbiguousAuthFailure(toAppError({ code: 'functions/unauthenticated', message: 'x' }, { authenticated: true }))).toBe(true)
+    expect(isAmbiguousAuthFailure(toAppError({ code: 'permission-denied' }))).toBe(true)
+  })
+  it('device-revoked e revogação do token continuam sendo desvínculo de verdade', () => {
+    expect(isAmbiguousAuthFailure(toAppError({ code: 'functions/failed-precondition', message: 'device-revoked' }))).toBe(false)
+    expect(isAmbiguousAuthFailure(toAppError({ code: 'auth/user-token-expired' }))).toBe(false)
+    expect(toAppError({ code: 'functions/failed-precondition', message: 'device-revoked' }).kind).toBe('device-unpaired')
+  })
 })

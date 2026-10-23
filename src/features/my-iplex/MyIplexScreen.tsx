@@ -10,7 +10,7 @@
 import { useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useReadySession } from '../../app/providers/SessionProvider'
-import { PATHS } from '../../app/routes/paths'
+import { contentPath, PATHS } from '../../app/routes/paths'
 import { ContentCarousel } from '../../components/catalog/ContentCarousel'
 import { LandscapeCard } from '../../components/catalog/LandscapeCard'
 import { PosterCard } from '../../components/catalog/PosterCard'
@@ -21,6 +21,7 @@ import { useCatalog } from '../../hooks/useCatalog'
 import { useLibrary } from '../../hooks/useLibrary'
 import { useInitialFocus } from '../../navigation/FocusProvider'
 import type { CatalogItem } from '../../services/api/types'
+import { isAdultItem } from '../../services/catalog/adult'
 import type { IndexedItem } from '../../services/library/libraryStore'
 import { itemFromIndexed } from '../catalog/collections'
 import { SECTION_PATHS } from '../profiles/profileRules'
@@ -40,27 +41,27 @@ export default function MyIplexScreen() {
       library.progress
         .filter((p) => p.duration > 0 && p.position / p.duration < 0.95)
         .map((p) => ({ entry: p, meta: store.indexed(p.contentId) }))
-        .filter((x): x is { entry: typeof x.entry; meta: IndexedItem } => !!x.meta)
+        .filter((x): x is { entry: typeof x.entry; meta: IndexedItem } => !!x.meta && !isAdultItem(x.meta))
         .slice(0, ROW),
     [library.progress, store],
   )
   const favorites = useMemo(
-    () => library.favorites.map((f) => store.indexed(f.contentId)).filter((m): m is IndexedItem => !!m),
+    () => library.favorites.map((f) => store.indexed(f.contentId)).filter((m): m is IndexedItem => !!m && !isAdultItem(m)),
     [library.favorites, store],
   )
   const myList = useMemo(() => favorites.filter((m) => m.kind !== 'channel').slice(0, ROW), [favorites])
   const channels = useMemo(() => favorites.filter((m) => m.kind === 'channel').slice(0, ROW), [favorites])
   const watched = useMemo(
-    () => library.watched.map((w) => store.indexed(w.contentId)).filter((m): m is IndexedItem => !!m && m.kind !== 'channel').slice(0, ROW),
+    () => library.watched.map((w) => store.indexed(w.contentId)).filter((m): m is IndexedItem => !!m && m.kind !== 'channel' && !isAdultItem(m)).slice(0, ROW),
     [library.watched, store],
   )
-  const movieRow = useMemo(() => movies.items.slice(0, ROW), [movies.items])
-  const seriesRow = useMemo(() => series.items.slice(0, ROW), [series.items])
+  const movieRow = useMemo(() => movies.items.filter((i) => !isAdultItem(i)).slice(0, ROW), [movies.items])
+  const seriesRow = useMemo(() => series.items.filter((i) => !isAdultItem(i)).slice(0, ROW), [series.items])
 
   useInitialFocus(`${location.pathname}${location.search}`, loaded)
   const openMeta = (m: IndexedItem) =>
     m.kind === 'channel' ? navigate(PATHS.watch({ sourceId: m.sourceId, itemId: m.itemId, kind: 'channel', title: m.title })) : navigate(PATHS.details(m.sourceId, m.itemId, m.title))
-  const openItem = (i: CatalogItem) => navigate(PATHS.details(i.sourceId, i.id, i.title))
+  const openItem = (i: CatalogItem) => navigate(contentPath(i))
   const empty = loaded && !continueRow.length && !myList.length && !channels.length && !watched.length
 
   return (

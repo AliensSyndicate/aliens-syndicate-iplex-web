@@ -11,10 +11,11 @@
  */
 import { categoryLabel } from '../../services/catalog/categoryLabels'
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useBackend } from '../../app/providers/BackendProvider'
 import { useReadySession } from '../../app/providers/SessionProvider'
-import { PATHS } from '../../app/routes/paths'
+import { contentPath, PATHS } from '../../app/routes/paths'
+import { isAdultItem } from '../../services/catalog/adult'
 import { Artwork } from '../../components/catalog/Artwork'
 import { ContentCarousel } from '../../components/catalog/ContentCarousel'
 import { MetadataTile } from '../../components/catalog/MetadataTile'
@@ -124,6 +125,8 @@ export default function DetailsScreen() {
   useInitialFocus(`${location.pathname}${location.search}`, load.status !== 'loading' && (item?.kind !== 'series' || series !== null))
 
   if (load.status === 'loading') return <DetailsSkeleton />
+  // Conteúdo adulto nunca mostra detalhes: segue direto para a reprodução (ou os episódios).
+  if (item && isAdultItem(item)) return <Navigate to={contentPath(item)} replace />
   if (load.status === 'error' || !item) {
     const error = load.status === 'error' ? load.error : null
     return (

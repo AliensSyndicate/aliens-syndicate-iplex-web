@@ -146,6 +146,10 @@ export interface CatalogItem {
   ageRating?: string
   /** Data de inclusão no catálogo (epoch ms), quando o backend fornecer. Ausente = sem data. */
   addedAt?: number
+  /** URL https do logo/capa informada pela fonte IPTV (tvg-logo, stream_icon), quando existe. */
+  imageRef?: string
+  /** Marca explícita do provedor (Xtream is_adult), quando existe. */
+  isAdult?: boolean
   version: string
 }
 

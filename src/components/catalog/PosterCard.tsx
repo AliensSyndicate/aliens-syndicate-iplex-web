@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import type { CatalogItem } from '../../services/api/types'
 import { useInView } from '../../hooks/useInView'
+import { isAdultItem } from '../../services/catalog/adult'
 import { useMatch } from '../../hooks/useMetadata'
 import { classNames } from '../../utils/classNames'
 import { Artwork } from './Artwork'
@@ -24,7 +25,9 @@ export interface PosterCardProps {
 export function PosterCard({ item, navId, navGroup, onSelect, progress, autoFocus, onFocus, posterOnly, gridIndex }: PosterCardProps) {
   const ref = useRef<HTMLButtonElement>(null)
   const visible = useInView(ref)
-  const meta = useMatch(item, visible)
+  const adult = isAdultItem(item)
+  // Conteúdo adulto não consulta o TMDB: só o nome do item.
+  const meta = useMatch(item, visible && !adult)
   const summary = meta.status === 'ready' ? meta.summary : null
   const title = summary?.title || item.title
   return (
@@ -42,7 +45,7 @@ export function PosterCard({ item, navId, navGroup, onSelect, progress, autoFocu
       {...(gridIndex !== undefined ? { 'data-grid-index': String(gridIndex) } : {})}
     >
       <span className="iplex-tile__frame">
-        <Artwork src={summary?.poster} alt="" fallback={meta.status === 'idle' || meta.status === 'loading' ? '' : item.title} />
+        <Artwork src={summary?.poster} alt="" fallback={!adult && (meta.status === 'idle' || meta.status === 'loading') ? '' : item.title} />
         {typeof progress === 'number' && <ProgressBar value={progress} />}
       </span>
       {!posterOnly && <span className="iplex-tile__label">{title}</span>}

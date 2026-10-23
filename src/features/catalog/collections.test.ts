@@ -15,6 +15,11 @@ describe('menu lateral do catálogo', () => {
     const ids = buildSidebar({ personal: true, allowAdult: true, categories }).map((e) => e.label)
     expect(ids).toEqual(['Continuar assistindo', 'Favoritos', 'Todos', 'Ação', 'Drama', 'Terror', 'Adulto +18'])
   })
+  it('"Adulto" é sempre o último item do menu, mesmo com mais categorias depois na ordem alfabética', () => {
+    const labels = buildSidebar({ personal: true, allowAdult: true, categories: [...categories, { key: 'zen', name: 'Zen' }, { key: 'xxx', name: 'XXX' }] }).map((e) => e.label)
+    expect(labels[labels.length - 1]).toMatch(/xxx|adulto/i)
+    expect(labels.indexOf('Zen')).toBeLessThan(labels.indexOf('Adulto +18'))
+  })
   it('adulto só quando permitido; visitante sem coleções pessoais', () => {
     const labels = buildSidebar({ personal: false, allowAdult: false, categories }).map((e) => e.label)
     expect(labels).toEqual(['Todos', 'Ação', 'Drama', 'Terror'])

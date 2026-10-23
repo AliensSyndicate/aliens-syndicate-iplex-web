@@ -98,6 +98,15 @@ export function kindForDomainCode(code: string): AppErrorKind {
   return 'unknown'
 }
 
+/**
+ * "unauthenticated"/"permission-denied" não provam que o servidor desvinculou a TV (podem ser
+ * credencial expirada ou falha passageira). Só `device-revoked`, `device-required` ou a revogação
+ * explícita do token do dispositivo (auth/*) significam desvínculo de verdade.
+ */
+export function isAmbiguousAuthFailure(error: AppError): boolean {
+  return error.kind === 'device-unpaired' && (error.code === 'unauthenticated' || error.code === 'permission-denied')
+}
+
 interface FirebaseLikeError {
   code?: unknown
   message?: unknown

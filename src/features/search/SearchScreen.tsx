@@ -8,6 +8,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { usePlatform } from '../../app/providers/PlatformProvider'
 import { useReadySession } from '../../app/providers/SessionProvider'
 import { contentPath } from '../../app/routes/paths'
+import { isAdultItem } from '../../services/catalog/adult'
 import { ChannelCard } from '../../components/catalog/ChannelCard'
 import { ContentCarousel } from '../../components/catalog/ContentCarousel'
 import { PosterCard } from '../../components/catalog/PosterCard'
@@ -62,13 +63,14 @@ export default function SearchScreen() {
 
   const groups = useMemo(() => {
     if (state.status !== 'done') return null
-    const by = (k: CatalogItem['kind']) => state.items.filter((i) => i.kind === k)
+    // Busca nunca mostra conteúdo adulto (mesmo com o perfil habilitado).
+    const by = (k: CatalogItem['kind']) => state.items.filter((i) => i.kind === k && !isAdultItem(i))
     const movies = by('movie')
     const series = by('series')
     const top = movies[0] ?? series[0]
     // Relacionados: mesma categoria do primeiro resultado, entre itens já carregados do catálogo.
     const related = top
-      ? catalog.items(top.kind).filter((i) => i.category && i.category === top.category && !state.items.some((r) => r.id === i.id)).slice(0, 20)
+      ? catalog.items(top.kind).filter((i) => !isAdultItem(i) && i.category && i.category === top.category && !state.items.some((r) => r.id === i.id)).slice(0, 20)
       : []
     return { channels: by('channel'), movies, series, related }
   }, [state, catalog])

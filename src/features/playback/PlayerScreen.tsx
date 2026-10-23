@@ -32,6 +32,7 @@ import { createPlaybackAdapter } from '../../platform/playback/createAdapter'
 import type { PlaybackAdapter, PlaybackTrack } from '../../platform/playback/types'
 import { AppError, toAppError } from '../../services/api/errors'
 import type { CatalogItem, ContentKind, SeriesDetails, SeriesEpisode } from '../../services/api/types'
+import { isAdultItem } from '../../services/catalog/adult'
 import { episodeContentId } from '../../services/catalog/normalize'
 import { indexFromItem } from '../../services/library/libraryStore'
 import { hasPersonalLibrary } from '../profiles/profileRules'
@@ -112,6 +113,12 @@ export default function PlayerScreen() {
   /** Fim da mídia (definido abaixo, depende do próximo episódio). */
   const endedRef = useRef<() => void>(() => undefined)
   const contentId = kind === 'series' && episodeId ? episodeContentId(itemId, episodeId) : itemId
+  /** Conteúdo adulto: nada é gravado (progresso, concluído, status "assistindo") e Voltar não passa por detalhes. */
+  const adult = !!item && isAdultItem(item)
+  const adultRef = useRef(adult)
+  useEffect(() => {
+    adultRef.current = adult
+  }, [adult])
   const contentKey = `${sourceId}|${itemId}|${episodeId ?? ''}|${attempt}`
 
   const progressMeta = useCallback(() => {
@@ -125,7 +132,7 @@ export default function PlayerScreen() {
     (force: boolean) => {
       const sessionState = progressSession.current
       const meta = progressMeta()
-      if (!personal || live || !meta || !sessionState || finished.current) return
+      if (!personal || adult || live || !meta || !sessionState || finished.current) return
       const { positionMs, durationMs } = timeRef.current
       // Inicialização, retomada ainda não confirmada e stream sem seek nunca gravam (apagariam o progresso).
       if (!sessionState.canSave(positionMs, durationMs)) return
@@ -147,7 +154,7 @@ export default function PlayerScreen() {
           }
         })
     },
-    [personal, live, progressMeta, contentId, session.library, tracker],
+    [personal, adult, live, progressMeta, contentId, session.library, tracker],
   )
   useEffect(() => {
     saveRef.current = saveProgress
@@ -165,19 +172,19 @@ export default function PlayerScreen() {
     const sessionState = progressSession.current
     const meta = progressMeta()
     const { durationMs } = timeRef.current
-    if (!personal || live || !meta || !sessionState || !(durationMs > 0)) return
+    if (!personal || adult || live || !meta || !sessionState || !(durationMs > 0)) return
     const durationSec = durationMs / 1000
     const before = saveInFlight.current ?? Promise.resolve()
     void before
       .catch(() => undefined)
       .then(() => session.library.saveProgress(contentId, durationSec, durationSec, meta, sessionState.next()))
       .catch(() => undefined)
-  }, [personal, live, progressMeta, contentId, session.library])
+  }, [personal, adult, live, progressMeta, contentId, session.library])
 
   /** Voltar → detalhes; término natural → origem (detalhes, Meu iPlex, tela anterior ao pedido do Control). */
   const exit = useCallback(
     (target: 'details' | 'origin') => {
-      if (live || fromDetails) {
+      if (live || fromDetails || adult) {
         navigate(-1)
         return
       }
@@ -185,7 +192,7 @@ export default function PlayerScreen() {
       if (target === 'origin' && idx > 0) navigate(-1)
       else navigate(PATHS.details(sourceId, itemId, item?.title ?? title), { replace: true })
     },
-    [live, fromDetails, navigate, sourceId, itemId, item, title],
+    [live, fromDetails, adult, navigate, sourceId, itemId, item, title],
   )
 
   // Prepara e inicia a reprodução.
@@ -208,7 +215,9 @@ export default function PlayerScreen() {
     const reporter = createStatusReporter((payload) =>
       backend.reportPlayback({ sessionId: session.lease.id, sourceId, itemId, ...(episodeId ? { episodeId } : {}), ...payload }),
     )
-    statusRef.current = (payload) => reporter.report(payload)
+    statusRef.current = (payload) => {
+      if (!adultRef.current) reporter.report(payload)
+    }
     saveInFlight.current = null
     saveQueued.current = false
     ;(async () => {

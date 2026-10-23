@@ -19,6 +19,7 @@ import { useInitialFocus } from '../../navigation/FocusProvider'
 import { useRowNavigation } from '../../navigation/rowNavigation'
 import { toAppError, type AppError } from '../../services/api/errors'
 import type { CatalogItem, SeriesDetails, SeriesEpisode } from '../../services/api/types'
+import { isAdultItem } from '../../services/catalog/adult'
 import { episodeContentId } from '../../services/catalog/normalize'
 import type { TmdbSeason } from '../../services/tmdb/tmdbClient'
 import type { PlayerNavState } from '../playback/PlayerScreen'
@@ -62,7 +63,8 @@ export default function SeasonsScreen() {
   }, [session.catalog, sourceId, itemId, title, attempt])
 
   const item = load.status === 'ready' ? load.item : null
-  const match = useMatch(item)
+  const adult = !!item && isAdultItem(item)
+  const match = useMatch(item, !adult)
   const summary = match.status === 'ready' ? match.summary : null
 
   useEffect(() => {

@@ -372,6 +372,12 @@
 .iplex-tile--channel {
   width: var(--iplex-channel-width);
 }
+.iplex-tile--square {
+  width: var(--iplex-poster-width);
+}
+.iplex-tile--square .iplex-tile__frame {
+  padding-top: 100%;
+}
 .iplex-tile__frame {
   position: relative;
   display: block;
@@ -492,6 +498,15 @@
 }
 .iplex-artwork.is-loaded img {
   opacity: 1;
+}
+.iplex-artwork--logo img {
+  box-sizing: border-box;
+  padding: var(--iplex-space-3);
+  object-fit: contain;
+}
+/* Logo carregado: cobre o nome (logos com transparência não deixam o texto aparecer por baixo). */
+.iplex-artwork--logo.is-loaded .iplex-artwork__fallback {
+  visibility: hidden;
 }
 .iplex-artwork__fallback {
   display: -webkit-flex;
@@ -1801,10 +1816,12 @@
   display: flex;
   margin-bottom: var(--iplex-grid-gap);
 }
-.iplex-catalog__row .iplex-tile--poster {
+.iplex-catalog__row .iplex-tile--poster,
+.iplex-catalog__row .iplex-tile--square {
   width: calc((100% - 4 * var(--iplex-grid-gap)) / 5);
   margin-right: var(--iplex-grid-gap);
 }
-.iplex-catalog__row .iplex-tile--poster:last-child {
+.iplex-catalog__row .iplex-tile--poster:last-child,
+.iplex-catalog__row .iplex-tile--square:last-child {
   margin-right: 0;
 }

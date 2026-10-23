@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useBackend } from '../app/providers/BackendProvider'
 import { useReadySession } from '../app/providers/SessionProvider'
 import { PATHS } from '../app/routes/paths'
+import { isAdultItem } from '../services/catalog/adult'
 import { itemYear } from '../services/catalog/normalize'
 import { findCatalogTitle, type TmdbTitleRef } from '../services/catalog/tmdbAvailability'
 
@@ -28,7 +29,7 @@ export function useOpenTmdbTitle() {
           (candidate) => tmdb.match(candidate.kind === 'series' ? 'series' : 'movie', candidate.title, itemYear(candidate.year), candidate),
           target,
         )
-        if (item) navigate(PATHS.details(item.sourceId, item.id, item.title))
+        if (item && !isAdultItem(item)) navigate(PATHS.details(item.sourceId, item.id, item.title))
         else setNotice(`“${target.title}” não está disponível no seu catálogo.`)
       } catch {
         setNotice('Não foi possível consultar o catálogo agora. Tente novamente.')

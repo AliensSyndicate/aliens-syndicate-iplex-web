@@ -14,7 +14,8 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useReadySession } from '../../app/providers/SessionProvider'
-import { PATHS } from '../../app/routes/paths'
+import { contentPath, PATHS } from '../../app/routes/paths'
+import { ChannelCard } from '../../components/catalog/ChannelCard'
 import { PosterCard } from '../../components/catalog/PosterCard'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { SkeletonGrid } from '../../components/feedback/LoadingState'
@@ -29,7 +30,8 @@ import { isArrow } from '../../platform/keys'
 import type { CatalogItem, ContentKind } from '../../services/api/types'
 import type { IndexedItem } from '../../services/library/libraryStore'
 import { parseEpisodeContentId } from '../../services/catalog/normalize'
-import { hasPersonalLibrary, isAdult } from '../profiles/profileRules'
+import { isAdultItem } from '../../services/catalog/adult'
+import { hasPersonalLibrary, isKids } from '../profiles/profileRules'
 import { COLLECTION_TITLES, buildSidebar, isAdultCategory, itemFromIndexed, sortItems, sortOptionsFor, type CollectionId, type SortId } from './collections'
 
 const COLS = 5
@@ -43,6 +45,7 @@ const REVEAL_PAD = 24
 const viewMemory = new Map<string, { selected: CollectionId; sort: SortId; scrollTop: number }>()
 
 const GridCard = memo(function GridCard({ item, index, onOpen }: { item: CatalogItem; index: number; onOpen: (item: CatalogItem) => void }) {
+  if (item.kind === 'channel') return <ChannelCard item={item} navId={`card-${item.id}`} navGroup="catalog-grid" onSelect={onOpen} gridIndex={index} />
   return <PosterCard item={item} navId={`card-${item.id}`} navGroup="catalog-grid" onSelect={onOpen} posterOnly gridIndex={index} />
 })
 
@@ -64,11 +67,14 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   const routeKey = `${location.pathname}${location.search}`
   const wantMovies = kinds.includes('movie')
   const wantSeries = kinds.includes('series')
+  const wantChannels = kinds.includes('channel')
   const movies = useCatalog('movie', wantMovies)
   const series = useCatalog('series', wantSeries)
+  const channels = useCatalog('channel', wantChannels)
   const { library, store, loaded: libraryLoaded } = useLibrary()
   const personal = hasPersonalLibrary(session.profile)
-  const allowAdult = isAdult(session.profile)
+  // A habilitação real vem do backend (perfil no Control): sem ela, nenhum item/categoria adulta chega aqui.
+  const allowAdult = !isKids(session.profile)
   const remembered = viewMemory.get(routeKey)
 
   // Coleção confirmada (OK/Enter) ou lembrada; enquanto nula vale a primeira com conteúdo.
@@ -84,7 +90,7 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     return () => clearTimeout(id)
   }, [warm])
 
-  const active = useMemo(() => [wantMovies ? movies : null, wantSeries ? series : null].filter((c): c is NonNullable<typeof c> => !!c), [wantMovies, wantSeries, movies, series])
+  const active = useMemo(() => [wantMovies ? movies : null, wantSeries ? series : null, wantChannels ? channels : null].filter((c): c is NonNullable<typeof c> => !!c), [wantMovies, wantSeries, wantChannels, movies, series, channels])
   const spacesError = active.find((c) => c.spacesError)?.spacesError ?? null
   const noSources = active.some((c) => c.noSources)
   const noKind = active.length > 0 && active.every((c) => c.noKind)
@@ -112,7 +118,8 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     }
     return byKey
   }, [active, warm])
-  const allItems = useMemo(() => (warm ? active.flatMap((c) => c.items) : []), [active, warm])
+  // "Todos" nunca inclui conteúdo adulto: ele só existe dentro da categoria "Adulto".
+  const allItems = useMemo(() => (warm ? active.flatMap((c) => c.items).filter((i) => !isAdultItem(i)) : []), [active, warm])
 
 
   const progressMeta = useMemo(() => {
@@ -120,7 +127,7 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     if (!personal) return byItem
     for (const entry of library.progress) {
       const meta = store.indexed(entry.contentId)
-      if (!meta || !kinds.includes(meta.kind)) continue
+      if (!meta || !kinds.includes(meta.kind) || isAdultItem(meta)) continue
       if (meta.kind === 'series' && !parseEpisodeContentId(entry.contentId)) continue
       if (entry.duration > 0 && entry.position / entry.duration >= 0.95) continue
       if (!byItem.has(meta.itemId)) byItem.set(meta.itemId, meta)
@@ -130,7 +137,7 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
 
   const libraryLists = useMemo(() => {
     const fromLibrary = (ids: Array<{ contentId: string }>) =>
-      personal ? ids.map((e) => store.indexed(e.contentId)).filter((m): m is IndexedItem => !!m && kinds.includes(m.kind)).map(itemFromIndexed) : []
+      personal ? ids.map((e) => store.indexed(e.contentId)).filter((m): m is IndexedItem => !!m && kinds.includes(m.kind) && !isAdultItem(m)).map(itemFromIndexed) : []
     return { favorites: fromLibrary(library.favorites), watched: fromLibrary(library.watched) }
   }, [library.favorites, library.watched, store, kinds, personal])
 
@@ -182,7 +189,7 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     (item: CatalogItem) => {
       const meta = selected === 'continue' ? progressMeta.get(item.id) : undefined
       if (meta) navigate(PATHS.watch({ sourceId: meta.sourceId, itemId: meta.itemId, kind: meta.kind, title: meta.title, episodeId: meta.episodeId, resume: true }))
-      else navigate(PATHS.details(item.sourceId, item.id, item.title))
+      else navigate(contentPath(item))
     },
     [navigate, selected, progressMeta],
   )
@@ -467,7 +474,7 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
 
   const label = selected.startsWith('cat:') ? (sidebar.find((s) => s.id === selected)?.label ?? groups.get(selected.slice(4))?.name ?? title) : COLLECTION_TITLES[selected as keyof typeof COLLECTION_TITLES]
   const heading = label
-  const kindLabel = kinds.length === 1 ? (kinds[0] === 'movie' ? 'filmes' : 'séries') : 'filmes e séries'
+  const kindLabel = kinds.length === 1 ? (kinds[0] === 'movie' ? 'filmes' : kinds[0] === 'channel' ? 'canais' : 'séries') : 'filmes e séries'
   const sourceStates = <SourceStates spacesError={spacesError} noSources={noSources} noKind={noKind} error={error} kindLabel={kindLabel} onRetry={reload} />
   const blocked = !!(spacesError || noSources || noKind || error)
   // Sem itens ainda, mas a fonte pode entregar (primeira renderização, página em andamento, mais páginas)
