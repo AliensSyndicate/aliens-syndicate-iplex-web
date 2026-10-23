@@ -177,6 +177,8 @@ export function focusElement(el: HTMLElement) {
 
 /** Mantém o elemento visível nos contêineres roláveis e na janela. */
 export function ensureVisible(el: HTMLElement, win: Window = window) {
+  // Telas que gerenciam a própria rolagem (Catálogo) marcam [data-nav-managed]: um só dono do scroll.
+  if (el.closest('[data-nav-managed]')) return
   const pad = 48
   let node: HTMLElement | null = el.parentElement
   while (node) {

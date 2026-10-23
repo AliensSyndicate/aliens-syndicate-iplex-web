@@ -184,7 +184,7 @@ export default function LiveTvScreen() {
           />
         ))}
       </div>
-      {loading && <SkeletonRow shape="channel" />}
+      {loading && channels.length === 0 && <SkeletonRow shape="channel" count={15} />}
       {!loading && ready && channels.length === 0 && !error && !spacesError && !noSources && !noKind && (
         <EmptyState title="Nenhum canal nesta categoria" />
       )}

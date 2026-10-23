@@ -213,9 +213,10 @@ export function useInitialFocus(routeKey: string, ready: boolean) {
   const done = useRef<string | null>(null)
   useEffect(() => {
     if (!ready || done.current === routeKey) return
-    done.current = routeKey
-    // Após a pintura, para que as medidas do layout existam.
+    // Após a pintura, para que as medidas do layout existam. Só marca como feito ao
+    // executar: se `ready` oscilar antes disso, o agendamento é refeito.
     const id = setTimeout(() => {
+      done.current = routeKey
       const active = document.activeElement
       const insideScope = active instanceof HTMLElement && active.hasAttribute('data-nav') && active.closest('main')
       if (!insideScope) restore(routeKey)

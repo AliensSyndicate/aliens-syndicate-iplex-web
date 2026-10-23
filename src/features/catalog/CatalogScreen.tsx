@@ -1,12 +1,15 @@
 /**
  * Tela Catálogo reutilizável (Filmes, Séries, Favoritos, Continuar assistindo…).
  *
- * - Menu lateral sempre visível, com UMA rolagem; o item focado fica fixado na
- *   primeira posição visível. Foco ≠ seleção: só OK/Enter troca a coleção.
- * - Grid de pôsteres (6 por linha) com navegação ortogonal, sem serpentina e
- *   sem recentralizar: a rolagem só acontece o mínimo para manter o foco visível.
+ * Foco e rolagem têm UM dono (esta tela; o main leva [data-nav-managed] e a
+ * navegação espacial genérica não rola nada aqui):
+ * - Menu lateral: lista própria; o item focado é centralizado na área visível,
+ *   limitado à rolagem real (sem preenchimento artificial). Foco ≠ seleção: só
+ *   OK/Enter troca a coleção; a primeira coleção com conteúdo já nasce selecionada.
+ * - Catálogo: título + ordenação + grid de pôsteres (5 por linha) numa única
+ *   área rolável. Navegação ortogonal por índice, sem serpentina. Primeira linha
+ *   rola até o topo real (título), última até o fim real; no meio, rolagem mínima.
  * - Janelamento por linhas: só as linhas próximas da área visível existem no DOM.
- * - Foco só move o foco do DOM (nenhum estado React muda ao navegar).
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -14,12 +17,13 @@ import { useReadySession } from '../../app/providers/SessionProvider'
 import { PATHS } from '../../app/routes/paths'
 import { PosterCard } from '../../components/catalog/PosterCard'
 import { EmptyState } from '../../components/feedback/EmptyState'
-import { LoadingState } from '../../components/feedback/LoadingState'
+import { SkeletonGrid } from '../../components/feedback/LoadingState'
 import { SourceStates } from '../../components/feedback/SourceStates'
 import { IplexText } from '../../components/ui/IplexText'
 import { useCatalog } from '../../hooks/useCatalog'
 import { useLibrary } from '../../hooks/useLibrary'
 import { useInitialFocus, useKeyHandler } from '../../navigation/FocusProvider'
+import { animateScrollTop, cancelScroll, centeredTop, revealTop } from '../../navigation/scrollMath'
 import { focusElement } from '../../navigation/spatial'
 import { isArrow } from '../../platform/keys'
 import type { CatalogItem, ContentKind } from '../../services/api/types'
@@ -28,10 +32,12 @@ import { parseEpisodeContentId } from '../../services/catalog/normalize'
 import { hasPersonalLibrary, isAdult } from '../profiles/profileRules'
 import { COLLECTION_TITLES, buildSidebar, isAdultCategory, itemFromIndexed, sortItems, sortOptionsFor, type CollectionId, type SortId } from './collections'
 
-const COLS = 6
-const OVERSCAN = 2
+const COLS = 5
+const SKELETONS = 15
+const OVERSCAN = 3
 const DEFAULT_ROW_HEIGHT = 340
 const MIN_FILL = 24
+const REVEAL_PAD = 24
 
 /** Estado de navegação por rota: ao voltar dos detalhes a tela reaparece como estava. */
 const viewMemory = new Map<string, { selected: CollectionId; sort: SortId; scrollTop: number }>()
@@ -60,12 +66,13 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   const wantSeries = kinds.includes('series')
   const movies = useCatalog('movie', wantMovies)
   const series = useCatalog('series', wantSeries)
-  const { library, store } = useLibrary()
+  const { library, store, loaded: libraryLoaded } = useLibrary()
   const personal = hasPersonalLibrary(session.profile)
   const allowAdult = isAdult(session.profile)
   const remembered = viewMemory.get(routeKey)
 
-  const [selected, setSelected] = useState<CollectionId>(remembered?.selected ?? initial)
+  // Coleção confirmada (OK/Enter) ou lembrada; enquanto nula vale a primeira com conteúdo.
+  const [chosen, setChosen] = useState<CollectionId | null>(remembered?.selected ?? (initial === 'all' ? null : initial))
   const [sort, setSort] = useState<SortId>(remembered?.sort ?? 'az')
 
   const active = useMemo(() => [wantMovies ? movies : null, wantSeries ? series : null].filter((c): c is NonNullable<typeof c> => !!c), [wantMovies, wantSeries, movies, series])
@@ -97,10 +104,6 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   }, [active])
   const allItems = useMemo(() => active.flatMap((c) => c.items), [active])
 
-  const sidebar = useMemo(
-    () => buildSidebar({ personal, allowAdult, categories: Array.from(groups.values()).map((g) => ({ key: g.key, name: g.name })) }),
-    [personal, allowAdult, groups],
-  )
 
   const progressMeta = useMemo(() => {
     const byItem = new Map<string, IndexedItem>()
@@ -115,17 +118,51 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     return byItem
   }, [library.progress, store, kinds, personal])
 
-  const base = useMemo<CatalogItem[]>(() => {
+  const libraryLists = useMemo(() => {
     const fromLibrary = (ids: Array<{ contentId: string }>) =>
-      ids.map((e) => store.indexed(e.contentId)).filter((m): m is IndexedItem => !!m && kinds.includes(m.kind)).map(itemFromIndexed)
+      personal ? ids.map((e) => store.indexed(e.contentId)).filter((m): m is IndexedItem => !!m && kinds.includes(m.kind)).map(itemFromIndexed) : []
+    return { favorites: fromLibrary(library.favorites), watched: fromLibrary(library.watched) }
+  }, [library.favorites, library.watched, store, kinds, personal])
+
+  const sidebar = useMemo(
+    () =>
+      buildSidebar({
+        personal,
+        allowAdult,
+        categories: Array.from(groups.values()).filter((g) => g.items.length > 0).map((g) => ({ key: g.key, name: g.name })),
+        has: { continue: progressMeta.size > 0, favorites: libraryLists.favorites.length > 0, all: allItems.length > 0 },
+      }),
+    [personal, allowAdult, groups, progressMeta, libraryLists.favorites, allItems.length],
+  )
+
+  // Primeira coleção do menu com conteúdo real (nunca prende o foco em categoria vazia).
+  const firstWithContent = useMemo<CollectionId>(() => {
+    for (const entry of sidebar) {
+      if (entry.id === 'continue' && progressMeta.size > 0) return entry.id
+      if (entry.id === 'favorites' && libraryLists.favorites.length > 0) return entry.id
+      if (entry.id === 'all' && allItems.length > 0) return entry.id
+      if (entry.id.startsWith('cat:') && (groups.get(entry.id.slice(4))?.items.length ?? 0) > 0) return entry.id
+    }
+    return sidebar.some((s) => s.id === 'all') ? 'all' : (sidebar[0]?.id ?? initial)
+  }, [sidebar, progressMeta, libraryLists.favorites, allItems.length, groups, initial])
+
+  const ready = (!personal || libraryLoaded) && (!loading || allItems.length > 0 || !!(spacesError || noSources || noKind || error))
+  useEffect(() => {
+    if (chosen === null && ready) setChosen(firstWithContent)
+  }, [chosen, ready, firstWithContent])
+
+  // Sempre há uma coleção selecionada: a confirmada (se ainda existir no menu) ou a primeira com conteúdo.
+  const selected: CollectionId = chosen && sidebar.some((s) => s.id === chosen) ? chosen : firstWithContent
+
+  const base = useMemo<CatalogItem[]>(() => {
     if (selected === 'continue') return Array.from(progressMeta.values()).map(itemFromIndexed)
-    if (selected === 'favorites') return personal ? fromLibrary(library.favorites) : []
-    if (selected === 'watched') return personal ? fromLibrary(library.watched) : []
+    if (selected === 'favorites') return libraryLists.favorites
+    if (selected === 'watched') return libraryLists.watched
     if (selected === 'all') return allItems
     const group = groups.get(selected.slice(4))
     if (!group || (isAdultCategory(group.name) && !allowAdult)) return []
     return group.items
-  }, [selected, progressMeta, library.favorites, library.watched, store, kinds, personal, allItems, groups, allowAdult])
+  }, [selected, progressMeta, libraryLists, allItems, groups, allowAdult])
 
   const sortOptions = useMemo(() => sortOptionsFor(base), [base])
   const effectiveSort: SortId = sortOptions.some((o) => o.id === sort) ? sort : 'az'
@@ -147,7 +184,7 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   const [rowHeight, setRowHeight] = useState(DEFAULT_ROW_HEIGHT)
   const [range, setRange] = useState<[number, number]>([0, 6])
   const totalRows = Math.ceil(items.length / COLS)
-  const geometry = useRef({ rowHeight: DEFAULT_ROW_HEIGHT, totalRows, hasMore })
+  const geometry = useRef({ rowHeight: DEFAULT_ROW_HEIGHT, rowGap: 0, totalRows, hasMore })
   const itemsLen = useRef(items.length)
   useEffect(() => {
     geometry.current.totalRows = totalRows
@@ -184,9 +221,11 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   const measure = useCallback(() => {
     const row = gridRef.current?.querySelector<HTMLElement>('.iplex-catalog__row')
     if (row) {
-      const h = row.offsetHeight + (parseFloat(getComputedStyle(row).marginBottom) || 0)
+      const gap = parseFloat(getComputedStyle(row).marginBottom) || 0
+      const h = row.offsetHeight + gap
       if (h > 0) {
         geometry.current.rowHeight = h
+        geometry.current.rowGap = gap
         setRowHeight((cur) => (Math.abs(cur - h) < 0.5 ? cur : h))
       }
     }
@@ -210,6 +249,8 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', onResize)
+      if (scrollerRef.current) cancelScroll(scrollerRef.current)
+      if (sideRef.current) cancelScroll(sideRef.current)
     }
   }, [measure])
 
@@ -222,6 +263,11 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     })
   }, [recompute])
 
+  // Último card focado no grid (para voltar a ele vindo do menu lateral).
+  const lastGridIndex = useRef<number | null>(null)
+  const pendingFocus = useRef<number | null>(null)
+  const zone = useRef<'side' | 'sort' | 'grid' | null>(null)
+
   // Nova coleção/ordenação: volta ao início do catálogo, sem animação.
   const first = useRef(true)
   useLayoutEffect(() => {
@@ -229,12 +275,17 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
       first.current = false
       return
     }
-    if (scrollerRef.current) scrollerRef.current.scrollTop = 0
+    lastGridIndex.current = null
+    pendingFocus.current = null
+    if (scrollerRef.current) {
+      cancelScroll(scrollerRef.current)
+      scrollerRef.current.scrollTop = 0
+    }
     const mem = viewMemory.get(routeKey)
     if (mem) mem.scrollTop = 0
     recompute()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, sort])
+  }, [selected, effectiveSort])
 
   // Coleções vindas do catálogo paginado: busca mais páginas até preencher a tela.
   const fromCatalog = selected === 'all' || selected.startsWith('cat:')
@@ -243,36 +294,76 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   }, [fromCatalog, hasMore, loading, items.length, loadMore])
 
   // ---- foco -----------------------------------------------------------------
-  useInitialFocus(routeKey, true)
+  useInitialFocus(routeKey, ready)
 
-  const focusCard = useCallback((index: number) => {
+  /** Rolagem do catálogo para o card: topo real na 1ª linha, fim real na última, mínimo no meio. */
+  const revealRow = useCallback((row: number) => {
     const sc = scrollerRef.current
     const grid = gridRef.current
-    if (!sc || !grid || index < 0 || index >= itemsLen.current) return false
-    const find = () => grid.querySelector<HTMLElement>(`[data-grid-index="${index}"]`)
-    const el = find()
-    if (el) {
-      focusElement(el)
+    if (!sc || !grid) return
+    const { rowHeight: rh, rowGap, totalRows: rows, hasMore: more } = geometry.current
+    const max = Math.max(0, sc.scrollHeight - sc.clientHeight)
+    const inset = parseFloat(getComputedStyle(sc).paddingTop) || 0
+    const target =
+      row === 0 ? 0 : row >= rows - 1 && !more ? max : revealTop(sc.scrollTop, grid.offsetTop + row * rh, rh - rowGap, sc.clientHeight, REVEAL_PAD, max, inset)
+    animateScrollTop(sc, target)
+  }, [])
+
+  const focusCard = useCallback(
+    (index: number) => {
+      const sc = scrollerRef.current
+      const grid = gridRef.current
+      if (!sc || !grid || index < 0 || index >= itemsLen.current) return false
+      const el = grid.querySelector<HTMLElement>(`[data-grid-index="${index}"]`)
+      if (el) {
+        focusElement(el)
+        return true
+      }
+      // Fora da janela (retorno/salto): posiciona a linha; o foco é aplicado quando o card montar.
+      pendingFocus.current = index
+      cancelScroll(sc)
+      const { rowHeight: rh, rowGap } = geometry.current
+      const top = grid.offsetTop + Math.floor(index / COLS) * rh
+      sc.scrollTop = centeredTop(top, rh - rowGap, sc.clientHeight, sc.scrollHeight - sc.clientHeight, parseFloat(getComputedStyle(sc).paddingTop) || 0)
+      recompute()
       return true
+    },
+    [recompute],
+  )
+
+  useLayoutEffect(() => {
+    const index = pendingFocus.current
+    if (index === null) return
+    const el = gridRef.current?.querySelector<HTMLElement>(`[data-grid-index="${index}"]`)
+    if (el) {
+      pendingFocus.current = null
+      focusElement(el)
     }
-    // Fora da janela (salto grande): posiciona a linha e foca no quadro seguinte.
-    sc.scrollTop = grid.offsetTop + Math.floor(index / COLS) * geometry.current.rowHeight - 160
-    recompute()
-    requestAnimationFrame(() => {
-      const late = find()
-      if (late) focusElement(late)
-    })
-    return true
-  }, [recompute])
+  }, [range, items.length])
+
+  // Reordenação/paginação pode desmontar o card focado: devolve o foco ao mesmo índice.
+  useLayoutEffect(() => {
+    const active = document.activeElement
+    if (zone.current === 'grid' && (!active || active === document.body || !active.isConnected) && items.length > 0) {
+      focusCard(Math.min(lastGridIndex.current ?? 0, items.length - 1))
+    }
+  }, [items, focusCard])
 
   const focusSelectedSide = useCallback(() => {
     const el = sideRef.current?.querySelector<HTMLElement>('[data-side-selected="true"]') ?? sideRef.current?.querySelector<HTMLElement>('[data-side-item]')
     if (el) focusElement(el)
   }, [])
+  const sortChips = useCallback(() => Array.from(scrollerRef.current?.querySelectorAll<HTMLElement>('[data-sort-index]') ?? []), [])
   const focusSort = useCallback(() => {
-    const el = scrollerRef.current?.querySelector<HTMLElement>('[data-sort-selected="true"]')
+    const chips = sortChips()
+    const el = chips.find((c) => c.getAttribute('data-sort-selected') === 'true') ?? chips[0]
     if (el) focusElement(el)
-  }, [])
+  }, [sortChips])
+  const enterGrid = useCallback(() => {
+    const n = itemsLen.current
+    if (n === 0) return
+    focusCard(Math.min(lastGridIndex.current ?? 0, n - 1))
+  }, [focusCard])
 
   const focusHeader = useCallback(() => {
     const el = document.querySelector<HTMLElement>('[data-nav-fixed] .iplex-tab.is-active') ?? document.querySelector<HTMLElement>('[data-nav-fixed] [data-nav]')
@@ -283,6 +374,7 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     if (!isArrow(key)) return false
     const el = document.activeElement
     if (!(el instanceof HTMLElement)) return false
+    // Grid: ortogonal por índice; nos limites direito/inferior não faz nada (sem serpentina).
     const idx = el.getAttribute('data-grid-index')
     if (idx !== null && gridRef.current?.contains(el)) {
       const i = Number(idx)
@@ -301,32 +393,35 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
       }
       return true
     }
-    if (sideRef.current?.contains(el)) {
-      // O primeiro item sobe ao cabeçalho (os cards rolados por trás dele não são alvo).
-      if (key === 'ArrowUp' && el.previousElementSibling === null) {
-        focusHeader()
-        return true
-      }
-      if (key === 'ArrowRight') {
-        focusCard(0)
-        return true
-      }
-      return key === 'ArrowLeft'
-    }
-    if (el.hasAttribute('data-sort-index') && scrollerRef.current?.contains(el)) {
-      if (key === 'ArrowLeft' && el.getAttribute('data-sort-index') === '0') {
-        focusSelectedSide()
-        return true
-      }
-      if (key === 'ArrowDown') {
-        focusCard(0)
-        return true
-      }
+    // Menu lateral: lista linear; o primeiro item sobe ao menu principal.
+    if (el.hasAttribute('data-side-item') && sideRef.current?.contains(el)) {
+      const list = Array.from(sideRef.current.querySelectorAll<HTMLElement>('[data-side-item]'))
+      const i = list.indexOf(el)
       if (key === 'ArrowUp') {
-        focusHeader()
-        return true
+        if (i > 0) focusElement(list[i - 1]!)
+        else focusHeader()
+      } else if (key === 'ArrowDown') {
+        if (i < list.length - 1) focusElement(list[i + 1]!)
+      } else if (key === 'ArrowRight') {
+        enterGrid()
       }
-      return false
+      return true
+    }
+    // Ordenação: linear; esquerda do primeiro volta ao menu lateral.
+    if (el.hasAttribute('data-sort-index') && scrollerRef.current?.contains(el)) {
+      const chips = sortChips()
+      const i = chips.indexOf(el)
+      if (key === 'ArrowLeft') {
+        if (i > 0) focusElement(chips[i - 1]!)
+        else focusSelectedSide()
+      } else if (key === 'ArrowRight') {
+        if (i < chips.length - 1) focusElement(chips[i + 1]!)
+      } else if (key === 'ArrowDown') {
+        if (itemsLen.current > 0) focusCard(0)
+      } else {
+        focusHeader()
+      }
+      return true
     }
     if (key === 'ArrowDown' && el.closest('[data-nav-fixed]')) {
       focusSelectedSide()
@@ -335,19 +430,40 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     return false
   })
 
-  // Menu lateral: o item focado fica na primeira posição visível (topo), enquanto houver rolagem.
+  // Menu lateral: o item focado fica centralizado, dentro dos limites reais da rolagem.
+  const sideSettled = useRef(false)
   const onSideFocus = (event: React.FocusEvent<HTMLElement>) => {
+    zone.current = 'side'
     const side = sideRef.current
     const target = (event.target as HTMLElement).closest<HTMLElement>('[data-side-item]')
     if (!side || !target) return
-    side.scrollTop = target.offsetTop - (parseFloat(getComputedStyle(side).paddingTop) || 0)
+    const inset = parseFloat(getComputedStyle(side).paddingTop) || 0
+    animateScrollTop(side, centeredTop(target.offsetTop, target.offsetHeight, side.clientHeight, side.scrollHeight - side.clientHeight, inset), !sideSettled.current)
+    sideSettled.current = true
+  }
+
+  const onContentFocus = (event: React.FocusEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement
+    const idx = target.getAttribute('data-grid-index')
+    if (idx !== null) {
+      zone.current = 'grid'
+      lastGridIndex.current = Number(idx)
+      revealRow(Math.floor(Number(idx) / COLS))
+    } else if (target.hasAttribute('data-sort-index')) {
+      zone.current = 'sort'
+      if (scrollerRef.current) animateScrollTop(scrollerRef.current, 0)
+    }
   }
 
   const label = selected.startsWith('cat:') ? (sidebar.find((s) => s.id === selected)?.label ?? groups.get(selected.slice(4))?.name ?? title) : COLLECTION_TITLES[selected as keyof typeof COLLECTION_TITLES]
-  const heading = selected === 'all' ? title : `${title} · ${label}`
+  const heading = label
   const kindLabel = kinds.length === 1 ? (kinds[0] === 'movie' ? 'filmes' : 'séries') : 'filmes e séries'
   const sourceStates = <SourceStates spacesError={spacesError} noSources={noSources} noKind={noKind} error={error} kindLabel={kindLabel} onRetry={reload} />
   const blocked = !!(spacesError || noSources || noKind || error)
+  // Sem itens ainda, mas a fonte pode entregar (primeira renderização, página em andamento, mais páginas)
+  // ou a biblioteca pessoal ainda não carregou: 15 skeletons em vez de "vazio". Sem resposta pendente → estado vazio.
+  const awaiting = fromCatalog ? loading || hasMore : personal && !libraryLoaded
+  const showSkeleton = !blocked && items.length === 0 && awaiting
 
   const rowSlices = useMemo(() => Array.from({ length: Math.ceil(items.length / COLS) }, (_, r) => items.slice(r * COLS, r * COLS + COLS)), [items])
   const rows: Array<{ index: number; items: CatalogItem[] }> = []
@@ -359,7 +475,7 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   const selectedSideId = sidebar.some((s) => s.id === selected) ? selected : null
 
   return (
-    <main className="iplex-page iplex-page--catalog" aria-label={title}>
+    <main className="iplex-page iplex-page--catalog" aria-label={title} data-nav-managed="">
       <nav className="iplex-catalog__side" ref={sideRef} aria-label={`Categorias de ${kindLabel}`} onFocus={onSideFocus}>
         {sidebar.map((entry, i) => {
           const isSelected = entry.id === selectedSideId
@@ -375,14 +491,14 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
               data-side-item=""
               data-side-selected={isSelected ? 'true' : 'false'}
               {...(isSelected || (!selectedSideId && i === 0) ? { 'data-nav-autofocus': '' } : {})}
-              onClick={() => setSelected(entry.id)}
+              onClick={() => setChosen(entry.id)}
             >
               {entry.label}
             </button>
           )
         })}
       </nav>
-      <div className="iplex-catalog__content" ref={scrollerRef} onScroll={onScroll} data-nav-scroll="y" data-nav-scroll-pad="padding">
+      <div className="iplex-catalog__content" ref={scrollerRef} onScroll={onScroll} onFocus={onContentFocus}>
         <IplexText variant="page-title" as="h1" className="iplex-catalog__title">
           {heading}
         </IplexText>
@@ -408,8 +524,8 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
           })}
         </div>
         {sourceStates}
-        {!blocked && loading && items.length === 0 && <LoadingState label="Carregando catálogo" />}
-        {!blocked && !loading && items.length === 0 && <EmptyState title="Nada por aqui ainda" description={emptyText(selected, kindLabel)} />}
+        {showSkeleton && <SkeletonGrid count={SKELETONS} cols={COLS} />}
+        {!blocked && !showSkeleton && items.length === 0 && <EmptyState title="Nada por aqui ainda" description={emptyText(selected, kindLabel)} />}
         {!blocked && items.length > 0 && (
           <div className="iplex-catalog__grid" ref={gridRef} role="list" aria-label={heading}>
             <div style={{ height: range[0] * rowHeight }} aria-hidden="true" />

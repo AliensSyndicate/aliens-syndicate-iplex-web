@@ -5,7 +5,7 @@ import './styles/base.css'
 import './styles/components.css'
 import './styles/app.css'
 import { App } from './app/App'
-import { diag, installDiagnostics } from './platform/diagnostics'
+import { diag, diagnosticsEnabled, installDiagnostics } from './platform/diagnostics'
 import { prepareTypography } from './styles/fonts'
 
 installDiagnostics()
@@ -24,4 +24,8 @@ prepareTypography().then((typography) => {
       <App typography={typography} />
     </StrictMode>,
   )
+  // Verificação na TV (somente com ?diag=1&selftest=1 dentro do shell).
+  if (diagnosticsEnabled()) void import('./platform/tvSelfTest').then((m) => {
+    if (m.selfTestRequested()) void m.runTvSelfTest()
+  })
 })

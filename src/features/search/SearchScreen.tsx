@@ -13,7 +13,7 @@ import { ContentCarousel } from '../../components/catalog/ContentCarousel'
 import { PosterCard } from '../../components/catalog/PosterCard'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { ErrorState } from '../../components/feedback/ErrorState'
-import { LoadingState } from '../../components/feedback/LoadingState'
+import { SkeletonRow } from '../../components/feedback/LoadingState'
 import { IplexText } from '../../components/ui/IplexText'
 import { TIMING } from '../../config/features'
 import { useInitialFocus } from '../../navigation/FocusProvider'
@@ -113,7 +113,7 @@ export default function SearchScreen() {
         <div className="iplex-search__results" aria-live="polite">
           {spaces.length === 0 && <ErrorState inline kind="iptv-not-configured" />}
           {state.status === 'idle' && spaces.length > 0 && <IplexText variant="description">Digite ao menos {TIMING.searchMinLength} letras para buscar.</IplexText>}
-          {state.status === 'loading' && <LoadingState label="Buscando" />}
+          {state.status === 'loading' && <SkeletonRow shape="poster" count={15} />}
           {state.status === 'error' && <ErrorState inline error={state.error} onRetry={() => setAttempt((a) => a + 1)} />}
           {groups && !groups.channels.length && !groups.movies.length && !groups.series.length && (
             <EmptyState title="Nenhum resultado" description={`Nada encontrado para “${term.trim()}” nas fontes deste perfil.`} />

@@ -83,7 +83,8 @@
   --iplex-focus-width: 0.25rem;
   --iplex-focus-ring: 0 0 0 var(--iplex-focus-gap) var(--iplex-bg),
     0 0 0 calc(var(--iplex-focus-gap) + var(--iplex-focus-width)) var(--iplex-text-primary);
-  --iplex-focus-scale: 1.06;
+  /* Estados de menu e card: borda constante (transparente → branca), sem escala. */
+  --iplex-state-border-width: 3px;
   --iplex-transition: 140ms ease-out;
 
   /* Ícones Hugeicons Stroke Rounded */

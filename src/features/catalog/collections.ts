@@ -45,16 +45,25 @@ const collator = (() => {
 const compareText = (a: string, b: string) => (collator ? collator.compare(a, b) : a.localeCompare(b))
 
 /**
- * Menu lateral: Continuar assistindo, Favoritos, Todos, categorias do
- * fornecedor em ordem alfabética e, por último, as adultas (só se permitido).
- * Lista de desejos fica de fora até o backend ter essa coleção.
+ * Menu lateral, só com coleções que têm conteúdo: Continuar assistindo,
+ * Favoritos, Todos, categorias do fornecedor em ordem alfabética e, por último,
+ * as adultas (só se permitido). Lista de desejos fica de fora até o backend ter
+ * essa coleção (hoje "Adicionar à lista" grava em Favoritos). Sem nenhum
+ * conteúdo (ou ainda carregando), "Todos" permanece para sempre haver um item
+ * selecionado e para hospedar o estado vazio/carregando.
  */
-export function buildSidebar(opts: { personal: boolean; allowAdult: boolean; categories: Array<{ key: string; name: string }> }): SideEntry[] {
+export function buildSidebar(opts: {
+  personal: boolean
+  allowAdult: boolean
+  categories: Array<{ key: string; name: string }>
+  has?: { continue?: boolean; favorites?: boolean; all?: boolean }
+}): SideEntry[] {
+  const has = { continue: true, favorites: true, all: true, ...opts.has }
   const out: SideEntry[] = []
-  if (opts.personal) {
-    out.push({ id: 'continue', label: COLLECTION_TITLES.continue }, { id: 'favorites', label: COLLECTION_TITLES.favorites })
-  }
-  out.push({ id: 'all', label: COLLECTION_TITLES.all })
+  if (opts.personal && has.continue) out.push({ id: 'continue', label: COLLECTION_TITLES.continue })
+  if (opts.personal && has.favorites) out.push({ id: 'favorites', label: COLLECTION_TITLES.favorites })
+  const hasCategories = opts.categories.length > 0
+  if (has.all || (!hasCategories && out.length === 0)) out.push({ id: 'all', label: COLLECTION_TITLES.all })
   const sorted = [...opts.categories].sort((a, b) => compareText(a.name, b.name))
   const regular = sorted.filter((c) => !isAdultCategory(c.name))
   const adult = opts.allowAdult ? sorted.filter((c) => isAdultCategory(c.name)) : []

@@ -15,7 +15,7 @@ import { ContentCarousel } from '../../components/catalog/ContentCarousel'
 import { LandscapeCard } from '../../components/catalog/LandscapeCard'
 import { PosterCard } from '../../components/catalog/PosterCard'
 import { EmptyState } from '../../components/feedback/EmptyState'
-import { LoadingState } from '../../components/feedback/LoadingState'
+import { SkeletonRow } from '../../components/feedback/LoadingState'
 import { IplexText } from '../../components/ui/IplexText'
 import { useCatalog } from '../../hooks/useCatalog'
 import { useLibrary } from '../../hooks/useLibrary'
@@ -68,7 +68,7 @@ export default function MyIplexScreen() {
       <IplexText variant="page-title" className="iplex-page__title">
         Olá, {session.profile.name}
       </IplexText>
-      {!loaded && <LoadingState label="Carregando sua biblioteca" />}
+      {!loaded && <SkeletonRow shape="landscape" count={15} />}
       {empty && (
         <EmptyState
           title="Sua área pessoal está vazia"

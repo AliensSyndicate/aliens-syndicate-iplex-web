@@ -42,7 +42,7 @@ export function PosterCard({ item, navId, navGroup, onSelect, progress, autoFocu
       {...(gridIndex !== undefined ? { 'data-grid-index': String(gridIndex) } : {})}
     >
       <span className="iplex-tile__frame">
-        <Artwork src={summary?.poster} alt="" fallback={item.title} />
+        <Artwork src={summary?.poster} alt="" fallback={meta.status === 'idle' || meta.status === 'loading' ? '' : item.title} />
         {typeof progress === 'number' && <ProgressBar value={progress} />}
       </span>
       {!posterOnly && <span className="iplex-tile__label">{title}</span>}

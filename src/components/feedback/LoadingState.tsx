@@ -21,7 +21,7 @@ export function LoadingState({ label }: { label?: string }) {
 }
 
 /** Fileira de placeholders com o mesmo tamanho dos cards (evita saltos de layout). */
-export function SkeletonRow({ shape = 'poster', count = 8 }: { shape?: 'poster' | 'landscape' | 'channel'; count?: number }) {
+export function SkeletonRow({ shape = 'poster', count = 15 }: { shape?: 'poster' | 'landscape' | 'channel'; count?: number }) {
   return (
     <div className="iplex-row iplex-row--skeleton" aria-hidden="true">
       <div className="iplex-row__title iplex-skeleton iplex-skeleton--text" />
@@ -32,6 +32,24 @@ export function SkeletonRow({ shape = 'poster', count = 8 }: { shape?: 'poster' 
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/** Grade de placeholders (catálogo): `count` cards em linhas de `cols`, mesmas medidas do grid real. */
+export function SkeletonGrid({ count = 15, cols = 5 }: { count?: number; cols?: number }) {
+  const rows = Math.ceil(count / cols)
+  return (
+    <div className="iplex-catalog__grid iplex-catalog__grid--skeleton" aria-hidden="true">
+      {Array.from({ length: rows }, (_, r) => (
+        <div key={r} className="iplex-catalog__row">
+          {Array.from({ length: Math.min(cols, count - r * cols) }, (_, c) => (
+            <div key={c} className="iplex-tile iplex-tile--poster">
+              <div className="iplex-tile__frame iplex-skeleton" />
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   )
 }

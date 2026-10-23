@@ -144,6 +144,9 @@
 }
 /* Barra: avatar com halo translúcido + cápsula translúcida com as abas (referência Google TV).
  * Translucidez = camadas do card-bg oficial (3 × 5% ≈ 14%) sobre o conteúdo que passa por trás. */
+.iplex-header--see-through::before {
+  display: none;
+}
 .iplex-header__bar {
   display: -webkit-flex;
   display: flex;
@@ -185,44 +188,58 @@
   display: inline-flex;
   -webkit-align-items: center;
   align-items: center;
+  box-sizing: border-box;
   height: calc(var(--iplex-header-height) - 16px);
   margin: 0 2px;
   padding: 0 var(--iplex-space-5);
-  border: none;
+  border: var(--iplex-state-border-width) solid transparent;
   border-radius: var(--iplex-radius-full);
-  background: transparent;
-  color: var(--iplex-text-secondary);
+  background-color: transparent;
+  color: var(--iplex-text-primary);
   font-size: var(--iplex-type-nav);
   font-weight: var(--iplex-font-weight-medium);
   white-space: nowrap;
   cursor: pointer;
-  -webkit-transition: background-color var(--iplex-transition), color var(--iplex-transition);
-  transition: background-color var(--iplex-transition), color var(--iplex-transition);
+  -webkit-transition: background-color 100ms ease-out, border-color 100ms ease-out, color 100ms ease-out;
+  transition: background-color 100ms ease-out, border-color 100ms ease-out, color 100ms ease-out;
 }
 .iplex-tab--icon {
   padding: 0 var(--iplex-space-4);
 }
-.iplex-tab.is-active {
-  color: var(--iplex-button-primary-text);
-  background-color: var(--iplex-button-primary-bg);
+/* Estados compartilhados por menu principal, menu lateral e ordenação (sem mudar a geometria):
+ * normal = texto branco, sem fundo, borda transparente;
+ * foco   = borda branca;  selecionado = fundo branco sólido e texto preto (vence o foco). */
+.iplex-tab.iplex-focusable:focus,
+.iplex-chip.iplex-focusable:focus {
+  border-color: var(--iplex-button-primary-bg);
+  background-color: transparent;
+  color: var(--iplex-text-primary);
+  box-shadow: none;
 }
-/* Foco nas abas: pílula branca com texto escuro (como o Primary). */
-.iplex-tab:focus {
+.iplex-tab.is-active,
+.iplex-chip.is-active {
+  border-color: transparent;
   background-color: var(--iplex-button-primary-bg);
   color: var(--iplex-button-primary-text);
   box-shadow: none;
 }
-:root:not([data-iplex-platform='tv']) .iplex-tab:focus:not(:focus-visible) {
-  background-color: transparent;
-  color: var(--iplex-text-secondary);
-}
-:root:not([data-iplex-platform='tv']) .iplex-tab.is-active:focus:not(:focus-visible) {
+/* Selecionado + foco: borda externa branca e anel interno preto (inset: não muda as medidas). */
+.iplex-tab.is-active.iplex-focusable:focus,
+.iplex-chip.is-active.iplex-focusable:focus {
+  border-color: var(--iplex-button-primary-bg);
   background-color: var(--iplex-button-primary-bg);
   color: var(--iplex-button-primary-text);
+  box-shadow: inset 0 0 0 var(--iplex-state-border-width) var(--iplex-button-primary-text);
 }
 @media (hover: hover) {
-  :root:not([data-iplex-platform='tv']) .iplex-tab:hover {
-    color: var(--iplex-text-primary);
+  :root:not([data-iplex-platform='tv']) .iplex-tab:hover,
+  :root:not([data-iplex-platform='tv']) .iplex-chip:hover {
+    border-color: var(--iplex-button-primary-bg);
+  }
+  :root:not([data-iplex-platform='tv']) .iplex-tab.is-active:hover,
+  :root:not([data-iplex-platform='tv']) .iplex-chip.is-active:hover {
+    border-color: var(--iplex-button-primary-bg);
+    box-shadow: inset 0 0 0 var(--iplex-state-border-width) var(--iplex-button-primary-text);
   }
 }
 
@@ -300,16 +317,17 @@
   -webkit-flex: none;
   flex: none;
   display: block;
+  box-sizing: border-box;
   margin: 0 var(--iplex-card-gap) 0 0;
   padding: 0;
-  border: none;
+  border: var(--iplex-state-border-width) solid transparent;
   border-radius: var(--iplex-radius-medium);
-  background: transparent;
-  color: inherit;
+  background-color: transparent;
+  color: var(--iplex-text-primary);
   text-align: left;
   cursor: pointer;
-  -webkit-transition: -webkit-transform var(--iplex-transition), box-shadow var(--iplex-transition);
-  transition: transform var(--iplex-transition), box-shadow var(--iplex-transition);
+  -webkit-transition: background-color 100ms ease-out, border-color 100ms ease-out, color 100ms ease-out;
+  transition: background-color 100ms ease-out, border-color 100ms ease-out, color 100ms ease-out;
 }
 .iplex-tile--poster {
   width: var(--iplex-poster-width);
@@ -339,40 +357,52 @@
 .iplex-tile__sublabel {
   display: block;
   margin-top: var(--iplex-space-2);
+  padding: 0 var(--iplex-space-2);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: var(--iplex-type-card-title);
-  color: var(--iplex-text-primary);
+  color: inherit;
 }
 .iplex-tile__sublabel {
   margin-top: 2px;
+  padding-bottom: var(--iplex-space-1);
   font-size: var(--iplex-type-meta);
   color: var(--iplex-text-secondary);
 }
-/* O foco fica na moldura (o rótulo continua legível). */
+/* Estados do card (sem zoom, sem deslocar vizinhos): foco = borda branca;
+ * selecionado = fundo branco sólido e texto preto (vence o foco). */
 .iplex-tile.iplex-focusable:focus {
+  border-color: var(--iplex-button-primary-bg);
+  background-color: transparent;
+  color: var(--iplex-text-primary);
   box-shadow: none;
-  -webkit-transform: scale(var(--iplex-focus-scale));
-  transform: scale(var(--iplex-focus-scale));
 }
-.iplex-tile.iplex-focusable:focus .iplex-tile__frame {
-  box-shadow: var(--iplex-focus-ring);
-}
-:root:not([data-iplex-platform='tv']) .iplex-tile.iplex-focusable:focus:not(:focus-visible) {
-  -webkit-transform: none;
-  transform: none;
-}
-:root:not([data-iplex-platform='tv']) .iplex-tile.iplex-focusable:focus:not(:focus-visible) .iplex-tile__frame {
+.iplex-tile.is-selected {
+  border-color: transparent;
+  background-color: var(--iplex-button-primary-bg);
+  color: var(--iplex-button-primary-text);
   box-shadow: none;
+}
+.iplex-tile.is-selected.iplex-focusable:focus {
+  border-color: var(--iplex-button-primary-bg);
+  background-color: var(--iplex-button-primary-bg);
+  color: var(--iplex-button-primary-text);
+  box-shadow: inset 0 0 0 var(--iplex-state-border-width) var(--iplex-button-primary-text);
+}
+.iplex-tile.is-selected .iplex-tile__sublabel,
+.iplex-tile.is-selected .iplex-artwork__fallback,
+.iplex-tile.is-selected .iplex-channel__mark {
+  color: var(--iplex-button-primary-text);
 }
 @media (hover: hover) {
-  :root:not([data-iplex-platform='tv']) .iplex-tile:hover .iplex-tile__frame {
-    box-shadow: var(--iplex-focus-ring);
+  :root:not([data-iplex-platform='tv']) .iplex-tile:hover {
+    border-color: var(--iplex-button-primary-bg);
   }
-}
-.iplex-tile.is-selected .iplex-tile__frame {
-  box-shadow: 0 0 0 var(--iplex-focus-gap) var(--iplex-text-secondary);
+  :root:not([data-iplex-platform='tv']) .iplex-tile.is-selected:hover {
+    border-color: var(--iplex-button-primary-bg);
+    box-shadow: inset 0 0 0 var(--iplex-state-border-width) var(--iplex-button-primary-text);
+  }
 }
 
 /* Imagens */
@@ -397,16 +427,29 @@
 .iplex-artwork__fallback {
   display: -webkit-flex;
   display: flex;
-  -webkit-align-items: flex-end;
-  align-items: flex-end;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
   padding: var(--iplex-space-3);
   overflow: hidden;
-  font-size: var(--iplex-type-meta);
+  text-align: center;
+  font-size: calc(var(--iplex-type-meta) - 4px);
   font-weight: var(--iplex-font-weight-medium);
-  color: var(--iplex-text-secondary);
+  line-height: var(--iplex-line-height-tight);
+  color: var(--iplex-text-primary);
+}
+.iplex-artwork__text {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
   word-break: break-word;
+  overflow-wrap: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
 }
 .iplex-channel__mark {
   position: absolute;
@@ -447,7 +490,19 @@
 
 /* Skeleton */
 .iplex-skeleton {
+  /* 3 camadas do card-bg oficial (≈14%): visível sobre o fundo escuro, sem cor nova. */
   background-color: var(--iplex-card-bg);
+  background-image: linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg)), linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg));
+  -webkit-animation: iplex-skeleton-pulse 1.4s ease-in-out infinite;
+  animation: iplex-skeleton-pulse 1.4s ease-in-out infinite;
+}
+@-webkit-keyframes iplex-skeleton-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+@keyframes iplex-skeleton-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 .iplex-skeleton--text {
   width: 220px;
@@ -485,25 +540,19 @@
 .iplex-chip {
   -webkit-flex: none;
   flex: none;
+  box-sizing: border-box;
   margin: 0 var(--iplex-space-3) var(--iplex-space-2) 0;
   padding: var(--iplex-space-2) var(--iplex-space-5);
-  border: var(--iplex-button-border-width) solid var(--iplex-card-bg);
+  border: var(--iplex-state-border-width) solid transparent;
   border-radius: var(--iplex-radius-full);
-  background-color: var(--iplex-card-bg);
-  color: var(--iplex-text-secondary);
+  background-color: transparent;
+  color: var(--iplex-text-primary);
   font-size: var(--iplex-type-meta);
   font-weight: var(--iplex-font-weight-medium);
   white-space: nowrap;
   cursor: pointer;
-}
-.iplex-chip.is-active {
-  border-color: var(--iplex-text-primary);
-  color: var(--iplex-text-primary);
-}
-.iplex-chip:focus {
-  background-color: var(--iplex-button-primary-bg);
-  color: var(--iplex-button-primary-text);
-  box-shadow: none;
+  -webkit-transition: background-color 100ms ease-out, border-color 100ms ease-out, color 100ms ease-out;
+  transition: background-color 100ms ease-out, border-color 100ms ease-out, color 100ms ease-out;
 }
 
 /* ---- Banner de destaque --------------------------------------------- */
@@ -1564,18 +1613,22 @@
   margin: 0;
 }
 
-/* ---- Tela Catálogo (menu lateral + grid) ------------------------------ */
+/* ---- Tela Catálogo (menu lateral + grid) ------------------------------
+ * As duas colunas ocupam a tela inteira e rolam POR TRÁS do menu principal
+ * transparente (sem máscara nem fundo): o padding-top reserva só o ponto de
+ * partida, de modo que no início real nada fica sob o menu. A rolagem
+ * (scrollMath.ts) considera essa faixa como área coberta. */
 .iplex-page--catalog {
-  --iplex-side-width: 26rem;
+  --iplex-side-width: 34rem;
   --iplex-grid-gap: 1.25rem;
   display: -webkit-flex;
   display: flex;
+  box-sizing: border-box;
   height: 100vh;
   min-height: 0;
   padding: 0;
   overflow: hidden;
 }
-/* As duas colunas rolam por trás do menu transparente e desvanecem sob ele. */
 .iplex-catalog__side,
 .iplex-catalog__content {
   position: relative;
@@ -1584,8 +1637,6 @@
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: none;
-  -webkit-mask-image: -webkit-linear-gradient(top, transparent calc(var(--iplex-content-top) - 4rem), var(--iplex-bg) calc(var(--iplex-content-top) - 0.5rem));
-  mask-image: linear-gradient(180deg, transparent calc(var(--iplex-content-top) - 4rem), var(--iplex-bg) calc(var(--iplex-content-top) - 0.5rem));
 }
 .iplex-catalog__side::-webkit-scrollbar,
 .iplex-catalog__content::-webkit-scrollbar {
@@ -1595,7 +1646,7 @@
   -webkit-flex: none;
   flex: none;
   width: var(--iplex-side-width);
-  padding: var(--iplex-content-top) var(--iplex-space-4) 60vh var(--iplex-safe-area-x);
+  padding: var(--iplex-content-top) var(--iplex-space-4) var(--iplex-space-5) var(--iplex-safe-area-x);
 }
 .iplex-side__item {
   display: -webkit-flex;
@@ -1606,6 +1657,10 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   text-align: left;
+  font-size: calc(var(--iplex-type-nav) - 2px);
+}
+.iplex-side__item:last-child {
+  margin-bottom: 0;
 }
 .iplex-catalog__content {
   -webkit-flex: 1 1 0;
@@ -1614,12 +1669,13 @@
   padding: var(--iplex-content-top) var(--iplex-safe-area-x) var(--iplex-space-8) var(--iplex-space-6);
 }
 .iplex-catalog__title {
+  margin-top: 0;
   margin-bottom: var(--iplex-space-4);
 }
 .iplex-catalog__sort {
   display: -webkit-flex;
   display: flex;
-  padding: 10px 0 var(--iplex-space-4);
+  padding: 0 0 var(--iplex-space-4);
 }
 .iplex-catalog__grid {
   position: relative;
@@ -1630,13 +1686,9 @@
   margin-bottom: var(--iplex-grid-gap);
 }
 .iplex-catalog__row .iplex-tile--poster {
-  width: calc((100% - 5 * var(--iplex-grid-gap)) / 6);
+  width: calc((100% - 4 * var(--iplex-grid-gap)) / 5);
   margin-right: var(--iplex-grid-gap);
 }
 .iplex-catalog__row .iplex-tile--poster:last-child {
   margin-right: 0;
-}
-.iplex-catalog__row .iplex-tile.iplex-focusable:focus {
-  position: relative;
-  z-index: 2;
 }

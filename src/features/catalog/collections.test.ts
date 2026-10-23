@@ -52,3 +52,19 @@ describe('ordenação por data de adição', () => {
     expect(sortOptionsFor([dated('A', 5)]).map((o) => o.id)).toEqual(['az', 'za', 'added'])
   })
 })
+
+describe('menu lateral só com conteúdo', () => {
+  const categories = [{ key: 'acao', name: 'Ação' }]
+  it('oculta Continuar assistindo e Favoritos vazios', () => {
+    const labels = buildSidebar({ personal: true, allowAdult: false, categories, has: { continue: false, favorites: false, all: true } }).map((e) => e.label)
+    expect(labels).toEqual(['Todos', 'Ação'])
+  })
+  it('mostra as coleções pessoais quando têm itens', () => {
+    const labels = buildSidebar({ personal: true, allowAdult: false, categories, has: { continue: true, favorites: false, all: true } }).map((e) => e.label)
+    expect(labels).toEqual(['Continuar assistindo', 'Todos', 'Ação'])
+  })
+  it('sem nada ainda, mantém Todos para haver um item selecionado', () => {
+    const ids = buildSidebar({ personal: true, allowAdult: false, categories: [], has: { continue: false, favorites: false, all: false } }).map((e) => e.id)
+    expect(ids).toEqual(['all'])
+  })
+})

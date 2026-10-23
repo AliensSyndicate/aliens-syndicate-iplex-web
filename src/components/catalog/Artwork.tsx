@@ -11,9 +11,11 @@ export function Artwork({ src, alt, fallback, className }: { src: string | null 
       {show ? (
         <img src={src} alt={alt} loading="lazy" decoding="async" onLoad={() => setLoaded(true)} onError={() => setFailed(true)} />
       ) : (
-        <span className="iplex-artwork__fallback" aria-hidden="true">
-          {fallback}
-        </span>
+        fallback && (
+          <span className="iplex-artwork__fallback" aria-hidden="true">
+            <span className="iplex-artwork__text">{fallback}</span>
+          </span>
+        )
       )}
     </div>
   )
