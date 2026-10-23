@@ -11,11 +11,12 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useBackend } from '../../app/providers/BackendProvider'
 import { Artwork } from '../../components/catalog/Artwork'
 import { ErrorState } from '../../components/feedback/ErrorState'
-import { LoadingState } from '../../components/feedback/LoadingState'
+import { PersonSkeleton } from '../../components/feedback/ScreenSkeletons'
 import { IplexButton } from '../../components/ui/IplexButton'
 import { IplexText } from '../../components/ui/IplexText'
 import { useOpenTmdbTitle } from '../../hooks/useOpenTmdbTitle'
 import { useInitialFocus } from '../../navigation/FocusProvider'
+import { useRowNavigation } from '../../navigation/rowNavigation'
 import { AppError } from '../../services/api/errors'
 import type { TmdbCredit, TmdbPersonDetails } from '../../services/tmdb/tmdbClient'
 import { formatDate } from './detailsFormat'
@@ -63,6 +64,7 @@ export default function PersonScreen() {
   }, [tmdb, personId, scope, attempt])
 
   const invalid = !Number.isInteger(Number(personId)) || !scope.sourceId || !scope.id
+  useRowNavigation()
   useInitialFocus(`${location.pathname}${location.search}`, load.status !== 'loading' || invalid)
 
   if (invalid || load.status === 'error') {
@@ -77,13 +79,13 @@ export default function PersonScreen() {
       </main>
     )
   }
-  if (load.status === 'loading') return <main className="iplex-page"><LoadingState label="Carregando pessoa" /></main>
+  if (load.status === 'loading') return <PersonSkeleton />
 
   const { person } = load
   const born = [formatDate(person.birthday), person.placeOfBirth].filter(Boolean).join(' · ')
   const timeline = careerTimeline(person.credits)
   return (
-    <main className="iplex-page iplex-person" aria-label={person.name}>
+    <main className="iplex-page iplex-person" aria-label={person.name} data-nav-managed-y="">
       <section className="iplex-person__header">
         <div className="iplex-person__photo">
           <Artwork src={person.photo} alt="" fallback={person.name} />
@@ -97,7 +99,7 @@ export default function PersonScreen() {
             <>
               <IplexText variant="description" clamp={fullBio ? undefined : 3} className="iplex-person__bio">{person.biography}</IplexText>
               {person.biography.length > 320 && (
-                <div className="iplex-details__actions">
+                <div className="iplex-details__actions" data-nav-row="x">
                   <IplexButton variant="secondary" navId="person-bio" navGroup="person-actions" autoFocus onClick={() => setFullBio((v) => !v)}>
                     {fullBio ? 'Mostrar menos' : 'Biografia completa'}
                   </IplexButton>
@@ -112,10 +114,10 @@ export default function PersonScreen() {
 
       {notice && <IplexText variant="meta" className="iplex-details__notice" as="p">{notice}</IplexText>}
 
-      <section className="iplex-person__career" aria-label="Carreira">
-        <IplexText variant="section-title">Carreira</IplexText>
+      <section className="iplex-person__career" aria-label="Filmografia">
+        <IplexText variant="section-title">Filmografia</IplexText>
         {timeline.length === 0 && <IplexText variant="description" secondary>Sem filmografia informada.</IplexText>}
-        <ol className="iplex-timeline">
+        <ol className="iplex-timeline" data-nav-row="list" data-nav-top="">
           {timeline.map((group, gi) => (
             <li key={`${group.year ?? 'sem-data'}-${gi}`} className="iplex-timeline__year">
               <span className="iplex-timeline__label">{group.year ?? 'Sem data'}</span>

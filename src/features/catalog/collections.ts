@@ -70,13 +70,37 @@ export function buildSidebar(opts: {
   return out
 }
 
+/**
+ * Chave de ordenação A–Z: sem acentos, minúsculas e números com largura fixa
+ * ("Título 2" < "Título 10"). Calculada uma vez por título (cache): comparar chaves
+ * é muito mais barato que Intl.Collator em dezenas de milhares de itens na TV.
+ */
+const keyCache = new Map<string, string>()
+const sortKey = (title: string): string => {
+  const hit = keyCache.get(title)
+  if (hit !== undefined) return hit
+  let base = title.toLowerCase()
+  try {
+    base = base.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  } catch {
+    /* sem normalize: segue com o texto original */
+  }
+  const key = base.replace(/\d+/g, (n) => (n.length < 10 ? '0'.repeat(10 - n.length) + n : n))
+  if (keyCache.size > 100_000) keyCache.clear()
+  keyCache.set(title, key)
+  return key
+}
+const compareKeys = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+
 export function sortItems(items: CatalogItem[], sort: SortId): CatalogItem[] {
   const out = [...items]
+  const keyed = sort === 'added' ? null : new Map<CatalogItem, string>(out.map((i) => [i, sortKey(i.title)]))
   if (sort === 'added') {
     // Mais recentes primeiro; sem data, no fim (A–Z entre si).
-    return out.sort((a, b) => (b.addedAt ?? -Infinity) - (a.addedAt ?? -Infinity) || compareText(a.title, b.title))
+    return out.sort((a, b) => (b.addedAt ?? -Infinity) - (a.addedAt ?? -Infinity) || compareKeys(sortKey(a.title), sortKey(b.title)))
   }
-  out.sort((a, b) => (sort === 'az' ? compareText(a.title, b.title) : compareText(b.title, a.title)))
+  const dir = sort === 'az' ? 1 : -1
+  out.sort((a, b) => dir * compareKeys(keyed!.get(a)!, keyed!.get(b)!))
   return out
 }
 

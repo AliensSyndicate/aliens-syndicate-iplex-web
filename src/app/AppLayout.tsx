@@ -1,7 +1,7 @@
 import { Suspense, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { IplexHeader } from '../components/navigation/IplexHeader'
-import { LoadingState } from '../components/feedback/LoadingState'
+import { RouteSkeleton } from '../components/feedback/ScreenSkeletons'
 import { ProfileMenu } from '../features/profiles/ProfileMenu'
 import { useReadySession } from './providers/SessionProvider'
 
@@ -14,7 +14,7 @@ export function AppLayout() {
   return (
     <div className="iplex-app">
       {!immersive && <IplexHeader profile={session.profile} onAvatar={() => setMenu(true)} />}
-      <Suspense fallback={<main className="iplex-page"><LoadingState /></main>}>
+      <Suspense fallback={<RouteSkeleton pathname={location.pathname} />}>
         <Outlet />
       </Suspense>
       {menu && <ProfileMenu onClose={() => setMenu(false)} />}

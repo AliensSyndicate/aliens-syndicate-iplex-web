@@ -31,7 +31,7 @@ export function PosterCard({ item, navId, navGroup, onSelect, progress, autoFocu
     <button
       ref={ref}
       type="button"
-      className={classNames('iplex-tile', 'iplex-tile--poster', 'iplex-focusable')}
+      className={classNames('iplex-tile', 'iplex-tile--poster', 'iplex-tile--meta', 'iplex-focusable')}
       onClick={() => onSelect(item)}
       onFocus={onFocus}
       aria-label={title}

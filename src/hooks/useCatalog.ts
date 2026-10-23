@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useReadySession } from '../app/providers/SessionProvider'
 import type { ContentKind } from '../services/api/types'
 
+const EMPTY_ITEMS: ReturnType<ReturnType<typeof useReadySession>['catalog']['items']> = []
+const EMPTY_CATEGORIES: ReturnType<ReturnType<typeof useReadySession>['catalog']['categories']> = []
+
 /** Catálogo do perfil atual para um tipo de conteúdo (carregamento progressivo). */
 export function useCatalog(kind: ContentKind, enabled = true) {
   const { catalog, spaces, spacesError } = useReadySession()
@@ -18,21 +21,27 @@ export function useCatalog(kind: ContentKind, enabled = true) {
   const reload = useCallback(() => void catalog.reload(kind), [catalog, kind])
 
   // revision força recomputar quando o store muda.
-  const items = useMemo(() => catalog.items(kind), [catalog, kind, snapshot.revision]) // eslint-disable-line react-hooks/exhaustive-deps
-  const categories = useMemo(() => catalog.categories(kind), [catalog, kind, snapshot.revision]) // eslint-disable-line react-hooks/exhaustive-deps
+  const items = useMemo(() => (enabled ? catalog.items(kind) : EMPTY_ITEMS), [catalog, kind, enabled, snapshot.revision]) // eslint-disable-line react-hooks/exhaustive-deps
+  const categories = useMemo(() => (enabled ? catalog.categories(kind) : EMPTY_CATEGORIES), [catalog, kind, enabled, snapshot.revision]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return {
-    catalog,
-    items,
-    categories,
-    spaces: kindSpaces,
-    spacesError,
-    noSources: !spacesError && spaces.length === 0,
-    noKind: !spacesError && spaces.length > 0 && kindSpaces.length === 0,
-    loading: catalog.isLoading(kind),
-    error: catalog.errorFor(kind),
-    hasMore: catalog.hasMore(kind),
-    loadMore,
-    reload,
-  }
+  // Objeto estável enquanto o store não muda: as telas derivam listas enormes dele (categorias, ordenação)
+  // e não podem refazer esse trabalho a cada renderização (foco, rolagem).
+  return useMemo(
+    () => ({
+      catalog,
+      items,
+      categories,
+      spaces: kindSpaces,
+      spacesError,
+      noSources: !spacesError && spaces.length === 0,
+      noKind: !spacesError && spaces.length > 0 && kindSpaces.length === 0,
+      loading: catalog.isLoading(kind),
+      error: catalog.errorFor(kind),
+      hasMore: catalog.hasMore(kind),
+      loadMore,
+      reload,
+    }),
+    // snapshot.revision: loading/error/hasMore mudam junto com o store.
+    [catalog, kind, items, categories, kindSpaces, spacesError, spaces.length, snapshot.revision, loadMore, reload], // eslint-disable-line react-hooks/exhaustive-deps
+  )
 }

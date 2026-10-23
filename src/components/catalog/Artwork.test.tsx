@@ -7,10 +7,16 @@ describe('Artwork', () => {
     render(<Artwork src={null} alt="" fallback="Título sem capa" />)
     expect(screen.getByText('Título sem capa')).toBeTruthy()
   })
-  it('falha de carregamento troca a imagem pelo nome', () => {
+  it('com imagem, o nome fica no fundo e a imagem sobrepõe', () => {
+    const { container } = render(<Artwork src="https://exemplo.invalid/x.jpg" alt="" fallback="Capa" />)
+    const children = Array.from(container.querySelector('.iplex-artwork')!.children)
+    expect(children[0]!.className).toContain('iplex-artwork__fallback')
+    expect(children[1]!.tagName).toBe('IMG')
+  })
+  it('falha de carregamento remove a imagem e o nome continua visível', () => {
     const { container } = render(<Artwork src="https://exemplo.invalid/x.jpg" alt="" fallback="Capa quebrada" />)
-    expect(screen.queryByText('Capa quebrada')).toBeNull()
     fireEvent.error(container.querySelector('img')!)
+    expect(container.querySelector('img')).toBeNull()
     expect(screen.getByText('Capa quebrada')).toBeTruthy()
   })
   it('sem nome (metadados ainda carregando) não desenha texto', () => {

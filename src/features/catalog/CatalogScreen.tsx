@@ -75,12 +75,21 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   const [chosen, setChosen] = useState<CollectionId | null>(remembered?.selected ?? (initial === 'all' ? null : initial))
   const [sort, setSort] = useState<SortId>(remembered?.sort ?? 'az')
 
+  // Primeira renderização: pinta o skeleton antes do trabalho pesado (categorias e ordenação de dezenas de
+  // milhares de itens travam a TV). Ao voltar dos detalhes (view lembrada) já nasce pronta, para restaurar a rolagem.
+  const [warm, setWarm] = useState(!!remembered)
+  useEffect(() => {
+    if (warm) return
+    const id = setTimeout(() => setWarm(true), 60)
+    return () => clearTimeout(id)
+  }, [warm])
+
   const active = useMemo(() => [wantMovies ? movies : null, wantSeries ? series : null].filter((c): c is NonNullable<typeof c> => !!c), [wantMovies, wantSeries, movies, series])
   const spacesError = active.find((c) => c.spacesError)?.spacesError ?? null
   const noSources = active.some((c) => c.noSources)
   const noKind = active.length > 0 && active.every((c) => c.noKind)
   const error = active.length > 0 && active.every((c) => c.error) ? active[0]!.error : null
-  const loading = active.some((c) => c.loading)
+  const loading = !warm || active.some((c) => c.loading)
   const hasMore = active.some((c) => c.hasMore)
   const loadMoreAll = active.map((c) => c.loadMore)
   const reload = useCallback(() => active.forEach((c) => c.reload()), [active])
@@ -92,6 +101,7 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
 
   // Categorias do fornecedor (por nome, juntando fontes e tipos), só com itens carregados.
   const groups = useMemo(() => {
+    if (!warm) return new Map<string, { key: string; name: string; items: CatalogItem[] }>()
     const byKey = new Map<string, { key: string; name: string; items: CatalogItem[] }>()
     for (const c of active) {
       for (const g of c.categories) {
@@ -101,8 +111,8 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
       }
     }
     return byKey
-  }, [active])
-  const allItems = useMemo(() => active.flatMap((c) => c.items), [active])
+  }, [active, warm])
+  const allItems = useMemo(() => (warm ? active.flatMap((c) => c.items) : []), [active, warm])
 
 
   const progressMeta = useMemo(() => {

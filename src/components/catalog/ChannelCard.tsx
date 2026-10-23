@@ -39,7 +39,7 @@ export function ChannelCard({
   return (
     <button
       type="button"
-      className={classNames('iplex-tile', 'iplex-tile--channel', 'iplex-focusable', selected && 'is-selected')}
+      className={classNames('iplex-tile', 'iplex-tile--channel', 'iplex-tile--meta', 'iplex-focusable', selected && 'is-selected')}
       onClick={() => onSelect(item)}
       onFocus={() => onFocus?.(item)}
       aria-label={`${item.title}${favorite ? ', favorito' : ''}`}

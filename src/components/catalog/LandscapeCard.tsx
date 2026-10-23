@@ -43,7 +43,7 @@ export function LandscapeCard({
     <button
       ref={ref}
       type="button"
-      className="iplex-tile iplex-tile--landscape iplex-focusable"
+      className="iplex-tile iplex-tile--landscape iplex-tile--meta iplex-focusable"
       onClick={onSelect}
       aria-label={subtitle ? `${label}, ${subtitle}` : label}
       data-nav=""

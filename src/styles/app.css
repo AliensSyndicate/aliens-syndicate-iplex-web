@@ -377,7 +377,7 @@
   font-size: var(--iplex-type-meta);
   color: var(--iplex-text-secondary);
 }
-/* Card de metadados (elenco, recomendações): a borda de foco acompanha só a imagem. */
+/* Cards com imagem e texto abaixo (pôster, paisagem, canal, elenco, recomendações): foco e hover contornam só a imagem. */
 .iplex-tile.iplex-tile--meta.iplex-focusable:focus {
   border-color: transparent;
   box-shadow: none;
@@ -386,10 +386,11 @@
   box-shadow: 0 0 0 var(--iplex-state-border-width) var(--iplex-button-primary-bg);
 }
 @media (hover: hover) {
-  :root:not([data-iplex-platform='tv']) .iplex-tile--meta:hover {
+  :root:not([data-iplex-platform='tv']) .iplex-tile.iplex-tile--meta:hover:not(.is-selected) {
     border-color: transparent;
+    box-shadow: none;
   }
-  :root:not([data-iplex-platform='tv']) .iplex-tile--meta:hover .iplex-tile__frame {
+  :root:not([data-iplex-platform='tv']) .iplex-tile.iplex-tile--meta:hover:not(.is-selected) .iplex-tile__frame {
     box-shadow: 0 0 0 var(--iplex-state-border-width) var(--iplex-button-primary-bg);
   }
 }
@@ -452,6 +453,9 @@
   height: 100%;
 }
 .iplex-artwork img {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -546,6 +550,38 @@
   width: 220px;
   height: 22px;
   border-radius: var(--iplex-radius-small);
+}
+.iplex-skeleton--button {
+  width: 240px;
+  height: 64px;
+  margin-right: var(--iplex-space-4);
+  border-radius: var(--iplex-radius-full);
+}
+.iplex-details__skeleton-actions {
+  display: -webkit-flex;
+  display: flex;
+}
+.iplex-details__backdrop-skeleton {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+.iplex-skeleton--title {
+  width: 420px;
+  height: 44px;
+}
+.iplex-skeleton--wide {
+  width: 100%;
+  max-width: 820px;
+}
+.iplex-skeleton--credit {
+  width: 100%;
+  max-width: 1400px;
+  height: 120px;
+  margin-top: var(--iplex-space-4);
+  border-radius: var(--iplex-radius-medium);
 }
 .iplex-row--skeleton .iplex-tile {
   cursor: default;
@@ -721,6 +757,10 @@
 .iplex-details__info > .iplex-details__actions {
   margin-top: var(--iplex-space-6);
 }
+/* Espaço entre os botões (antes 1rem, de `.iplex-button + .iplex-button`). */
+.iplex-details__info .iplex-details__actions .iplex-button + .iplex-button {
+  margin-left: 2.5rem;
+}
 .iplex-details__meta {
   display: -webkit-flex;
   display: flex;
@@ -793,7 +833,6 @@
   display: flex;
   -webkit-align-items: flex-start;
   align-items: flex-start;
-  padding-top: var(--iplex-content-top);
 }
 .iplex-person__photo {
   position: relative;
@@ -806,6 +845,9 @@
   background-color: var(--iplex-card-bg);
 }
 .iplex-person__info {
+  /* o bloco de texto termina na base da foto */
+  -webkit-align-self: flex-end;
+  align-self: flex-end;
   min-width: 0;
   max-width: 1100px;
   padding-left: var(--iplex-space-7);

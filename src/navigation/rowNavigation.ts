@@ -8,7 +8,7 @@
  * A rolagem vertical tem um só dono (o hook; o main leva [data-nav-managed-y]),
  * e a horizontal dos carrosséis continua em spatial.ensureVisible.
  */
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { isArrow } from '../platform/keys'
 import { useKeyHandler } from './FocusProvider'
 import { animateScrollTop, revealTop } from './scrollMath'
@@ -31,7 +31,9 @@ export function scrollToItem(el: HTMLElement, rows: HTMLElement[]) {
   const row = rowOf(el)
   const view = window.innerHeight
   const max = Math.max(0, scroller.scrollHeight - view)
-  if (row && rows[0] === row && (isList(row) ? rowItems(row)[0] === el : true)) {
+  // [data-nav-top]: o primeiro item da lista leva a página ao topo (ex.: filmografia).
+  const toTop = !!row && (rows[0] === row || row.hasAttribute('data-nav-top'))
+  if (row && toTop && (isList(row) ? rowItems(row)[0] === el : true)) {
     animateScrollTop(scroller, 0)
     return
   }
@@ -123,4 +125,19 @@ export function useRowNavigation(enabled = true) {
   const last = useRef(new WeakMap<HTMLElement, string>())
   const handler = useCallback((key: string) => isArrow(key as never) && handleRowKey(key, last.current), [])
   useKeyHandler((key) => handler(key), enabled)
+
+  // Entrada na tela: começa no topo; o primeiro foco (inicial ou restaurado ao voltar) posiciona a rolagem.
+  useEffect(() => {
+    if (!enabled) return
+    window.scrollTo(0, 0)
+    const onFirstFocus = (event: FocusEvent) => {
+      const el = event.target
+      if (!(el instanceof HTMLElement) || !el.hasAttribute('data-nav') || !el.closest('main')) return
+      document.removeEventListener('focusin', onFirstFocus)
+      const rows = Array.from(document.querySelectorAll<HTMLElement>('main [data-nav-row]'))
+      scrollToItem(el, rows)
+    }
+    document.addEventListener('focusin', onFirstFocus)
+    return () => document.removeEventListener('focusin', onFirstFocus)
+  }, [enabled])
 }

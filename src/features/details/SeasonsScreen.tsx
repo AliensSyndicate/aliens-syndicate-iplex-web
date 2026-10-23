@@ -10,7 +10,7 @@ import { useReadySession } from '../../app/providers/SessionProvider'
 import { PATHS } from '../../app/routes/paths'
 import { Dialog } from '../../components/dialogs/Dialog'
 import { ErrorState } from '../../components/feedback/ErrorState'
-import { LoadingState } from '../../components/feedback/LoadingState'
+import { EpisodeBlocks, SeasonsSkeleton } from '../../components/feedback/ScreenSkeletons'
 import { IplexButton } from '../../components/ui/IplexButton'
 import { IplexText } from '../../components/ui/IplexText'
 import { useLibrary } from '../../hooks/useLibrary'
@@ -97,7 +97,7 @@ export default function SeasonsScreen() {
   useRowNavigation()
   useInitialFocus(`${location.pathname}${location.search}`, load.status !== 'loading' && (load.status === 'error' || series !== null))
 
-  if (load.status === 'loading') return <main className="iplex-page"><LoadingState label="Carregando temporadas" /></main>
+  if (load.status === 'loading') return <SeasonsSkeleton />
   if (load.status === 'error' || !item) {
     const error = load.status === 'error' ? load.error : null
     return (
@@ -118,7 +118,7 @@ export default function SeasonsScreen() {
     <main className="iplex-page iplex-seasons" aria-label={`Temporadas de ${name}`} data-nav-managed-y="">
       <IplexText variant="hero-title">{name}</IplexText>
       <section className="iplex-details__series" aria-label="Temporadas e episódios">
-        {series === null && <LoadingState label="Carregando episódios" />}
+        {series === null && <EpisodeBlocks />}
         {series && series.seasons.length === 0 && <IplexText variant="description">Esta fonte não informou os episódios desta série.</IplexText>}
         {series && series.seasons.length > 0 && seasonNumber !== null && (
           <>

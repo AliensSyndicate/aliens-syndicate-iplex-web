@@ -20,7 +20,8 @@ import { ContentCarousel } from '../../components/catalog/ContentCarousel'
 import { MetadataTile } from '../../components/catalog/MetadataTile'
 import { AgeRatingBadge, normalizeAgeRating } from '../../components/catalog/AgeRatingBadge'
 import { ErrorState } from '../../components/feedback/ErrorState'
-import { LoadingState } from '../../components/feedback/LoadingState'
+import { SkeletonRow } from '../../components/feedback/LoadingState'
+import { DetailsSkeleton } from '../../components/feedback/ScreenSkeletons'
 import { IplexButton } from '../../components/ui/IplexButton'
 import { IplexText } from '../../components/ui/IplexText'
 import { useDetails, useMatch } from '../../hooks/useMetadata'
@@ -84,7 +85,7 @@ export default function DetailsScreen() {
   const kind = item?.kind === 'series' ? 'series' : item?.kind === 'movie' ? 'movie' : null
   const match = useMatch(item)
   const summary = match.status === 'ready' ? match.summary : null
-  const { details } = useDetails(kind, summary?.tmdbId ?? null, item)
+  const { details, loading: detailsLoading } = useDetails(kind, summary?.tmdbId ?? null, item)
 
   useEffect(() => {
     if (!item || item.kind !== 'series') return
@@ -122,7 +123,7 @@ export default function DetailsScreen() {
   useRowNavigation()
   useInitialFocus(`${location.pathname}${location.search}`, load.status !== 'loading' && (item?.kind !== 'series' || series !== null))
 
-  if (load.status === 'loading') return <main className="iplex-page"><LoadingState label="Carregando detalhes" /></main>
+  if (load.status === 'loading') return <DetailsSkeleton />
   if (load.status === 'error' || !item) {
     const error = load.status === 'error' ? load.error : null
     return (
@@ -132,6 +133,8 @@ export default function DetailsScreen() {
     )
   }
 
+  // TMDB ainda respondendo (correspondência ou detalhes): placeholders no lugar de imagem e fileiras.
+  const tmdbPending = match.status === 'idle' || match.status === 'loading' || (!!summary && !details && detailsLoading)
   const movieProgress = item.kind === 'movie' && personal ? store.progressFor(item.id) : null
   const movieResumable = !!movieProgress && ratio(movieProgress)! < DONE
   const favorite = store.isFavorite(item.id)
@@ -200,7 +203,7 @@ export default function DetailsScreen() {
   return (
     <main className="iplex-page iplex-details" aria-label={name} data-nav-managed-y="">
       <div className="iplex-details__backdrop" aria-hidden="true">
-        <Artwork src={summary?.backdrop} alt="" fallback="" />
+        {tmdbPending && !summary?.backdrop ? <div className="iplex-skeleton iplex-details__backdrop-skeleton" /> : <Artwork src={summary?.backdrop} alt="" fallback="" />}
         <div className="iplex-hero__scrim" />
       </div>
       <section className="iplex-details__info">
@@ -265,6 +268,8 @@ export default function DetailsScreen() {
         </div>
         {listError && <IplexText variant="meta" className="iplex-details__error">{listError}</IplexText>}
       </section>
+
+      {tmdbPending && <SkeletonRow count={8} />}
 
       {details && details.cast.length > 0 && (
         <ContentCarousel title="Elenco" id="cast">
