@@ -10,6 +10,7 @@ export const screenLoaders = {
   series: () => import('../features/series/SeriesScreen'),
   catalog: () => import('../features/catalog/CatalogRoute'),
   details: () => import('../features/details/DetailsScreen'),
+  seasons: () => import('../features/details/SeasonsScreen'),
   player: () => import('../features/playback/PlayerScreen'),
   person: () => import('../features/details/PersonScreen'),
   settings: () => import('../features/settings/SettingsScreen'),

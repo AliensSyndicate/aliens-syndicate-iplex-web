@@ -18,7 +18,7 @@ import { PATHS } from '../../app/routes/paths'
 import { Artwork } from '../../components/catalog/Artwork'
 import { ContentCarousel } from '../../components/catalog/ContentCarousel'
 import { MetadataTile } from '../../components/catalog/MetadataTile'
-import { Dialog } from '../../components/dialogs/Dialog'
+import { AgeRatingBadge, normalizeAgeRating } from '../../components/catalog/AgeRatingBadge'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import { IplexButton } from '../../components/ui/IplexButton'
@@ -27,17 +27,16 @@ import { useDetails, useMatch } from '../../hooks/useMetadata'
 import { useLibrary } from '../../hooks/useLibrary'
 import { useOpenTmdbTitle } from '../../hooks/useOpenTmdbTitle'
 import { useInitialFocus } from '../../navigation/FocusProvider'
+import { useRowNavigation } from '../../navigation/rowNavigation'
 import { toAppError, type AppError } from '../../services/api/errors'
 import type { CatalogItem, SeriesDetails, SeriesEpisode } from '../../services/api/types'
 import { episodeContentId, itemYear } from '../../services/catalog/normalize'
-import type { TmdbPerson, TmdbSeason } from '../../services/tmdb/tmdbClient'
+import type { TmdbPerson } from '../../services/tmdb/tmdbClient'
 import { formatRuntime } from '../../utils/time'
 import type { PlayerNavState } from '../playback/PlayerScreen'
 import { episodeCode, orderedEpisodes } from '../playback/playerRules'
 import { hasPersonalLibrary } from '../profiles/profileRules'
 import { formatDate } from './detailsFormat'
-import { EpisodeList } from './EpisodeList'
-import { SeasonSelector } from './SeasonSelector'
 
 type Load = { status: 'loading' } | { status: 'ready'; item: CatalogItem } | { status: 'error'; error: AppError }
 
@@ -58,18 +57,15 @@ export default function DetailsScreen() {
   const location = useLocation()
   const title = new URLSearchParams(location.search).get('t') ?? ''
   const navigate = useNavigate()
-  const { backend, tmdb } = useBackend()
+  const { backend } = useBackend()
   const session = useReadySession()
   const { store, library } = useLibrary()
   const personal = hasPersonalLibrary(session.profile)
   const [load, setLoad] = useState<Load>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const [series, setSeries] = useState<SeriesDetails | null>(null)
-  const [seasonNumber, setSeasonNumber] = useState<number | null>(null)
-  const [tmdbSeason, setTmdbSeason] = useState<TmdbSeason | null>(null)
   const [busy, setBusy] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
-  const [choice, setChoice] = useState<SeriesEpisode | null>(null)
   const recommendation = useOpenTmdbTitle()
 
   useEffect(() => {
@@ -97,7 +93,6 @@ export default function DetailsScreen() {
       (value) => {
         if (!alive) return
         setSeries(value)
-        setSeasonNumber((n) => n ?? value?.seasons[0]?.seasonNumber ?? null)
       },
       () => alive && setSeries({ seriesId: item.providerRef, seasons: [] }),
     )
@@ -105,19 +100,6 @@ export default function DetailsScreen() {
       alive = false
     }
   }, [backend, item, session.profile.id])
-
-  useEffect(() => {
-    if (!item || !summary || kind !== 'series' || seasonNumber === null) return
-    let alive = true
-    setTmdbSeason(null)
-    tmdb.season(summary.tmdbId, seasonNumber, item).then(
-      (s) => alive && setTmdbSeason(s),
-      () => undefined,
-    )
-    return () => {
-      alive = false
-    }
-  }, [tmdb, summary, kind, seasonNumber, item])
 
   // Continuação: episódio mais recente com progresso; concluído → próximo elegível (lista da fonte IPTV).
   const resume = useMemo(() => {
@@ -137,6 +119,7 @@ export default function DetailsScreen() {
     // library.revision mantém o cálculo atualizado
   }, [item, series, store, personal, library]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useRowNavigation()
   useInitialFocus(`${location.pathname}${location.search}`, load.status !== 'loading' && (item?.kind !== 'series' || series !== null))
 
   if (load.status === 'loading') return <main className="iplex-page"><LoadingState label="Carregando detalhes" /></main>
@@ -156,16 +139,16 @@ export default function DetailsScreen() {
   const original = details?.originalTitle || summary?.originalTitle || ''
   const year = summary?.year ?? itemYear(item.year)
   const certification = details?.certification || item.ageRating || null
+  const ageSeal = normalizeAgeRating(certification)
   const seasonsLabel = series && series.seasons.length > 0 ? `${series.seasons.length} temporada${series.seasons.length === 1 ? '' : 's'}` : null
   const meta = [
     year,
     item.kind === 'movie' ? formatRuntime(details?.runtimeMinutes) : seasonsLabel,
-    certification ? `Classificação ${certification}` : null,
+    certification && !ageSeal ? `Classificação ${certification}` : null,
     summary?.rating ? `TMDB ${summary.rating.toFixed(1)}` : null,
   ].filter(Boolean)
   const genres = summary?.genres.length ? summary.genres : item.category ? [categoryLabel(item.category)] : []
   const overview = summary?.overview || item.plot || ''
-  const season = series?.seasons.find((s) => s.seasonNumber === seasonNumber) ?? null
   // Pessoas: biografia/filmografia ficam fora do perfil infantil (como a descoberta do Control).
   const canOpenPeople = session.profile.type !== 'kids' && !!summary
   const scope = { sourceId: item.sourceId, itemId: item.id, title: item.title }
@@ -173,9 +156,7 @@ export default function DetailsScreen() {
   const playMovie = (resumeFrom: boolean) => navigate(PATHS.watch({ sourceId: item.sourceId, itemId: item.id, kind: 'movie', title: item.title, resume: resumeFrom }), { state: TO_PLAYER })
   const playEpisode = (ep: SeriesEpisode, resumeFrom: boolean) =>
     navigate(PATHS.watch({ sourceId: item.sourceId, itemId: item.id, kind: 'series', title: item.title, episodeId: ep.id, resume: resumeFrom }), { state: TO_PLAYER })
-  const episodeProgress = (ep: SeriesEpisode) => (personal ? ratio(store.progressFor(episodeContentId(item.id, ep.id))) : null)
   const first = orderedEpisodes(series)[0]
-  const episodeName = (ep: SeriesEpisode) => (seasonNumber === ep.season ? tmdbSeason?.episodes.find((m) => m.episodeNumber === ep.episodeNum)?.name : null) || ep.title
 
   const toggleList = async () => {
     setBusy(true)
@@ -217,7 +198,7 @@ export default function DetailsScreen() {
   ]
 
   return (
-    <main className="iplex-page iplex-details" aria-label={name}>
+    <main className="iplex-page iplex-details" aria-label={name} data-nav-managed-y="">
       <div className="iplex-details__backdrop" aria-hidden="true">
         <Artwork src={summary?.backdrop} alt="" fallback="" />
         <div className="iplex-hero__scrim" />
@@ -225,7 +206,12 @@ export default function DetailsScreen() {
       <section className="iplex-details__info">
         <IplexText variant="hero-title">{name}</IplexText>
         {original && original.toLowerCase() !== name.toLowerCase() && <IplexText variant="meta" className="iplex-details__original">{original}</IplexText>}
-        {meta.length > 0 && <IplexText variant="meta">{meta.join(' · ')}</IplexText>}
+        {(meta.length > 0 || ageSeal) && (
+          <div className="iplex-details__meta">
+            {ageSeal && <AgeRatingBadge rating={ageSeal} />}
+            {meta.length > 0 && <IplexText variant="meta">{meta.join(' · ')}</IplexText>}
+          </div>
+        )}
         {genres.length > 0 && <IplexText variant="meta">{genres.slice(0, 4).join(' · ')}</IplexText>}
         {overview && <IplexText variant="description" clamp={3} className="iplex-details__overview">{overview}</IplexText>}
         {movieProgress && movieResumable && (
@@ -233,7 +219,7 @@ export default function DetailsScreen() {
             <span className="iplex-details__progress-bar"><span className="iplex-progress"><span className="iplex-progress__fill" style={{ width: `${ratio(movieProgress)! * 100}%` }} /></span></span>
           </div>
         )}
-        <div className="iplex-details__actions" data-nav-group-root="details-actions">
+        <div className="iplex-details__actions" data-nav-group-root="details-actions" data-nav-row="x">
           {item.kind === 'movie' &&
             (movieResumable ? (
               <>
@@ -266,38 +252,19 @@ export default function DetailsScreen() {
                 Assistir agora
               </IplexButton>
             ) : null)}
+          {item.kind === 'series' && (
+            <IplexButton variant="secondary" navId="d-seasons" navGroup="details-actions" onClick={() => navigate(PATHS.seasons(item.sourceId, item.id, item.title))}>
+              Temporadas
+            </IplexButton>
+          )}
           {personal && (
             <IplexButton variant="secondary" navId="d-list" navGroup="details-actions" disabled={busy} onClick={() => void toggleList()} autoFocus={item.kind === 'series' && !resume && !first}>
-              {favorite ? 'Remover da lista' : 'Adicionar à lista'}
+              {favorite ? 'Desfavoritar' : 'Favoritar'}
             </IplexButton>
           )}
         </div>
         {listError && <IplexText variant="meta" className="iplex-details__error">{listError}</IplexText>}
       </section>
-
-      {item.kind === 'series' && (
-        <section className="iplex-details__series" aria-label="Temporadas e episódios">
-          {series === null && <LoadingState label="Carregando episódios" />}
-          {series && series.seasons.length === 0 && <IplexText variant="description">Esta fonte não informou os episódios desta série.</IplexText>}
-          {series && series.seasons.length > 0 && seasonNumber !== null && (
-            <>
-              <SeasonSelector seasons={series.seasons} selected={seasonNumber} onSelect={setSeasonNumber} />
-              {season && (
-                <EpisodeList
-                  episodes={season.episodes.map((episode) => ({ episode, progress: episodeProgress(episode) }))}
-                  tmdbSeason={tmdbSeason}
-                  onPlay={(ep) => {
-                    const p = episodeProgress(ep)
-                    // Progresso salvo e não concluído: o usuário escolhe entre continuar e recomeçar.
-                    if (p !== null && p < DONE) setChoice(ep)
-                    else playEpisode(ep, false)
-                  }}
-                />
-              )}
-            </>
-          )}
-        </section>
-      )}
 
       {details && details.cast.length > 0 && (
         <ContentCarousel title="Elenco" id="cast">
@@ -311,9 +278,10 @@ export default function DetailsScreen() {
       )}
 
       {info.length > 0 && (
-        <section className="iplex-details__facts" aria-label="Informações">
+        <section className="iplex-details__facts" aria-label="Informações" data-nav-row="list">
           <IplexText variant="section-title">Informações</IplexText>
-          <dl className="iplex-facts">
+          <div className="iplex-facts-focus iplex-focusable" tabIndex={0} data-nav="" data-nav-id="facts" data-nav-group="facts">
+            <dl className="iplex-facts">
             {info.map(([label, value]) => (
               <div key={label} className="iplex-facts__row">
                 <dt>{label}</dt>
@@ -321,6 +289,7 @@ export default function DetailsScreen() {
               </div>
             ))}
           </dl>
+          </div>
         </section>
       )}
 
@@ -343,18 +312,6 @@ export default function DetailsScreen() {
       {recommendation.notice && <IplexText variant="meta" className="iplex-details__notice" as="p">{recommendation.notice}</IplexText>}
       {summary && <IplexText variant="caption" className="iplex-details__attribution">Metadados: TMDB. Este produto usa a API do TMDB, mas não é endossado ou certificado pelo TMDB.</IplexText>}
 
-      {choice && (
-        <Dialog title={`${episodeCode(choice)}${episodeName(choice) ? ` · ${episodeName(choice)}` : ''}`} description="Você já começou este episódio." onClose={() => setChoice(null)}>
-          <div className="iplex-dialog__actions">
-            <IplexButton navId="ep-continue" autoFocus onClick={() => (setChoice(null), playEpisode(choice, true))}>
-              Continuar
-            </IplexButton>
-            <IplexButton variant="secondary" navId="ep-restart" onClick={() => (setChoice(null), playEpisode(choice, false))}>
-              Assistir do início
-            </IplexButton>
-          </div>
-        </Dialog>
-      )}
     </main>
   )
 }

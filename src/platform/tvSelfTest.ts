@@ -276,6 +276,89 @@ async function runScreen(tab: string) {
   }
 }
 
+/** Detalhes de série: selo/gêneros, botões, ausência de episódios e tela Temporadas. */
+async function runDetails() {
+  const t = 'detalhes'
+  // Continua na tela Séries (foco no card de onde runScreen voltou dos detalhes).
+  await sleep(500)
+  const card = document.activeElement as HTMLElement
+  if (card?.dataset.gridIndex === undefined) return report(`${t}:enter`, { fail: 'sem card focado', ...snapshot() })
+  try {
+    const client = (window as unknown as { __iplexTmdb?: { match: (k: 'series', t: string, y: number | null, i: { sourceId: string; id: string }) => Promise<unknown> } }).__iplexTmdb
+    const found = await client?.match('series', 'Breaking Bad', null, { sourceId: 'probe', id: 'probe' })
+    report(`${t}:tmdb-probe`, { result: JSON.stringify(found).slice(0, 200) })
+  } catch (error) {
+    report(`${t}:tmdb-probe`, { error: String((error as Error)?.message ?? error) })
+  }
+  // Procura um título com correspondência no TMDB (elenco/equipe/recomendações) entre os próximos cards.
+  for (let tries = 0; tries < 4; tries++) {
+    ;(document.activeElement as HTMLElement).click()
+    if (!(await waitFor(() => !!$('.iplex-details__actions'), 15000))) return report(`${t}:open`, { fail: 'detalhes não abriram' })
+    await waitFor(() => all('.iplex-details .iplex-row').length >= 2, 6000)
+    await sleep(800)
+    report(`${t}:try${tries}`, { title: ($('h1')?.textContent ?? '').trim().slice(0, 30), rows: String(all('.iplex-details .iplex-row').length), tmdbAttribution: String(!!$('.iplex-details__attribution')), buttons: all('.iplex-details__actions .iplex-button').map((b) => (b.textContent ?? '').trim()).join('|') })
+    if (all('.iplex-details .iplex-row').length >= 2 && all('.iplex-details__actions .iplex-button').some((b) => (b.textContent ?? '').trim() === 'Temporadas')) break
+    press('Escape')
+    await waitFor(() => !!$('.iplex-catalog__content') && all('[data-grid-index]').length > 0, 10000)
+    await sleep(1000)
+    press(tries % 2 ? 'ArrowDown' : 'ArrowRight')
+    await sleep(400)
+  }
+  if (!$('.iplex-details__actions')) return report(`${t}:open`, { fail: 'nenhum título com elenco/equipe nos 4 testados' })
+  const buttons = all('.iplex-details__actions .iplex-button')
+  const seal = $('.iplex-age')
+  report(`${t}:rows`, { rows: all('.iplex-details .iplex-row').map((r) => (r.querySelector('.iplex-row__title')?.textContent ?? '').trim()).join('|') })
+  const gap = ($('.iplex-details__overview')?.getBoundingClientRect().bottom ?? 0)
+  report(`${t}:info`, { buttons: buttons.map((b) => (b.textContent ?? '').trim()).join('|'), focused: label(document.activeElement), seal: seal ? `${(seal.textContent ?? '').trim()}@${getComputedStyle(seal).backgroundColor}` : 'none', genres: all('.iplex-details__genre').map((g) => (g.textContent ?? '').trim()).join(','), episodesOnDetails: String(all('.iplex-episode').length), gapOverviewToButtons: String(Math.round((buttons[0]?.getBoundingClientRect().top ?? 0) - gap)), backdrop: String(!!$('.iplex-details__backdrop img')) })
+  const trail: string[] = []
+  for (let i = 0; i < 8; i++) {
+    press('ArrowDown')
+    await sleep(400)
+    trail.push(`${label(document.activeElement)}@y${Math.round(window.scrollY)}`)
+  }
+  report(`${t}:walk-down`, { trail: trail.join(' > ') })
+  const up: string[] = []
+  for (let i = 0; i < 8; i++) {
+    press('ArrowUp')
+    await sleep(400)
+    up.push(`${label(document.activeElement)}@y${Math.round(window.scrollY)}`)
+  }
+  report(`${t}:walk-up`, { trail: up.join(' > ') })
+  press('ArrowDown')
+  await sleep(500)
+  const seasons = buttons.find((b) => (b.textContent ?? '').trim() === 'Temporadas')
+  if (!seasons) return report(`${t}:seasons`, { fail: 'sem botão Temporadas (filme?)' })
+  for (let i = 0; i < 6 && document.activeElement !== seasons; i++) {
+    press('ArrowRight')
+    await sleep(250)
+  }
+  report(`${t}:seasons-focus`, { onSeasons: String(document.activeElement === seasons), focused: label(document.activeElement) })
+  seasons.click()
+  const opened = await waitFor(() => all('.iplex-episode').length > 0, 15000)
+  await sleep(1200)
+  report(`${t}:seasons`, { opened: String(opened), episodes: String(all('.iplex-episode').length), chips: String(all('.iplex-chips .iplex-chip').length), focused: label(document.activeElement) })
+  const eps: string[] = []
+  for (let i = 0; i < 24; i++) {
+    press('ArrowDown')
+    await sleep(150)
+    if (i === 0 || i === 9 || i === 22) eps.push(`${label(document.activeElement)}@y${Math.round(window.scrollY)}`)
+  }
+  report(`${t}:seasons-down`, { trail: eps.join(' > ') })
+  const epsUp: string[] = []
+  for (let i = 0; i < 26; i++) {
+    press('ArrowUp')
+    await sleep(150)
+    if (i === 0 || i === 4 || i >= 22) epsUp.push(`${label(document.activeElement)}@y${Math.round(window.scrollY)}`)
+  }
+  report(`${t}:seasons-up`, { trail: epsUp.join(' > ') })
+  press('ArrowDown')
+  await sleep(400)
+  press('Escape')
+  const back = await waitFor(() => !!$('.iplex-details__actions'), 8000)
+  await sleep(3000)
+  report(`${t}:back`, { back: String(back), focused: label(document.activeElement) })
+}
+
 export async function runTvSelfTest() {
   try {
     diag('st:start', `vp=${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio}`)
@@ -293,6 +376,7 @@ export async function runTvSelfTest() {
     await sleep(4000)
     await runScreen('Filmes')
     await runScreen('Séries')
+    await runDetails()
     // Ao Vivo: nomes das categorias já padronizadas.
     const live = all('.iplex-header__capsule .iplex-tab').find((b) => (b.textContent ?? '').trim() === 'Ao Vivo')
     if (live) {

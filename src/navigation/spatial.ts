@@ -179,6 +179,8 @@ export function focusElement(el: HTMLElement) {
 export function ensureVisible(el: HTMLElement, win: Window = window) {
   // Telas que gerenciam a própria rolagem (Catálogo) marcam [data-nav-managed]: um só dono do scroll.
   if (el.closest('[data-nav-managed]')) return
+  // [data-nav-managed-y]: a tela rola na vertical (ver rowNavigation); aqui só a horizontal.
+  const yManaged = !!el.closest('[data-nav-managed-y]')
   const pad = 48
   let node: HTMLElement | null = el.parentElement
   while (node) {
@@ -190,7 +192,7 @@ export function ensureVisible(el: HTMLElement, win: Window = window) {
         const startPad = Number(node.getAttribute('data-nav-scroll-pad')) || pad
         if (r.left < box.left + startPad) node.scrollLeft -= box.left + startPad - r.left
         else if (r.right > box.right - pad) node.scrollLeft += r.right - (box.right - pad)
-      } else {
+      } else if (!yManaged) {
         // 'padding': o início da área rolável fica sob o menu transparente (padding-top).
         const startPad = node.getAttribute('data-nav-scroll-pad') === 'padding' ? parseFloat(getComputedStyle(node).paddingTop) || pad : pad
         if (r.top < box.top + startPad) node.scrollTop -= box.top + startPad - r.top
@@ -199,7 +201,7 @@ export function ensureVisible(el: HTMLElement, win: Window = window) {
     }
     node = node.parentElement
   }
-  if (el.closest('[data-nav-fixed]')) return
+  if (yManaged || el.closest('[data-nav-fixed]')) return
   const r = el.getBoundingClientRect()
   const top = Number(getComputedStyle(document.documentElement).getPropertyValue('--iplex-content-top').replace('px', '')) || 120
   if (r.top < top) win.scrollBy(0, r.top - top)

@@ -43,7 +43,7 @@ export function MetadataTile({
   return (
     <button
       type="button"
-      className="iplex-tile iplex-tile--poster iplex-focusable"
+      className="iplex-tile iplex-tile--poster iplex-tile--meta iplex-focusable"
       role="listitem"
       onClick={onSelect}
       aria-label={sublabel ? `${label}, ${sublabel}` : label}

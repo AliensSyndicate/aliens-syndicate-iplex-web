@@ -26,7 +26,7 @@ export function ContentCarousel({
 }) {
   const headingId = `row-${id}`
   return (
-    <section className={`iplex-row iplex-row--${shape}`} aria-labelledby={headingId} data-nav-group-root={id}>
+    <section className={`iplex-row iplex-row--${shape}`} aria-labelledby={headingId} data-nav-group-root={id} data-nav-row="x">
       <div className="iplex-row__head">
         <IplexText variant="section-title" id={headingId} className="iplex-row__title">
           {title}

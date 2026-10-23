@@ -5,7 +5,7 @@ import { classNames } from '../../utils/classNames'
 import { IplexButton } from '../ui/IplexButton'
 import { IplexIcon } from '../ui/IplexIcon'
 import { IplexText } from '../ui/IplexText'
-import { PlayerTimeline } from './PlayerTimeline'
+import { PlayerTimeline, seekHint } from './PlayerTimeline'
 
 export type OverlayMode = 'hidden' | 'info' | 'interactive'
 
@@ -31,7 +31,6 @@ export function PlayerOverlay({
   pendingMs,
   badges,
   tracks,
-  reserveNext,
   onToggle,
   onSkip,
   onOpenTracks,
@@ -50,8 +49,6 @@ export function PlayerOverlay({
   pendingMs: number | null
   badges: string[]
   tracks: PlaybackTrack[]
-  /** O cartão "Próximo episódio" ocupa o canto inferior direito: o painel reserva o espaço. */
-  reserveNext: boolean
   onToggle: () => void
   onSkip: (direction: 1 | -1) => void
   onOpenTracks: (kind: 'audio' | 'text') => void
@@ -61,6 +58,7 @@ export function PlayerOverlay({
   if (mode !== 'hidden' && mode !== lastShown) setLastShown(mode)
   const shown = mode === 'hidden' ? lastShown : mode
   const interactive = shown === 'interactive'
+  const hint = live ? null : seekHint(positionMs, durationMs, previewMs, pendingMs)
   const audio = tracks.filter((t) => t.kind === 'audio')
   const text = tracks.filter((t) => t.kind === 'text')
   const iconButton = (label: string, icon: typeof PlayIcon, onClick: () => void, id: string, primary = false) => (
@@ -79,7 +77,7 @@ export function PlayerOverlay({
   )
   return (
     <div
-      className={classNames('iplex-player__overlay', mode !== 'hidden' && 'is-visible', interactive && 'is-interactive', reserveNext && 'has-next')}
+      className={classNames('iplex-player__overlay', mode !== 'hidden' && 'is-visible', interactive && 'is-interactive')}
       aria-hidden={mode === 'hidden'}
       data-overlay-mode={mode}
     >
@@ -91,15 +89,22 @@ export function PlayerOverlay({
         </div>
       )}
       <div className="iplex-player__panel">
-        <div className="iplex-player__heading">
-          <IplexText variant="section-title" as="p">{title}</IplexText>
-          {(episodeCode || episodeTitle) && (
-            <IplexText variant="meta" className="iplex-player__episode">
-              {episodeCode && <span className="iplex-player__code">{episodeCode}</span>}
-              {episodeTitle && <span>{episodeTitle}</span>}
-            </IplexText>
+        <div className="iplex-player__heading-row">
+          <div className="iplex-player__heading">
+            <IplexText variant="section-title" as="p">{title}</IplexText>
+            {(episodeCode || episodeTitle) && (
+              <IplexText variant="meta" className="iplex-player__episode">
+                {episodeCode && <span className="iplex-player__code">{episodeCode}</span>}
+                {episodeTitle && <span>{episodeTitle}</span>}
+              </IplexText>
+            )}
+            {live && <span className="iplex-player__live">Ao vivo</span>}
+          </div>
+          {!live && hint && (
+            <span className="iplex-player__seek-hint" role="status">
+              {hint}
+            </span>
           )}
-          {live && <span className="iplex-player__live">Ao vivo</span>}
         </div>
         {!live && (
           <PlayerTimeline

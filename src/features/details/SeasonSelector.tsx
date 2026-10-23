@@ -3,7 +3,7 @@ import { classNames } from '../../utils/classNames'
 
 export function SeasonSelector({ seasons, selected, onSelect }: { seasons: SeriesSeason[]; selected: number; onSelect: (n: number) => void }) {
   return (
-    <div className="iplex-chips" role="tablist" aria-label="Temporadas" data-nav-scroll="x" data-nav-group-root="seasons">
+    <div className="iplex-chips" role="tablist" aria-label="Temporadas" data-nav-scroll="x" data-nav-group-root="seasons" data-nav-row="x">
       {seasons.map((s) => (
         <button
           key={s.seasonNumber}

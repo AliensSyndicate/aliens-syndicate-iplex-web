@@ -2,6 +2,7 @@ import type { CatalogItem, ContentRef } from '../../services/api/types'
 
 export const PATHS = {
   details: (sourceId: string, itemId: string, title: string) => `/titulo/${encodeURIComponent(sourceId)}/${encodeURIComponent(itemId)}?t=${encodeURIComponent(title)}`,
+  seasons: (sourceId: string, itemId: string, title: string) => `/titulo/${encodeURIComponent(sourceId)}/${encodeURIComponent(itemId)}/temporadas?t=${encodeURIComponent(title)}`,
   watch: (ref: ContentRef & { resume?: boolean; resumeAtSec?: number }) => {
     const qs = new URLSearchParams({ s: ref.sourceId, i: ref.itemId, k: ref.kind, t: ref.title })
     if (ref.episodeId) qs.set('e', ref.episodeId)

@@ -36,7 +36,11 @@ export function BackendProvider({ children, backend: injected }: { children: Rea
     createBackend().then(
       (backend) => {
         // Somente no modo de diagnóstico da TV (?diag=1): o roteiro de verificação usa o mesmo backend.
-        if (diagnosticsEnabled()) (window as unknown as { __iplexBackend?: Backend }).__iplexBackend = backend
+        if (diagnosticsEnabled()) {
+          const w = window as unknown as { __iplexBackend?: Backend; __iplexTmdb?: TmdbClient }
+          w.__iplexBackend = backend
+          w.__iplexTmdb = createTmdbClient(backend)
+        }
         if (alive) setApi({ backend, tmdb: createTmdbClient(backend) })
       },
       (e) => {

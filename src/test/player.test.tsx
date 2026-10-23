@@ -119,6 +119,26 @@ describe('player', () => {
     await waitFor(() => expect(updatePlayRequest).toHaveBeenCalledWith('req-1', 'started', undefined))
   })
 
+  it('relógios: ao iniciar os dois marcam 00:00 e depois mostram os valores reais', async () => {
+    start(MOVIE)
+    const a = await playing()
+    // Antes de qualquer evento de tempo: posição e duração em 00:00 (nunca "--:--").
+    expect(screen.getAllByText('00:00').length).toBe(2)
+    expect(screen.queryByText('--:--')).toBeNull()
+    time(30_000, 600_000, a)
+    expect(screen.getByText('00:30')).toBeTruthy()
+    expect(screen.getByText('10:00')).toBeTruthy()
+  })
+
+  it('barra de posição selecionada: moldura própria para o anel externo (vão interno transparente)', async () => {
+    start(MOVIE)
+    const a = await playing()
+    time(100_000, 1_000_000, a)
+    enter()
+    const bar = await screen.findByRole('slider', { name: 'Posição' })
+    expect(bar.parentElement?.classList.contains('iplex-player__bar-frame')).toBe(true)
+  })
+
   it('4–6. overlay inicial informativo, some após 5 s e OK abre os controles interativos', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     start(MOVIE)
@@ -191,6 +211,10 @@ describe('player', () => {
     press('ArrowRight', 39)
     expect(a.seek).not.toHaveBeenCalled()
     expect(screen.getByText(/Ir para 02:00/)).toBeTruthy()
+    // A dica fica acima da barra, à direita das informações (não abaixo da barra).
+    const hint = screen.getByText(/Ir para 02:00/)
+    expect(hint.closest('.iplex-player__heading-row')).not.toBeNull()
+    expect(hint.closest('.iplex-player__timeline')).toBeNull()
     enter()
     expect(a.seek).toHaveBeenLastCalledWith(120_000)
     press('ArrowLeft', 37)
@@ -227,26 +251,32 @@ describe('player', () => {
     start(EPISODE('102'))
     const a = await playing()
     time(500_000, 600_000, a)
-    expect(screen.queryByRole('button', { name: 'Próximo episódio' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Próximo episódio em \d+s$/ })).toBeNull()
     time(580_000, 600_000, a)
-    expect(await screen.findByRole('button', { name: 'Próximo episódio' })).toBeTruthy()
-    expect(screen.getByRole('timer').textContent).toBe('20')
-    expect(screen.getByText('T1:E3 · Episódio de demonstração 3')).toBeTruthy()
+    expect(await screen.findByRole('button', { name: /^Próximo episódio em \d+s$/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Próximo episódio em 20s' })).toBeTruthy()
+    // Nasce focado no controle remoto.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Próximo episódio em 20s' }))
+    // Só o botão (sem cartão, rótulo do episódio nem contador separado).
+    expect(screen.queryByText('T1:E3 · Episódio de demonstração 3')).toBeNull()
+    expect(screen.queryByRole('timer')).toBeNull()
     // Pausado: sem eventos de tempo, a contagem não anda.
     act(() => a.emit('state', { state: 'paused' }))
     await new Promise((r) => setTimeout(r, 1_100))
-    expect(screen.getByRole('timer').textContent).toBe('20')
+    expect(screen.getByRole('button', { name: 'Próximo episódio em 20s' })).toBeTruthy()
     time(585_000, 600_000, a)
-    expect(screen.getByRole('timer').textContent).toBe('15')
+    expect(screen.getByRole('button', { name: 'Próximo episódio em 15s' })).toBeTruthy()
     // Seek para trás sai da janela.
     time(400_000, 600_000, a)
-    expect(screen.queryByRole('timer')).toBeNull()
-    // Overlay interativo e cartão juntos: o painel reserva o canto do cartão; o cartão fica fora do overlay.
+    expect(screen.queryByRole('button', { name: /^Próximo episódio em/ })).toBeNull()
+    // Overlay interativo e botão juntos: o botão fica no canto superior direito, fora do overlay e sem mexer no painel.
     enter()
     time(590_000, 600_000, a)
     const overlay = document.querySelector('.iplex-player__overlay')!
-    expect(overlay.classList.contains('has-next')).toBe(true)
-    expect(overlay.contains(screen.getByRole('button', { name: 'Próximo episódio' }))).toBe(false)
+    expect(overlay.classList.contains('has-next')).toBe(false)
+    // Sem indicador de carregamento no centro da tela durante a reprodução.
+    expect(document.querySelector('.iplex-player__buffering')).toBeNull()
+    expect(overlay.contains(screen.getByRole('button', { name: /^Próximo episódio em \d+s$/ }))).toBe(false)
     // Pausado antes: o botão central oferece Reproduzir.
     expect(screen.getByRole('button', { name: 'Reproduzir' })).toBeTruthy()
   })
@@ -255,7 +285,7 @@ describe('player', () => {
     const { saveProgress } = start(EPISODE('102'))
     const a = await playing()
     time(585_000, 600_000, a)
-    fireEvent.click(await screen.findByRole('button', { name: 'Próximo episódio' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Próximo episódio em \d+s$/ }))
     await waitFor(() => expect(saveProgress).toHaveBeenCalledWith(expect.objectContaining({ contentId: 's-demo_e102', positionSec: 600, durationSec: 600 })))
     const next = await playing(2)
     expect(window.location.search).toContain('e=103')
@@ -279,7 +309,7 @@ describe('player', () => {
     const { saveProgress } = start(EPISODE('203'))
     const a = await playing()
     time(590_000, 600_000, a)
-    expect(screen.queryByRole('button', { name: 'Próximo episódio' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Próximo episódio em \d+s$/ })).toBeNull()
     act(() => a.emit('ended', {}))
     await waitFor(() => expect(window.location.pathname).toBe('/titulo/demo-source/s-demo'))
     expect(saveProgress).toHaveBeenCalledWith(expect.objectContaining({ contentId: 's-demo_e203', positionSec: 600 }))
@@ -350,12 +380,27 @@ describe('detalhes', () => {
   it('episódio com progresso: escolher entre Continuar e Assistir do início', async () => {
     start('/titulo/demo-source/s-demo?t=Demo', (b) => b.saveProgress({ profileId: 'admin', contentId: 's-demo_e102', positionSec: 120, durationSec: 600, generation: 0 }))
     expect(await screen.findByRole('button', { name: 'Continuar T1:E2' }, { timeout: 5000 })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /Episódio 2:/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Temporadas' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Episódio 2:/ }, { timeout: 5000 }))
     expect(await screen.findByRole('dialog')).toBeTruthy()
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Assistir do início' }))
     const a = await playing()
     expect(window.location.search).toContain('e=102')
     expect(window.location.search).not.toContain('r=1')
     expect(a.load.mock.calls[0]![0]).not.toHaveProperty('startPositionMs')
+  })
+})
+
+describe('próximo episódio com os controles abertos', () => {
+  it('ao surgir, o botão toma o foco mesmo com o overlay interativo', async () => {
+    start(EPISODE('102'))
+    const a = await playing()
+    time(100_000, 600_000, a)
+    enter()
+    await screen.findByRole('button', { name: 'Pausar' })
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Pausar' }))
+    time(585_000, 600_000, a)
+    const next = await screen.findByRole('button', { name: /^Próximo episódio em \d+s$/ })
+    await waitFor(() => expect(document.activeElement).toBe(next))
   })
 })

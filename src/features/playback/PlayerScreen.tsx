@@ -19,9 +19,9 @@ import { useBackend } from '../../app/providers/BackendProvider'
 import { usePlatform } from '../../app/providers/PlatformProvider'
 import { useReadySession, useSession } from '../../app/providers/SessionProvider'
 import { PATHS } from '../../app/routes/paths'
+import { diagnosticsEnabled } from '../../platform/diagnostics'
 import { Dialog } from '../../components/dialogs/Dialog'
 import { ErrorState } from '../../components/feedback/ErrorState'
-import { Spinner } from '../../components/feedback/LoadingState'
 import { NextEpisodeCard } from '../../components/player/NextEpisodeCard'
 import { PlayerOverlay } from '../../components/player/PlayerOverlay'
 import { PLAYER, TIMING } from '../../config/features'
@@ -79,7 +79,6 @@ export default function PlayerScreen() {
   const [phase, setPhase] = useState<Phase>({ status: 'preparing' })
   const [attempt, setAttempt] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const [buffering, setBuffering] = useState(true)
   /** Tempo real do player, marcado com o conteúdo que o produziu (eventos de outra mídia nunca contam). */
   const [time, setTime] = useState({ positionMs: 0, durationMs: 0, key: '' })
   const [tracks, setTracks] = useState<PlaybackTrack[]>([])
@@ -197,7 +196,6 @@ export default function PlayerScreen() {
     const offs: Array<() => void> = []
     const root = document.documentElement
     setPhase({ status: 'preparing' })
-    setBuffering(true)
     setTime({ positionMs: 0, durationMs: 0, key: contentKey })
     timeRef.current = { positionMs: 0, durationMs: 0, key: contentKey }
     setVideoSize(null)
@@ -248,7 +246,6 @@ export default function PlayerScreen() {
                 overlayRef.current.reveal('info')
               }
             }
-            if (state === 'playing' || state === 'paused') setBuffering(false)
             if (state === 'paused') saveRef.current(true)
           }),
           adapter.on('time', (raw) => {
@@ -265,7 +262,6 @@ export default function PlayerScreen() {
             setPendingMs(seekGate.pending)
             saveRef.current(confirmed)
           }),
-          adapter.on('buffering', ({ active }) => setBuffering(active)),
           adapter.on('media', (size) => setVideoSize(size)),
           adapter.on('error', (info) => {
             setPhase({ status: 'error', error: new AppError(info.unsupported ? 'format-unsupported' : 'playback-error', info.code) })
@@ -456,6 +452,13 @@ export default function PlayerScreen() {
       rootRef.current?.focus()
     }
   }, [mode, phase.status])
+  // O botão "Próximo episódio" já nasce focado, mesmo com os controles abertos (OK o aciona).
+  useEffect(() => {
+    if (!nextVisible) return
+    const target = document.querySelector<HTMLElement>('[data-nav-id="pc-next"]')
+    if (target && document.activeElement !== target) focusElement(target)
+  }, [nextVisible])
+  // Controles ocultos de novo: o foco volta ao botão enquanto ele estiver na tela.
   useEffect(() => {
     if (!nextVisible || mode === 'interactive') return
     const target = document.querySelector<HTMLElement>('[data-nav-id="pc-next"]')
@@ -562,16 +565,19 @@ export default function PlayerScreen() {
   const quality = videoSize ? qualityLabel(videoSize.width, videoSize.height) : null
   const badges = live ? [] : [quality, subtitledFromSource(item?.title ?? title, item?.category) ? 'Legendado' : null].filter((b): b is string => !!b)
   const episodeTitle = (episodeMeta && episodeMeta.id === episode?.id ? episodeMeta.name : '') || episode?.title || undefined
-  const nextLabel = nextEpisode ? `${episodeCode(nextEpisode)}${nextEpisode.title ? ` · ${nextEpisode.title}` : ''}` : ''
+
+  // DIAGNÓSTICO TEMPORÁRIO (ponto no centro): `?diag=1&bare=1` desenha só o plano de vídeo, sem nenhuma camada do Web.
+  if (diagnosticsEnabled() && /(?:^|[?&])bare=1(?:&|$)/.test(window.location.search)) {
+    return (
+      <main ref={rootRef} className="iplex-player" tabIndex={-1}>
+        <div ref={containerRef} className="iplex-player__surface" />
+      </main>
+    )
+  }
 
   return (
     <main ref={rootRef} className="iplex-player" aria-label={`Reproduzindo ${title}`} tabIndex={-1} onMouseMove={() => overlay.reveal('interactive')}>
       <div ref={containerRef} className="iplex-player__surface" />
-      {phase.status === 'preparing' || (buffering && phase.status === 'playing') ? (
-        <div className="iplex-player__buffering">
-          <Spinner label={phase.status === 'preparing' ? 'Preparando reprodução' : 'Carregando'} />
-        </div>
-      ) : null}
       {cue && <div className="iplex-player__cue">{cue}</div>}
       {phase.status === 'error' ? (
         <div className="iplex-player__error">
@@ -605,7 +611,6 @@ export default function PlayerScreen() {
             pendingMs={pendingMs}
             badges={badges}
             tracks={tracks}
-            reserveNext={nextVisible}
             onToggle={() => {
               toggle()
               overlay.touch()
@@ -617,7 +622,7 @@ export default function PlayerScreen() {
             onOpenTracks={setTrackMenu}
             onTimelineBlur={() => setPreviewMs(null)}
           />
-          {nextVisible && <NextEpisodeCard label={nextLabel} seconds={countdown} onPlay={playNext} />}
+          {nextVisible && <NextEpisodeCard seconds={countdown} onPlay={playNext} />}
         </>
       )}
       {trackMenu && (

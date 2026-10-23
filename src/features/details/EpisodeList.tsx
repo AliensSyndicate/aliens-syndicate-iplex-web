@@ -12,7 +12,7 @@ export interface EpisodeView {
 /** Lista de episódios da temporada (sinopse, duração, imagem e progresso quando disponíveis). */
 export function EpisodeList({ episodes, tmdbSeason, onPlay }: { episodes: EpisodeView[]; tmdbSeason: TmdbSeason | null; onPlay: (e: SeriesEpisode) => void }) {
   return (
-    <ol className="iplex-episodes" aria-label="Episódios" data-nav-group-root="episodes">
+    <ol className="iplex-episodes" aria-label="Episódios" data-nav-group-root="episodes" data-nav-row="list">
       {episodes.map(({ episode, progress }) => {
         const meta = tmdbSeason?.episodes.find((m) => m.episodeNumber === episode.episodeNum) ?? null
         const name = meta?.name || episode.title || `Episódio ${episode.episodeNum ?? ''}`
