@@ -8,6 +8,7 @@
  *  - nunca se carregam milhares de itens de uma vez (CATALOG.maxPages).
  * O backend filtra tudo pelo perfil do lease (infantil, espaços permitidos).
  */
+import { categoryKey, categoryLabel } from './categoryLabels'
 import { CATALOG } from '../../config/features'
 import type { Backend } from '../api/backend'
 import { AppError, toAppError } from '../api/errors'
@@ -107,8 +108,9 @@ export class CatalogStore {
       const names = new Map(state.categories.filter((c) => c.kind === kind).map((c) => [c.id, c.name]))
       state.items.forEach((item) => {
         if (item.kind !== kind) return
-        const name = (item.categoryId && names.get(item.categoryId)) || item.category || 'Sem categoria'
-        const key = name.trim().toLocaleLowerCase('pt-BR')
+        // De-para: nomes diferentes que viram o mesmo texto são um só grupo; adultas viram "Adulto".
+        const name = categoryLabel((item.categoryId && names.get(item.categoryId)) || item.category || 'Sem categoria')
+        const key = categoryKey(name)
         const rank = order.get(item.categoryId ?? '') ?? 10_000
         const group = groups.get(key) ?? { key, name, items: [], order: rank }
         group.order = Math.min(group.order, rank)

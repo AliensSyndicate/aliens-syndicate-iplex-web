@@ -5,6 +5,7 @@
  * - Último canal NÃO abre sozinho (FEATURES.autoplayLastChannel = false).
  * Organização final do guia: PROPOSTA (seção 33).
  */
+import { categoryLabel } from '../../services/catalog/categoryLabels'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useBackend } from '../../app/providers/BackendProvider'
@@ -115,7 +116,7 @@ export default function LiveTvScreen() {
         <section className="iplex-live__info" aria-live="polite" aria-label="Canal selecionado">
           <div className="iplex-live__info-text">
             <IplexText variant="section-title" as="p">{focused.title}</IplexText>
-            {focused.category && <IplexText variant="meta">{focused.category}</IplexText>}
+            {focused.category && <IplexText variant="meta">{categoryLabel(focused.category)}</IplexText>}
             {guide?.current ? (
               <div className="iplex-live__epg">
                 <IplexText variant="content-title" as="p">

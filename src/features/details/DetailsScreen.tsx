@@ -9,6 +9,7 @@
  * Nenhuma mídia é resolvida ou pré-carregada aqui: só o player faz isso, depois
  * de Assistir, Continuar ou Assistir do início.
  */
+import { categoryLabel } from '../../services/catalog/categoryLabels'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useBackend } from '../../app/providers/BackendProvider'
@@ -162,7 +163,7 @@ export default function DetailsScreen() {
     certification ? `Classificação ${certification}` : null,
     summary?.rating ? `TMDB ${summary.rating.toFixed(1)}` : null,
   ].filter(Boolean)
-  const genres = summary?.genres.length ? summary.genres : item.category ? [item.category] : []
+  const genres = summary?.genres.length ? summary.genres : item.category ? [categoryLabel(item.category)] : []
   const overview = summary?.overview || item.plot || ''
   const season = series?.seasons.find((s) => s.seasonNumber === seasonNumber) ?? null
   // Pessoas: biografia/filmografia ficam fora do perfil infantil (como a descoberta do Control).

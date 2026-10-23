@@ -1,5 +1,6 @@
 import { Spinner } from '../../components/feedback/LoadingState'
 import { IplexLogo } from '../../components/ui/IplexLogo'
+import { IplexText } from '../../components/ui/IplexText'
 
 /** Splash: fundo sólido #0F0F0F, logo branco centralizado em tamanho moderado. */
 export function SplashScreen({ label }: { label?: string }) {
@@ -8,6 +9,9 @@ export function SplashScreen({ label }: { label?: string }) {
       <IplexLogo size="screen" />
       <div className="iplex-splash__status">
         <Spinner label={label ?? 'Carregando o iPlex'} />
+        <IplexText variant="meta" secondary className="iplex-splash__message">
+          {label ?? 'Carregando o iPlex'}
+        </IplexText>
       </div>
     </div>
   )

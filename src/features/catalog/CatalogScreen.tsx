@@ -499,9 +499,16 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
         })}
       </nav>
       <div className="iplex-catalog__content" ref={scrollerRef} onScroll={onScroll} onFocus={onContentFocus}>
-        <IplexText variant="page-title" as="h1" className="iplex-catalog__title">
-          {heading}
-        </IplexText>
+        <div className="iplex-catalog__head">
+          <IplexText variant="page-title" as="h1" className="iplex-catalog__title">
+            {heading}
+          </IplexText>
+          {!blocked && items.length > 0 && (
+            <IplexText variant="page-title" as="span" className="iplex-catalog__count" aria-label={`${items.length} itens`}>
+              {formatCount(items.length)}
+            </IplexText>
+          )}
+        </div>
         <div className="iplex-catalog__sort" role="group" aria-label="Ordenar">
           {sortOptions.map((option, i) => {
             const isSelected = option.id === effectiveSort
@@ -539,6 +546,9 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     </main>
   )
 }
+
+/** 15103 → "15.103" (sem depender de Intl na TV). */
+const formatCount = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 
 function emptyText(selected: CollectionId, kindLabel: string): string {
   if (selected === 'continue') return 'O que você começar a assistir aparece aqui.'

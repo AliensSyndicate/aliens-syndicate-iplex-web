@@ -4,6 +4,7 @@
  * sempre da lista IPTV do fornecedor do usuário.
  */
 import type { CatalogItem, ContentKind } from '../../services/api/types'
+import { isAdultName } from '../../services/catalog/categoryLabels'
 import type { IndexedItem } from '../../services/library/libraryStore'
 
 export type CollectionId = 'continue' | 'favorites' | 'watched' | 'all' | `cat:${string}`
@@ -30,10 +31,8 @@ export const COLLECTION_TITLES: Record<'continue' | 'favorites' | 'watched' | 'a
   all: 'Todos',
 }
 
-const ADULT_NAME = /(^|[^a-z0-9])(adult[oa]?s?|xxx|\+\s?18|18\s?\+|er[óo]tic[oa]s?|porn[oô]?s?)([^a-z0-9]|$)/i
-
 /** Categoria adulta do fornecedor (o backend já filtra por perfil; isto só a posiciona no fim). */
-export const isAdultCategory = (name: string) => ADULT_NAME.test(name)
+export const isAdultCategory = isAdultName
 
 const collator = (() => {
   try {

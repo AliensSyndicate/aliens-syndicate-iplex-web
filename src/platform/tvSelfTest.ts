@@ -119,6 +119,13 @@ async function runScreen(tab: string) {
   const firstFilled = items.map((i) => (i.textContent ?? '').trim()).join('|')
   const firstCard = $('[data-grid-index]')
   const sameRow = all('[data-grid-index]').filter((c) => firstCard && Math.abs(c.getBoundingClientRect().top - firstCard.getBoundingClientRect().top) < 2).length
+  const names = items.map((i) => (i.textContent ?? '').trim()).join('|')
+  for (let i = 0; i < names.length; i += 360) report(`${t}:menu-${Math.floor(i / 360)}`, { names: names.slice(i, i + 360) })
+  const tile = $('.iplex-tile--poster')
+  const frame = $('.iplex-tile--poster .iplex-tile__frame')
+  report(`${t}:radius`, { tile: tile ? getComputedStyle(tile).borderTopLeftRadius : '-', frame: frame ? getComputedStyle(frame).borderTopLeftRadius : '-', borderW: tile ? getComputedStyle(tile).borderTopWidth : '-' })
+  const count = $('.iplex-catalog__count')
+  report(`${t}:header`, { title: ($('h1')?.textContent ?? '').trim(), count: (count?.textContent ?? 'none').trim(), countColor: count ? getComputedStyle(count).color : '-', selectedMenu: (selected[0]?.textContent ?? '').trim() })
   report(`${t}:layout`, { h1: ($('h1')?.textContent ?? '').trim(), sideWidth: String(Math.round($('.iplex-catalog__side')?.getBoundingClientRect().width ?? 0)), cardsPerRow: String(sameRow), skeletons: String(all('.iplex-skeleton').length), headerTransparent: getComputedStyle($('.iplex-header') as HTMLElement, '::before').display, scrollerPadTop: getComputedStyle($('.iplex-catalog__content') as HTMLElement).paddingTop, mask: getComputedStyle($('.iplex-catalog__content') as HTMLElement).webkitMaskImage ?? 'n/a' })
   report(`${t}:enter`, { ...snapshot(), selected: selected.map((i) => (i.textContent ?? '').trim()).join('+'), selCount: String(selected.length), focusIsSelected: String(document.activeElement === selected[0]), menu: firstFilled.slice(0, 160) })
   report(`${t}:styles`, {
@@ -284,6 +291,15 @@ export async function runTvSelfTest() {
     await sleep(4000)
     await runScreen('Filmes')
     await runScreen('Séries')
+    // Ao Vivo: nomes das categorias já padronizadas.
+    const live = all('.iplex-header__capsule .iplex-tab').find((b) => (b.textContent ?? '').trim() === 'Ao Vivo')
+    if (live) {
+      live.click()
+      await waitFor(() => all('.iplex-chips .iplex-chip').length > 1, 20000)
+      await sleep(500)
+      const chips = all('.iplex-chips .iplex-chip').map((c) => (c.textContent ?? '').trim()).join('|')
+      for (let i = 0; i < chips.length; i += 360) diag(`st:live-chips-${Math.floor(i / 360)}`, chips.slice(i, i + 360))
+    }
     diag('st:skeleton', (window as unknown as { __st: () => string }).__st())
     diag('st:done', 'ok')
   } catch (error) {

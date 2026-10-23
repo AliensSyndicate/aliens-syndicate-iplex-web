@@ -11,6 +11,7 @@ import { focusElement, navigables } from '../navigation/spatial'
 import { DevBadge } from '../dev/DevBadge'
 import { PlayRequestCoordinator } from '../features/remote/PlayRequestCoordinator'
 import { AppLayout } from './AppLayout'
+import { screenLoaders } from './screens'
 import type { Backend } from '../services/api/backend'
 import type { detectPlatform } from '../platform/environment'
 import type { TypographyResult } from '../styles/fonts'
@@ -20,22 +21,24 @@ import { PlatformProvider, usePlatform } from './providers/PlatformProvider'
 import { SessionProvider, useSession, type StartupStep } from './providers/SessionProvider'
 import { ProfileRoute, StartRedirect } from './routes/guards'
 
-const MyIplexScreen = lazy(() => import('../features/my-iplex/MyIplexScreen'))
-const SearchScreen = lazy(() => import('../features/search/SearchScreen'))
-const LiveTvScreen = lazy(() => import('../features/live-tv/LiveTvScreen'))
-const MoviesScreen = lazy(() => import('../features/movies/MoviesScreen'))
-const SeriesScreen = lazy(() => import('../features/series/SeriesScreen'))
-const CatalogRoute = lazy(() => import('../features/catalog/CatalogRoute'))
-const DetailsScreen = lazy(() => import('../features/details/DetailsScreen'))
-const PlayerScreen = lazy(() => import('../features/playback/PlayerScreen'))
-const PersonScreen = lazy(() => import('../features/details/PersonScreen'))
-const SettingsScreen = lazy(() => import('../features/settings/SettingsScreen'))
+const MyIplexScreen = lazy(screenLoaders.myIplex)
+const SearchScreen = lazy(screenLoaders.search)
+const LiveTvScreen = lazy(screenLoaders.live)
+const MoviesScreen = lazy(screenLoaders.movies)
+const SeriesScreen = lazy(screenLoaders.series)
+const CatalogRoute = lazy(screenLoaders.catalog)
+const DetailsScreen = lazy(screenLoaders.details)
+const PlayerScreen = lazy(screenLoaders.player)
+const PersonScreen = lazy(screenLoaders.person)
+const SettingsScreen = lazy(screenLoaders.settings)
 
 const STEP_LABEL: Record<StartupStep, string> = {
   device: 'Verificando este dispositivo',
-  profiles: 'Carregando perfis',
-  session: 'Validando acesso',
-  catalog: 'Carregando suas fontes',
+  profiles: 'Configurando usuários',
+  session: 'Configurando usuários',
+  content: 'Configurando conteúdo',
+  media: 'Configurando filmes e séries',
+  live: 'Configurando canais ao vivo',
 }
 
 function SessionGate() {

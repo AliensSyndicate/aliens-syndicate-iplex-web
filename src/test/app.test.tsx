@@ -32,6 +32,42 @@ afterEach(() => {
 
 const find = (text: string | RegExp) => screen.findByText(text, {}, { timeout: 5000 })
 
+/** Backend de demonstração do cenário (mesma instância/estado), para sobrescrever só uma chamada. */
+function scenarioBackend(scenario: string) {
+  window.history.replaceState({}, '', `/?mock=${scenario}`)
+  return createMockBackend()
+}
+
+describe('carregamento inicial', () => {
+  it('só libera a navegação com o catálogo completo, mostrando o progresso', async () => {
+    const real = scenarioBackend('single')
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    start('/', 'single', { ...real, readCatalog: async (profileId, query) => (await gate, real.readCatalog(profileId, query)) })
+    expect(await find('Configurando filmes e séries')).toBeTruthy()
+    expect(screen.queryByRole('navigation', { name: 'Menu principal' })).toBeNull()
+    release()
+    expect(await screen.findByRole('navigation', { name: 'Menu principal' }, { timeout: 15000 })).toBeTruthy()
+  }, 30000)
+  it('falha no carregamento mostra erro claro e tentar novamente recomeça', async () => {
+    const real = scenarioBackend('single')
+    let fail = true
+    start('/', 'single', {
+      ...real,
+      readCatalog: async (profileId, query) => {
+        if (fail) throw new AppError('iptv-unavailable', 'down')
+        return real.readCatalog(profileId, query)
+      },
+    })
+    const retry = await screen.findByRole('button', { name: /Tentar novamente/ }, { timeout: 5000 })
+    fail = false
+    retry.click()
+    expect(await screen.findByRole('navigation', { name: 'Menu principal' }, { timeout: 15000 })).toBeTruthy()
+  }, 30000)
+})
+
 describe('menu principal', () => {
   it('ordem oficial: Avatar, Meu iPlex, Busca (só ícone), Ao Vivo, Filmes, Séries', async () => {
     start('/', 'single')
@@ -174,9 +210,9 @@ describe('estados de acesso', () => {
   it('fonte IPTV fora do ar não é confundida com assinatura', async () => {
     start('/', 'iptv-down')
     ;(await screen.findByRole('button', { name: /Infantil Demo/ }, { timeout: 5000 })).click()
-    await waitFor(() => expect(window.location.pathname).toBe('/meu-iplex'), { timeout: 5000 })
-    screen.getByText('Filmes').click()
+    // Carregamento inicial completo: a falha aparece já na inicialização, com "Tentar novamente".
     expect(await find('Fonte IPTV indisponível')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Tentar novamente/ })).toBeTruthy()
     expect(screen.queryByText('Assinatura inativa')).toBeNull()
   })
 })
@@ -201,7 +237,7 @@ describe('conteúdo', () => {
   it('Filmes lista somente itens do catálogo autorizado', async () => {
     start('/', 'single')
     await find('Sua área pessoal está vazia')
-    screen.getByText('Filmes').click()
+    screen.getByRole('button', { name: 'Filmes' }).click()
     expect(await screen.findByRole('button', { name: 'Big Buck Bunny (2008)' }, { timeout: 5000 })).toBeTruthy()
   })
 })
@@ -217,8 +253,6 @@ describe('compatibilidade com backend anterior', () => {
   })
   it('sem listagem de fontes no backend: mensagem de servidor desatualizado', async () => {
     start('/', 'single', { listSpaces: async () => { throw new AppError('backend-outdated', 'invalid-action') } })
-    await find('Sua área pessoal está vazia')
-    screen.getByText('Filmes').click()
     expect(await find('Servidor do iPlex desatualizado')).toBeTruthy()
   })
 })

@@ -15,6 +15,8 @@ import type { HeartbeatResult } from '../../services/api/backend'
 import { AppError, toAppError } from '../../services/api/errors'
 import type { DeviceIdentity, Lease, Profile, Space } from '../../services/api/types'
 import { CatalogStore } from '../../services/catalog/catalogStore'
+import { CATALOG } from '../../config/features'
+import { prefetchScreens } from '../screens'
 import { LibraryStore } from '../../services/library/libraryStore'
 import { LeaseManager } from '../../services/session/leaseManager'
 import { readJson, writeJson } from '../../utils/storage'
@@ -23,7 +25,7 @@ import { diag } from '../../platform/diagnostics'
 import { useBackend } from './BackendProvider'
 import { usePlatform } from './PlatformProvider'
 
-export type StartupStep = 'device' | 'profiles' | 'session' | 'catalog'
+export type StartupStep = 'device' | 'profiles' | 'session' | 'content' | 'media' | 'live'
 
 export interface ReadySession {
   status: 'ready'
@@ -126,22 +128,56 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       if (!alive()) return
       writeJson(LAST_PROFILE_KEY, { familyId: identity.familyId, profileId: profile.id })
-      setState({ status: 'starting', step: 'catalog' })
-      let spaces: Space[] = []
-      let spacesError: AppError | null = null
-      try {
-        spaces = await step(backend.listSpaces(profile.id))
-      } catch (raw) {
+      // Carregamento inicial completo e sem limite de tempo: a navegação só é liberada com tudo
+      // pronto (fontes, biblioteca, catálogos de filmes/séries/canais). Imagens seguem sob demanda.
+      // Qualquer falha vira erro claro com "Tentar novamente", que recomeça do zero.
+      const fail = (raw: unknown): void => {
         const error = toAppError(raw)
         if (error.kind === 'device-unpaired') return void toPairing()
-        // Fonte IPTV indisponível ≠ assinatura: o app abre e as seções mostram o estado.
-        spacesError = error.kind === 'unknown' ? new AppError('iptv-unavailable', error.code) : error
+        setState({ status: 'blocked', error: error.kind === 'unknown' ? new AppError('iptv-unavailable', error.code) : error, identity, profiles, retryProfile: profile })
+      }
+      setState({ status: 'starting', step: 'content' })
+      let spaces: Space[]
+      try {
+        spaces = await backend.listSpaces(profile.id)
+      } catch (raw) {
+        if (alive()) fail(raw)
+        return
       }
       if (!alive()) return
       const catalog = new CatalogStore(backend, profile.id, spaces)
       const library = new LibraryStore(backend, identity, profile)
-      void library.load().catch(() => undefined)
-      setState({ status: 'ready', identity, profiles, profile, lease, spaces, spacesError, catalog, library })
+      try {
+        await library.load()
+      } catch (raw) {
+        catalog.dispose()
+        if (alive()) fail(raw)
+        return
+      }
+      if (!alive()) return catalog.dispose()
+      const hasKind = (kind: 'movie' | 'series' | 'channel') => spaces.some((space) => space.kinds.includes(kind))
+      const loadKinds = async (kinds: Array<'movie' | 'series' | 'channel'>) => {
+        const present = kinds.filter(hasKind)
+        await Promise.all(present.map((kind) => catalog.ensure(kind, CATALOG.maxPages)))
+        for (const kind of present) {
+          const error = catalog.errorFor(kind)
+          if (error) throw error
+        }
+      }
+      try {
+        setState({ status: 'starting', step: 'media' })
+        await loadKinds(['movie', 'series'])
+        if (!alive()) return catalog.dispose()
+        setState({ status: 'starting', step: 'live' })
+        await loadKinds(['channel'])
+        await prefetchScreens()
+      } catch (raw) {
+        catalog.dispose()
+        if (alive()) fail(raw)
+        return
+      }
+      if (!alive()) return catalog.dispose()
+      setState({ status: 'ready', identity, profiles, profile, lease, spaces, spacesError: null, catalog, library })
     },
     [backend, leases, toPairing],
   )
