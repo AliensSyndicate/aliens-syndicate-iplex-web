@@ -7,6 +7,7 @@ import type { Profile, SectionId } from '../../services/api/types'
 import { IplexIcon } from '../ui/IplexIcon'
 import { NavigationTab } from './NavigationTab'
 import { AccountAvatar } from './AccountBadge'
+import { HeaderInfo } from './HeaderInfo'
 import { ProfileAvatar } from './ProfileAvatar'
 
 const LABELS: Record<SectionId, string> = {
@@ -60,6 +61,7 @@ export function IplexHeader({ profile, onAvatar, adultEnabled = false }: { profi
             ),
           )}
         </div>
+        <HeaderInfo />
         <div className="iplex-header__capsule iplex-header__capsule--end">
           <NavigationTab id="settings" active={location.pathname === PATHS.settings} onSelect={() => navigate(PATHS.settings)} label="Configurações" iconOnly>
             <IplexIcon icon={Settings01Icon} />

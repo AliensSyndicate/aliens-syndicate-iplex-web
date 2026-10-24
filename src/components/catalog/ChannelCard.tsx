@@ -2,6 +2,7 @@ import { FavouriteIcon } from '@hugeicons/core-free-icons'
 import type { CatalogItem } from '../../services/api/types'
 import { classNames } from '../../utils/classNames'
 import { IplexIcon } from '../ui/IplexIcon'
+import { ProgressBar } from './ProgressBar'
 import { Artwork } from './Artwork'
 
 /** Logo do canal: só https (a CSP também exige). */
@@ -22,6 +23,8 @@ export function ChannelCard({
   autoFocus,
   subtitle,
   gridIndex,
+  square,
+  progress,
 }: {
   item: CatalogItem
   navId: string
@@ -34,6 +37,9 @@ export function ChannelCard({
   subtitle?: string | null
   /** Índice no grid do Catálogo: card quadrado 1:1 só com o nome (sem rótulo abaixo). */
   gridIndex?: number
+  /** Quadrado 1:1 só com a imagem (fileiras), sem índice de grid. */
+  square?: boolean
+  progress?: number | null
 }) {
   const initials = item.title
     .replace(/[^0-9A-Za-z\u00C0-\u024F ]/g, ' ')
@@ -43,7 +49,7 @@ export function ChannelCard({
     .map((w) => w[0])
     .join('')
     .toLocaleUpperCase('pt-BR')
-  if (gridIndex !== undefined) {
+  if (gridIndex !== undefined || square) {
     return (
       <button
         type="button"
@@ -54,11 +60,12 @@ export function ChannelCard({
         data-nav=""
         data-nav-id={navId}
         data-nav-group={navGroup}
-        data-grid-index={String(gridIndex)}
+        {...(gridIndex !== undefined ? { 'data-grid-index': String(gridIndex) } : {})}
         {...(autoFocus ? { 'data-nav-autofocus': '' } : {})}
       >
         <span className="iplex-tile__frame">
-          <Artwork src={logoUrl(item.imageRef)} alt="" fallback={item.title} className="iplex-artwork--logo" />
+          <Artwork src={logoUrl(item.imageRef)} alt="" fallback={square ? '' : item.title} className="iplex-artwork--logo" />
+          {typeof progress === 'number' && <ProgressBar value={progress} />}
           {favorite && (
             <span className="iplex-channel__favorite">
               <IplexIcon icon={FavouriteIcon} />

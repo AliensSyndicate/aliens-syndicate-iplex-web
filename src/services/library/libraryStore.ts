@@ -17,6 +17,7 @@ import { toAppError } from '../api/errors'
 import type { ProgressWrite } from '../api/backend'
 import type { CatalogItem, ContentKind, DeviceIdentity, Generations, Library, Profile, ProgressEntry } from '../api/types'
 import { readJson, writeJson } from '../../utils/storage'
+import { parseEpisodeContentId } from '../catalog/normalize'
 import { isAdultItem } from '../catalog/adult'
 
 export interface IndexedItem {
@@ -27,6 +28,7 @@ export interface IndexedItem {
   title: string
   year?: string | number
   category?: string
+  imageRef?: string
   /** Conteúdo adulto: Continuar e Favoritos dele só aparecem na tela Adulto. */
   isAdult?: boolean
   /** Episódio (progresso de séries). */
@@ -52,8 +54,10 @@ export class LibraryStore {
   private readonly backend: Backend
   private readonly identity: DeviceIdentity
   private readonly profile: Profile
+  private readonly findItem?: (id: string) => CatalogItem | null
 
-  constructor(backend: Backend, identity: DeviceIdentity, profile: Profile) {
+  constructor(backend: Backend, identity: DeviceIdentity, profile: Profile, findItem?: (id: string) => CatalogItem | null) {
+    this.findItem = findItem
     this.backend = backend
     this.identity = identity
     this.profile = profile
@@ -100,6 +104,7 @@ export class LibraryStore {
     this.set(
       {
         favorites: library.favorites.filter((e) => e.generation === g.favorites),
+        wishlist: (library.wishlist ?? []).filter((e) => e.generation === g.favorites),
         watched: library.watched.filter((e) => e.generation === g.watched),
         progress: library.progress.filter((e) => e.generation === g.progress),
       },
@@ -108,7 +113,12 @@ export class LibraryStore {
   }
 
   indexed(contentId: string): IndexedItem | null {
-    return this.index[contentId] ?? null
+    const episode = parseEpisodeContentId(contentId)
+    const item = this.findItem?.(episode?.seriesItemId ?? contentId)
+    const cached = this.index[contentId]
+    if (item) return { ...cached, ...indexFromItem(item), contentId, ...(episode ? { episodeId: episode.episodeId } : {}) }
+    // A ready catalog is authoritative after source/permission changes.
+    return this.findItem ? null : cached ?? null
   }
 
   remember(item: IndexedItem) {
@@ -142,6 +152,27 @@ export class LibraryStore {
       await this.backend.setFavorite({ profileId: this.profile.id, contentId: item.id, title: item.title, generation: this.generations.favorites, remove: !favorite })
     } catch (error) {
       this.set(previous, true)
+      const appError = toAppError(error)
+      if (appError.code === 'stale-generation') await this.load()
+      throw appError
+    }
+  }
+
+  isWished(contentId: string): boolean {
+    return (this.snapshot.library.wishlist ?? []).some((f) => f.contentId === contentId)
+  }
+
+  async setWishlist(item: CatalogItem, wished: boolean): Promise<void> {
+    if (!this.persistent || item.kind === 'channel' || (wished && isAdultItem(item))) return
+    const previous = this.snapshot.library
+    this.remember(indexFromItem(item))
+    const wishlist = (previous.wishlist ?? []).filter((f) => f.contentId !== item.id)
+    if (wished) wishlist.unshift({ contentId: item.id, title: item.title, generation: this.generations.favorites, updatedAt: Date.now() })
+    this.set({ ...previous, wishlist }, true)
+    try {
+      await this.backend.setWishlist({ profileId: this.profile.id, contentId: item.id, sourceId: item.sourceId, kind: item.kind, title: item.title, generation: this.generations.favorites, remove: !wished })
+    } catch (error) {
+      this.set({ ...this.snapshot.library, wishlist: previous.wishlist }, true)
       const appError = toAppError(error)
       if (appError.code === 'stale-generation') await this.load()
       throw appError
@@ -189,6 +220,7 @@ export function indexFromItem(item: CatalogItem, episode?: { id: string; label: 
     kind: item.kind,
     title: item.title,
     ...(item.year !== undefined ? { year: item.year } : {}),
+    ...(item.imageRef ? { imageRef: item.imageRef } : {}),
     ...(item.category ? { category: item.category } : {}),
     ...(item.isAdult || isAdultItem(item) ? { isAdult: true } : {}),
     ...(episode ? { episodeId: episode.id, episodeLabel: episode.label } : {}),

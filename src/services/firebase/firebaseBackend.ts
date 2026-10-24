@@ -315,9 +315,10 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
     },
 
     async readLibrary(_identity: DeviceIdentity, profileId: string): Promise<Library> {
-      const { favorites, progress, watched } = await call<Record<string, Record<string, unknown>[]>>('readPlayerLibrary', { profileId })
+      const { favorites, progress, watched, wishlist = [] } = await call<Record<string, Record<string, unknown>[]>>('readPlayerLibrary', { profileId })
       return {
         favorites: favorites.map(entry),
+        wishlist: wishlist.map(entry),
         progress: progress.map((d): ProgressEntry => ({
           contentId: String(d.contentId), position: Number(d.position) || 0, duration: Number(d.duration) || 0,
           generation: Number(d.generation) || 0, updatedAt: Number(d.updatedAt) || 0,
@@ -328,6 +329,10 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
 
     async setFavorite({ profileId, contentId, title, generation, remove }) {
       await call('favorite', { profileId, contentId, title: title.slice(0, 80), generation, ...(remove ? { remove: true } : {}) })
+    },
+
+    async setWishlist(input) {
+      await call('wishlist', input)
     },
 
     async saveProgress(input: ProgressWrite) {

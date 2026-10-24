@@ -136,6 +136,7 @@ export interface Backend {
 
   readLibrary(identity: DeviceIdentity, profileId: string): Promise<Library>
   readGenerations(identity: DeviceIdentity, profileId: string): Promise<Profile['generations'] | null>
+  setWishlist(input: { profileId: string; contentId: string; sourceId: string; kind: 'movie' | 'series'; title: string; generation: number; remove: boolean }): Promise<void>
   setFavorite(input: { profileId: string; contentId: string; title: string; generation: number; remove: boolean }): Promise<void>
   saveProgress(input: ProgressWrite): Promise<ProgressResult | void>
   markWatched(input: { profileId: string; contentId: string; title: string; generation: number }): Promise<void>

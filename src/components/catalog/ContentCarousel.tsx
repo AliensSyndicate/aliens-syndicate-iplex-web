@@ -31,11 +31,6 @@ export function ContentCarousel({
         <IplexText variant="section-title" id={headingId} className="iplex-row__title">
           {title}
         </IplexText>
-        {onSeeAll && (
-          <button type="button" className="iplex-chip iplex-focusable iplex-row__see-all" onClick={onSeeAll} data-nav="" data-nav-id={`see-all-${id}`} data-nav-group={`${id}-head`}>
-            Ver tudo
-          </button>
-        )}
       </div>
       <div
         className="iplex-row__track"
@@ -51,6 +46,12 @@ export function ContentCarousel({
       >
         {children}
       </div>
+      {/* Depois da trilha no DOM (a seta direita do último card chega aqui); posicionado no extremo direito do título. */}
+      {onSeeAll && (
+        <button type="button" className="iplex-chip iplex-focusable iplex-row__see-all" onClick={onSeeAll} data-nav="" data-nav-id={`see-all-${id}`} data-nav-group={`${id}-head`}>
+          Ver tudo
+        </button>
+      )}
     </section>
   )
 }

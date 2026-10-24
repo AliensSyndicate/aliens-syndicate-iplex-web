@@ -248,6 +248,8 @@ export interface ProgressEntry {
 
 export interface Library {
   favorites: LibraryEntry[]
+  /** Shares the favorites generation with the Control. */
+  wishlist?: LibraryEntry[]
   watched: LibraryEntry[]
   progress: ProgressEntry[]
 }

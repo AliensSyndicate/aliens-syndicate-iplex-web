@@ -244,7 +244,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       if (!alive()) return
       const catalog = new CatalogStore(backend, profile.id, spaces)
-      const library = new LibraryStore(backend, identity, profile)
+      const library = new LibraryStore(backend, identity, profile, (id) => catalog.findLoaded(id))
       try {
         await library.load()
       } catch (raw) {

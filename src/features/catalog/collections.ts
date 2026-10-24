@@ -4,10 +4,12 @@
  * sempre da lista IPTV do fornecedor do usuário.
  */
 import type { CatalogItem, ContentKind } from '../../services/api/types'
+import { isAdultItem } from '../../services/catalog/adult'
 import { isAdultName } from '../../services/catalog/categoryLabels'
 import type { IndexedItem } from '../../services/library/libraryStore'
 
-export type CollectionId = 'continue' | 'favorites' | 'watched' | 'all' | `cat:${string}`
+export type PersonalCollection = 'continue' | 'favorites' | 'wishlist' | 'watched' | 'releases'
+export type CollectionId = PersonalCollection | 'all' | `cat:${string}`
 export type SortId = 'az' | 'za' | 'added'
 
 export const SORT_OPTIONS: Array<{ id: SortId; label: string }> = [
@@ -24,10 +26,12 @@ export interface SideEntry {
   label: string
 }
 
-export const COLLECTION_TITLES: Record<'continue' | 'favorites' | 'watched' | 'all', string> = {
+export const COLLECTION_TITLES: Record<PersonalCollection | 'all', string> = {
   continue: 'Continuar assistindo',
   favorites: 'Favoritos',
-  watched: 'Recentemente assistidos',
+  wishlist: 'Lista de desejos',
+  releases: 'Lançamentos',
+  watched: 'Assistidos',
   all: 'Todos',
 }
 
@@ -113,6 +117,7 @@ export function itemFromIndexed(meta: IndexedItem): CatalogItem {
     kind: meta.kind,
     title: meta.title,
     category: meta.category ?? '',
+    imageRef: meta.imageRef,
     providerRef: '',
     version: '',
     ...(meta.year !== undefined ? { year: meta.year } : {}),
@@ -121,12 +126,44 @@ export function itemFromIndexed(meta: IndexedItem): CatalogItem {
 }
 
 export const parseKinds = (raw: string | null, fallback: ContentKind[]): ContentKind[] => {
-  const kinds = (raw ?? '').split(',').filter((k): k is ContentKind => k === 'movie' || k === 'series')
+  const kinds = (raw ?? '').split(',').filter((k): k is ContentKind => k === 'movie' || k === 'series' || k === 'channel')
   return kinds.length ? kinds : fallback
 }
 
 export function parseCollection(raw: string | null): CollectionId {
-  if (raw === 'continue' || raw === 'favorites' || raw === 'watched' || raw === 'all') return raw
+  if (raw === 'continue' || raw === 'favorites' || raw === 'watched' || raw === 'wishlist' || raw === 'releases' || raw === 'all') return raw
   if (raw && raw.startsWith('cat:')) return raw as CollectionId
   return 'all'
+}
+
+/** One title per series, chosen before excluding completed playback. Older unfinished
+ * episodes must never replace a newer completed episode in Continue watching. */
+export function continuing(progress: import('../../services/api/types').ProgressEntry[], indexed: (id: string) => IndexedItem | null) {
+  const seen = new Set<string>()
+  const result: Array<{ entry: (typeof progress)[number]; meta: IndexedItem }> = []
+  for (const entry of [...progress].sort((a, b) => b.updatedAt - a.updatedAt)) {
+    const meta = indexed(entry.contentId)
+    if (!meta || isAdultItem(meta) || (meta.kind === 'series' && !meta.episodeId)) continue
+    if (seen.has(meta.itemId)) continue
+    seen.add(meta.itemId)
+    if (entry.duration > 0 && entry.position / entry.duration >= 0.95) continue
+    result.push({ entry, meta })
+  }
+  return result
+}
+
+export function libraryTitles(entries: import('../../services/api/types').LibraryEntry[], indexed: (id: string) => IndexedItem | null, channels = false): CatalogItem[] {
+  const seen = new Set<string>()
+  return [...entries].sort((a, b) => b.updatedAt - a.updatedAt)
+    .map((entry) => indexed(entry.contentId))
+    .filter((meta): meta is IndexedItem => !!meta && !isAdultItem(meta) && (channels || meta.kind !== 'channel'))
+    .filter((meta) => !seen.has(meta.itemId) && !!seen.add(meta.itemId))
+    .map(itemFromIndexed)
+}
+
+/** Provider inclusion date, never the film's release year. Undated items remain
+ * in provider order after dated entries, rather than pretending A–Z is chronology. */
+export function latestReleases(items: CatalogItem[], limit = 5): CatalogItem[] {
+  return [...items].filter((item) => item.kind !== 'channel' && !isAdultItem(item))
+    .sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)).slice(0, limit)
 }

@@ -463,9 +463,50 @@ async function runAdult() {
   report(`${t}:cancel`, { path: location.pathname })
 }
 
+/** Meu iPlex (?selftest=home): destaque, fileiras, rolagem fileira a fileira, topo real e "Ver tudo". */
+async function runHome() {
+  const t = 'home'
+  const tab = all('.iplex-header__capsule .iplex-tab').find((b) => (b.textContent ?? '').trim() === 'Meu iPlex')
+  if (tab) {
+    tab.focus()
+    tab.click()
+  } else report(`${t}:tab`, { note: 'sem aba Meu iPlex; usando a tela atual', tabs: all('.iplex-header__capsule .iplex-tab').map((b) => (b.textContent ?? '').trim()).join('|') })
+  if (!(await waitFor(() => !!$('.iplex-home'), 20000))) return report(`${t}:enter`, { fail: 'tela não abriu' })
+  await sleep(8000)
+  const y = () => String(Math.round(window.scrollY))
+  const rows = all('.iplex-home .iplex-row').map((r) => `${(r.querySelector('.iplex-row__title')?.textContent ?? '').trim()}:${r.querySelectorAll('.iplex-row__track [data-nav]').length}`)
+  const seeAll = $('.iplex-row__see-all')?.getBoundingClientRect()
+  const main = $('.iplex-home')?.getBoundingClientRect()
+  report(`${t}:layout`, { hero: String(!!$('.iplex-home__hero')), heroImg: String(!!$('.iplex-home__hero img')), rows: rows.join('|'), seeAllRightGap: seeAll && main ? String(Math.round(main.right - seeAll.right)) : '-', focused: label(document.activeElement), y: y() })
+  const down: string[] = []
+  for (let i = 0; i < 8; i += 1) {
+    press('ArrowDown')
+    await sleep(450)
+    down.push(`${label(document.activeElement)}@y${y()}`)
+  }
+  report(`${t}:down`, { trail: down.join(' > ') })
+  const up: string[] = []
+  for (let i = 0; i < 9; i += 1) {
+    press('ArrowUp')
+    await sleep(450)
+    up.push(`${label(document.activeElement)}@y${y()}`)
+  }
+  report(`${t}:up`, { trail: up.join(' > '), atTop: String(window.scrollY === 0) })
+  press('ArrowDown')
+  await sleep(450)
+  await keys('ArrowRight', 12, 120)
+  report(`${t}:right`, { focused: label(document.activeElement), y: y() })
+}
+
 export async function runTvSelfTest() {
   try {
     diag('st:start', `vp=${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio}`)
+    if (/selftest=home/.test(window.location.search)) {
+      await sleep(4000)
+      await runHome()
+      diag('st:done', 'ok')
+      return
+    }
     // Amostrador de skeletons: maior quantidade vista ao mesmo tempo no grid e quantos cards reais já havia.
     let maxSkeleton = 0
     let cardsWhenMax = 0
@@ -501,4 +542,4 @@ export async function runTvSelfTest() {
   }
 }
 
-export const selfTestRequested = () => /(?:^|[?&])selftest=1(?:&|$)/.test(window.location.search)
+export const selfTestRequested = () => /(?:^|[?&])selftest=(?:1|home)(?:&|$)/.test(window.location.search)

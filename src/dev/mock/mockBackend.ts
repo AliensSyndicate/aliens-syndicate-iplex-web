@@ -270,6 +270,11 @@ export function createMockBackend(): Backend {
       library.favorites = library.favorites.filter((f) => f.contentId !== contentId)
       if (!remove) library.favorites.unshift({ contentId, title, generation: 0, updatedAt: Date.now() })
     },
+    async setWishlist({ contentId, title, remove }) {
+      if (viewer()?.type === 'guest') throw new AppError('not-supported', 'guest-not-persisted')
+      library.wishlist = (library.wishlist ?? []).filter((f) => f.contentId !== contentId)
+      if (!remove) library.wishlist.unshift({ contentId, title, generation: generations.favorites, updatedAt: Date.now() })
+    },
     async saveProgress({ contentId, positionSec, durationSec }) {
       if (viewer()?.type === 'guest') throw new AppError('not-supported', 'guest-not-persisted')
       library.progress = [{ contentId, position: positionSec, duration: durationSec, generation: 0, updatedAt: Date.now() }, ...library.progress.filter((p) => p.contentId !== contentId)]

@@ -177,10 +177,21 @@
 .iplex-header__capsule::-webkit-scrollbar {
   display: none;
 }
+/* Botão do perfil: quadrado com raio total (círculo perfeito) e o avatar centralizado nos dois eixos. */
 .iplex-header__avatar {
   -webkit-flex: none;
   flex: none;
-  padding: var(--iplex-space-2);
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--iplex-header-height);
+  height: var(--iplex-header-height);
+  padding: 0;
+  line-height: 0;
   margin-right: var(--iplex-space-5);
   border: none;
   border-radius: var(--iplex-radius-full);
@@ -218,13 +229,52 @@
   padding: 0;
 }
 /* Configurações: mesma cápsula e mesma aba só-ícone da busca (3 estados idênticos), no extremo direito. */
+.iplex-header__info {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  -webkit-align-items: flex-end;
+  align-items: flex-end;
+  -webkit-justify-content: center;
+  justify-content: center;
+  -webkit-flex: none;
+  flex: none;
+  margin-left: auto;
+  margin-right: var(--iplex-space-5);
+  color: var(--iplex-text-primary);
+  text-shadow: 0 1px 8px rgba(15, 15, 15, 0.9);
+  white-space: nowrap;
+  line-height: 1.15;
+}
+.iplex-header__info-top {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: baseline;
+  align-items: baseline;
+  font-size: var(--iplex-type-nav);
+}
+.iplex-header__temp {
+  margin-right: var(--iplex-space-4);
+}
+.iplex-header__time {
+  font-weight: var(--iplex-font-weight-bold);
+}
+/* Cidade: bem menor que a temperatura e o horário. */
+.iplex-header__city {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: calc(var(--iplex-type-meta) - 8px);
+  color: var(--iplex-text-secondary);
+}
 .iplex-header__capsule--end {
   -webkit-flex: none;
   flex: none;
   -webkit-justify-content: center;
   justify-content: center;
   width: var(--iplex-header-height);
-  margin-left: auto;
+  margin-left: 0;
   padding: 0;
 }
 /* Foco/hover do botão de perfil: borda só na foto, não no halo. */
@@ -1751,8 +1801,37 @@
 .iplex-row__head .iplex-row__title {
   margin: 0 var(--iplex-space-5) 0 0;
 }
+.iplex-row {
+  position: relative;
+}
 .iplex-row__see-all {
+  position: absolute;
+  top: 0;
+  right: 0;
   margin: 0;
+}
+/* ---- Meu iPlex: destaque de lançamento ---- */
+.iplex-home {
+  padding-top: 0;
+}
+.iplex-home__hero {
+  position: relative;
+  min-height: 62vh;
+}
+.iplex-home__hero .iplex-details__backdrop {
+  height: 100%;
+}
+.iplex-home__hero-info {
+  position: relative;
+  max-width: 55%;
+  padding-top: calc(var(--iplex-content-top) + 4vh);
+  padding-bottom: var(--iplex-space-5);
+}
+.iplex-home__hero-info > * + * {
+  margin-top: var(--iplex-space-3);
+}
+.iplex-home__hero .iplex-button {
+  margin-top: var(--iplex-space-4);
 }
 
 /* ---- Tela Catálogo (menu lateral + grid) ------------------------------

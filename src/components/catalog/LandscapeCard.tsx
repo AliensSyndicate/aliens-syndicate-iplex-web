@@ -19,6 +19,8 @@ export function LandscapeCard({
   navGroup,
   onSelect,
   autoFocus,
+  imageOnly,
+  gridIndex,
 }: {
   title: string
   sourceId?: string
@@ -32,6 +34,9 @@ export function LandscapeCard({
   navGroup: string
   onSelect: () => void
   autoFocus?: boolean
+  /** Só a imagem (e a barra de progresso): o nome fica no aria-label. */
+  imageOnly?: boolean
+  gridIndex?: number
 }) {
   const ref = useRef<HTMLButtonElement>(null)
   const visible = useInView(ref)
@@ -49,14 +54,15 @@ export function LandscapeCard({
       data-nav=""
       data-nav-id={navId}
       data-nav-group={navGroup}
+      {...(gridIndex !== undefined ? { 'data-grid-index': String(gridIndex) } : {})}
       {...(autoFocus ? { 'data-nav-autofocus': '' } : {})}
     >
       <span className="iplex-tile__frame">
-        <Artwork src={src} alt="" fallback={title} />
+        <Artwork src={src} alt="" fallback={imageOnly ? '' : title} />
         {typeof progress === 'number' && <ProgressBar value={progress} />}
       </span>
-      <span className="iplex-tile__label">{label}</span>
-      {subtitle && <span className="iplex-tile__sublabel">{subtitle}</span>}
+      {!imageOnly && <span className="iplex-tile__label">{label}</span>}
+      {!imageOnly && subtitle && <span className="iplex-tile__sublabel">{subtitle}</span>}
     </button>
   )
 }

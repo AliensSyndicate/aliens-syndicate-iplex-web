@@ -141,6 +141,7 @@ export default function DetailsScreen() {
   const movieProgress = item.kind === 'movie' && personal ? store.progressFor(item.id) : null
   const movieResumable = !!movieProgress && ratio(movieProgress)! < DONE
   const favorite = store.isFavorite(item.id)
+  const wished = store.isWished(item.id)
   const name = summary?.title || item.title
   const original = details?.originalTitle || summary?.originalTitle || ''
   const year = summary?.year ?? itemYear(item.year)
@@ -164,11 +165,12 @@ export default function DetailsScreen() {
     navigate(PATHS.watch({ sourceId: item.sourceId, itemId: item.id, kind: 'series', title: item.title, episodeId: ep.id, resume: resumeFrom }), { state: TO_PLAYER })
   const first = orderedEpisodes(series)[0]
 
-  const toggleList = async () => {
+  const toggleList = async (list: 'favorites' | 'wishlist' = 'favorites') => {
     setBusy(true)
     setListError(null)
     try {
-      await store.setFavorite(item, !favorite)
+      if (list === 'wishlist') await store.setWishlist(item, !wished)
+      else await store.setFavorite(item, !favorite)
     } catch {
       setListError('Não foi possível atualizar sua lista. Tente novamente.')
     } finally {
@@ -264,9 +266,14 @@ export default function DetailsScreen() {
             </IplexButton>
           )}
           {personal && (
+            <>
             <IplexButton variant="secondary" navId="d-list" navGroup="details-actions" disabled={busy} onClick={() => void toggleList()} autoFocus={item.kind === 'series' && !resume && !first}>
               {favorite ? 'Desfavoritar' : 'Favoritar'}
             </IplexButton>
+            <IplexButton variant="secondary" navId="d-wishlist" navGroup="details-actions" disabled={busy} onClick={() => void toggleList('wishlist')}>
+              {wished ? 'Remover dos desejos' : 'Adicionar aos desejos'}
+            </IplexButton>
+            </>
           )}
         </div>
         {listError && <IplexText variant="meta" className="iplex-details__error">{listError}</IplexText>}
