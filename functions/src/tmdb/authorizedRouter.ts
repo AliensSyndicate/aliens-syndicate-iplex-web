@@ -6,6 +6,12 @@ const PERSON = /^\/api\/tmdb\/person\/(\d{1,9})$/
 
 /** A caller cannot substitute an arbitrary TMDB title/id behind an allowed item. */
 export async function routeAuthorizedTmdb(service: TmdbService, pathname: string, query: URLSearchParams, item: MetadataGrant): Promise<RouteResult> {
+  // Busca de atores da Busca da TV: vale para qualquer dispositivo/perfil com acesso a ALGUM título (a autorização
+  // do dispositivo, assinatura e perfil já foi feita antes). Só atores sem conteúdo adulto; nenhum caminho livre.
+  // A pessoa aberta a partir dessa busca (`via=search`) é a mesma ficha pública do TMDB (sem adultos).
+  const clean = pathname.replace(/\/+$/, '')
+  if (clean === '/api/tmdb/search/person') return routeTmdb(service, clean, query)
+  if (query.get('via') === 'search' && PERSON.test(clean)) return routeTmdb(service, clean, query)
   const year = Number(item.year)
   const params = new URLSearchParams({ kind: item.kind, title: item.title })
   if (Number.isInteger(year) && year >= 1900 && year <= 2099) params.set('year', String(year))

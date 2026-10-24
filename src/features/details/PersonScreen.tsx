@@ -44,6 +44,7 @@ export default function PersonScreen() {
   const navigate = useNavigate()
   const q = new URLSearchParams(location.search)
   const scope = useMemo(() => ({ sourceId: q.get('s') ?? '', id: q.get('i') ?? '' }), [location.search]) // eslint-disable-line react-hooks/exhaustive-deps
+  const viaSearch = q.get('v') === 'search'
   const { tmdb } = useBackend()
   const [load, setLoad] = useState<Load>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
@@ -54,14 +55,14 @@ export default function PersonScreen() {
     const id = Number(personId)
     if (!Number.isInteger(id) || id <= 0 || !scope.sourceId || !scope.id) return
     let alive = true
-    tmdb.person(id, scope).then(
+    tmdb.person(id, scope, viaSearch).then(
       (person) => alive && setLoad({ status: 'ready', person }),
       () => alive && setLoad({ status: 'error' }),
     )
     return () => {
       alive = false
     }
-  }, [tmdb, personId, scope, attempt])
+  }, [tmdb, personId, scope, viaSearch, attempt])
 
   const invalid = !Number.isInteger(Number(personId)) || !scope.sourceId || !scope.id
   useRowNavigation()

@@ -11,7 +11,7 @@
  *   rola até o topo real (título), última até o fim real; no meio, rolagem mínima.
  * - Janelamento por linhas: só as linhas próximas da área visível existem no DOM.
  */
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useReadySession } from '../../app/providers/SessionProvider'
 import { contentPath, PATHS } from '../../app/routes/paths'
@@ -31,11 +31,15 @@ import type { CatalogItem, ContentKind } from '../../services/api/types'
 import type { IndexedItem } from '../../services/library/libraryStore'
 import { parseEpisodeContentId } from '../../services/catalog/normalize'
 import { isAdultItem } from '../../services/catalog/adult'
+import { LiveChannelPanel } from '../live-tv/LiveChannelPanel'
+import { useLiveState } from '../live-tv/useLiveState'
 import { hasPersonalLibrary, isKids } from '../profiles/profileRules'
 import { COLLECTION_TITLES, buildSidebar, isAdultCategory, itemFromIndexed, sortItems, sortOptionsFor, type CollectionId, type SortId } from './collections'
 
-const COLS = 5
+const GRID_COLS = 5
+const LIVE_COLS = 6
 const SKELETONS = 15
+const SKELETONS_LIVE = 24
 const OVERSCAN = 3
 const DEFAULT_ROW_HEIGHT = 340
 const MIN_FILL = 24
@@ -44,23 +48,24 @@ const REVEAL_PAD = 24
 /** Estado de navegação por rota: ao voltar dos detalhes a tela reaparece como estava. */
 const viewMemory = new Map<string, { selected: CollectionId; sort: SortId; scrollTop: number }>()
 
-const GridCard = memo(function GridCard({ item, index, onOpen }: { item: CatalogItem; index: number; onOpen: (item: CatalogItem) => void }) {
-  if (item.kind === 'channel') return <ChannelCard item={item} navId={`card-${item.id}`} navGroup="catalog-grid" onSelect={onOpen} gridIndex={index} />
+const GridCard = memo(function GridCard({ item, index, onOpen, selected }: { item: CatalogItem; index: number; onOpen: (item: CatalogItem) => void; selected: boolean }) {
+  if (item.kind === 'channel') return <ChannelCard item={item} navId={`card-${item.id}`} navGroup="catalog-grid" onSelect={onOpen} gridIndex={index} selected={selected} />
   return <PosterCard item={item} navId={`card-${item.id}`} navGroup="catalog-grid" onSelect={onOpen} posterOnly gridIndex={index} />
 })
 
 /** Linha do grid: memoizada para que só as linhas que entram/saem da janela sejam montadas. */
-const GridRow = memo(function GridRow({ items, rowIndex, onOpen }: { items: CatalogItem[]; rowIndex: number; onOpen: (item: CatalogItem) => void }) {
+const GridRow = memo(function GridRow({ items, rowIndex, cols, selectedId, onOpen }: { items: CatalogItem[]; rowIndex: number; cols: number; selectedId: string | null; onOpen: (item: CatalogItem) => void }) {
   return (
     <div className="iplex-catalog__row">
       {items.map((item, c) => (
-        <GridCard key={item.id} item={item} index={rowIndex * COLS + c} onOpen={onOpen} />
+        <GridCard key={item.id} item={item} index={rowIndex * cols + c} onOpen={onOpen} selected={item.id === selectedId} />
       ))}
     </div>
   )
 })
 
-export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[]; title: string; initial: CollectionId }) {
+export function CatalogScreen({ kinds, title, initial, live = false }: { kinds: ContentKind[]; title: string; initial: CollectionId; live?: boolean }) {
+  const cols = live ? LIVE_COLS : GRID_COLS
   const navigate = useNavigate()
   const location = useLocation()
   const session = useReadySession()
@@ -171,6 +176,10 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   // Sempre há uma coleção selecionada: a confirmada (se ainda existir no menu) ou a primeira com conteúdo.
   const selected: CollectionId = chosen && sidebar.some((s) => s.id === chosen) ? chosen : firstWithContent
 
+  // ---- Ao Vivo: player de fundo mudo, painel do canal e saída da interface ----
+  const favoriteIds = useMemo(() => new Set(library.favorites.map((f) => f.contentId)), [library.favorites])
+  const liveState = useLiveState({ enabled: live, catalog: session.catalog, store, favoriteIds, personal })
+
   const base = useMemo<CatalogItem[]>(() => {
     if (selected === 'continue') return Array.from(progressMeta.values()).map(itemFromIndexed)
     if (selected === 'favorites') return libraryLists.favorites
@@ -184,14 +193,22 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   const sortOptions = useMemo(() => sortOptionsFor(base), [base])
   const effectiveSort: SortId = sortOptions.some((o) => o.id === sort) ? sort : 'az'
   const items = useMemo(() => sortItems(base, effectiveSort), [base, effectiveSort])
+  // Painel do canal (Ao Vivo): abre na linha imediatamente acima do canal selecionado.
+  const armedIndex = live && liveState.shownId ? items.findIndex((i) => i.id === liveState.shownId) : -1
+  const panelRow = armedIndex >= 0 ? Math.floor(armedIndex / cols) : -1
+  const panelOpen = liveState.open && panelRow >= 0
+  const panelMounted = panelRow >= 0
+  const [panelH, setPanelH] = useState(0)
 
+  const liveActivate = liveState.activate
   const open = useCallback(
     (item: CatalogItem) => {
       const meta = selected === 'continue' ? progressMeta.get(item.id) : undefined
       if (meta) navigate(PATHS.watch({ sourceId: meta.sourceId, itemId: meta.itemId, kind: meta.kind, title: meta.title, episodeId: meta.episodeId, resume: true }))
+      else if (live && item.kind === 'channel') liveActivate(item)
       else navigate(contentPath(item))
     },
-    [navigate, selected, progressMeta],
+    [navigate, selected, progressMeta, live, liveActivate],
   )
 
   // ---- janelamento do grid ------------------------------------------------
@@ -200,12 +217,19 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   const gridRef = useRef<HTMLDivElement>(null)
   const [rowHeight, setRowHeight] = useState(DEFAULT_ROW_HEIGHT)
   const [range, setRange] = useState<[number, number]>([0, 6])
-  const totalRows = Math.ceil(items.length / COLS)
-  const geometry = useRef({ rowHeight: DEFAULT_ROW_HEIGHT, rowGap: 0, totalRows, hasMore })
+  const totalRows = Math.ceil(items.length / cols)
+  const geometry = useRef({ rowHeight: DEFAULT_ROW_HEIGHT, rowGap: 0, totalRows, hasMore, panelRow: -1, panelH: 0 })
+  const panelRef = useRef<HTMLElement>(null)
+  const panelRowRef = useRef(-1)
+  const armedIndexRef = useRef(-1)
   const itemsLen = useRef(items.length)
   useEffect(() => {
     geometry.current.totalRows = totalRows
     geometry.current.hasMore = hasMore
+    geometry.current.panelRow = panelOpen ? panelRow : -1
+    panelRowRef.current = panelOpen ? panelRow : -1
+    armedIndexRef.current = armedIndex
+    geometry.current.panelH = panelOpen ? panelH : 0
     itemsLen.current = items.length
   })
 
@@ -221,8 +245,11 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     const { rowHeight: rh, totalRows: rows, hasMore: more } = geometry.current
     const viewH = sc.clientHeight || window.innerHeight || 1080
     const rel = sc.scrollTop - grid.offsetTop
-    const first = Math.max(0, Math.floor(rel / rh) - OVERSCAN)
-    const last = Math.max(first, Math.min(rows - 1, Math.ceil((rel + viewH) / rh) + OVERSCAN))
+    // O painel do canal ocupa `panelH` antes da linha `panelRow`: converte o deslocamento em linha.
+    const { panelRow: pr, panelH: ph } = geometry.current
+    const toRow = (offset: number) => (pr < 0 || ph <= 0 || offset <= pr * rh ? offset / rh : offset < pr * rh + ph ? pr : (offset - ph) / rh)
+    const first = Math.max(0, Math.floor(toRow(rel)) - OVERSCAN)
+    const last = Math.max(first, Math.min(rows - 1, Math.ceil(toRow(rel + viewH)) + OVERSCAN))
     setRange((cur) => (cur[0] === first && cur[1] === last ? cur : [first, last]))
     const mem = viewMemory.get(routeKeyRef.current)
     if (mem) mem.scrollTop = sc.scrollTop
@@ -322,7 +349,7 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     const max = Math.max(0, sc.scrollHeight - sc.clientHeight)
     const inset = parseFloat(getComputedStyle(sc).paddingTop) || 0
     const target =
-      row === 0 ? 0 : row >= rows - 1 && !more ? max : revealTop(sc.scrollTop, grid.offsetTop + row * rh, rh - rowGap, sc.clientHeight, REVEAL_PAD, max, inset)
+      row === 0 ? 0 : row >= rows - 1 && !more ? max : revealTop(sc.scrollTop, grid.offsetTop + row * rh + (geometry.current.panelRow >= 0 && row >= geometry.current.panelRow ? geometry.current.panelH : 0), rh - rowGap, sc.clientHeight, REVEAL_PAD, max, inset)
     animateScrollTop(sc, target)
   }, [])
 
@@ -340,13 +367,38 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
       pendingFocus.current = index
       cancelScroll(sc)
       const { rowHeight: rh, rowGap } = geometry.current
-      const top = grid.offsetTop + Math.floor(index / COLS) * rh
+      const rowIdx = Math.floor(index / cols)
+      const top = grid.offsetTop + rowIdx * rh + (geometry.current.panelRow >= 0 && rowIdx >= geometry.current.panelRow ? geometry.current.panelH : 0)
       sc.scrollTop = centeredTop(top, rh - rowGap, sc.clientHeight, sc.scrollHeight - sc.clientHeight, parseFloat(getComputedStyle(sc).paddingTop) || 0)
       recompute()
       return true
     },
     [recompute],
   )
+
+  /** Altura real do painel (conteúdo inteiro, mesmo no meio da animação) e janela do grid. */
+  const measurePanel = useCallback(() => {
+    const el = panelRef.current
+    const h = el && el.classList.contains('is-open') ? el.scrollHeight : 0
+    setPanelH((cur) => (Math.abs(cur - h) < 1 ? cur : h))
+    geometry.current.panelH = h
+    recompute()
+  }, [recompute])
+  /** Painel à vista: rola o mínimo para mostrar o painel e a linha do canal. */
+  const revealPanel = useCallback(() => {
+    const sc = scrollerRef.current
+    const el = panelRef.current
+    if (!sc || !el) return
+    const top = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop
+    const max = Math.max(0, sc.scrollHeight - sc.clientHeight)
+    const inset = parseFloat(getComputedStyle(sc).paddingTop) || 0
+    animateScrollTop(sc, revealTop(sc.scrollTop, top, el.scrollHeight + geometry.current.rowHeight, sc.clientHeight, REVEAL_PAD, max, inset))
+  }, [])
+  useLayoutEffect(() => {
+    measurePanel()
+    if (panelOpen) revealPanel()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelOpen, panelRow, liveState.armedId])
 
   useLayoutEffect(() => {
     const index = pendingFocus.current
@@ -382,6 +434,15 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     focusCard(Math.min(lastGridIndex.current ?? 0, n - 1))
   }, [focusCard])
 
+  const panelButtons = useCallback(() => Array.from(scrollerRef.current?.querySelectorAll<HTMLElement>('.iplex-live-panel.is-open [data-nav]') ?? []), [])
+  /** Foca o primeiro botão do painel do canal (só quando aberto). */
+  const focusPanel = useCallback(() => {
+    const first = panelButtons()[0]
+    if (!first) return false
+    focusElement(first)
+    return true
+  }, [panelButtons])
+
   const focusHeader = useCallback(() => {
     const el = document.querySelector<HTMLElement>('[data-nav-fixed] .iplex-tab.is-active') ?? document.querySelector<HTMLElement>('[data-nav-fixed] [data-nav]')
     if (el) focusElement(el)
@@ -391,22 +452,41 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     if (!isArrow(key)) return false
     const el = document.activeElement
     if (!(el instanceof HTMLElement)) return false
+    // Painel do canal (Ao Vivo): Assistir / Favoritar na horizontal; cima = ordenação; baixo = grid.
+    if (el.closest('.iplex-live-panel')) {
+      const buttons = panelButtons()
+      const i = buttons.indexOf(el)
+      if (key === 'ArrowLeft') {
+        if (i > 0) focusElement(buttons[i - 1]!)
+      } else if (key === 'ArrowRight') {
+        if (i < buttons.length - 1) focusElement(buttons[i + 1]!)
+      } else if (key === 'ArrowUp') {
+        if (panelRowRef.current > 0) focusCard((panelRowRef.current - 1) * cols + (armedIndexRef.current % cols))
+        else focusSort()
+      }
+      else if (key === 'ArrowDown') focusCard(armedIndexRef.current)
+      else if (panelRowRef.current > 0) focusCard((panelRowRef.current - 1) * cols + (armedIndexRef.current % cols))
+      else focusSort()
+      return true
+    }
     // Grid: ortogonal por índice; nos limites direito/inferior não faz nada (sem serpentina).
     const idx = el.getAttribute('data-grid-index')
     if (idx !== null && gridRef.current?.contains(el)) {
       const i = Number(idx)
       const n = itemsLen.current
-      const col = i % COLS
+      const col = i % cols
       if (key === 'ArrowLeft') {
         if (col > 0) focusCard(i - 1)
         else focusSelectedSide()
       } else if (key === 'ArrowRight') {
-        if (col < COLS - 1 && i + 1 < n) focusCard(i + 1)
+        if (col < cols - 1 && i + 1 < n) focusCard(i + 1)
       } else if (key === 'ArrowUp') {
-        if (i - COLS >= 0) focusCard(i - COLS)
+        if (Math.floor(i / cols) === panelRowRef.current && focusPanel()) return true
+        if (i - cols >= 0) focusCard(i - cols)
         else focusSort()
-      } else if (i + COLS < n) {
-        focusCard(i + COLS)
+      } else if (i + cols < n) {
+        if (Math.floor(i / cols) + 1 === panelRowRef.current && focusPanel()) return true
+        focusCard(i + cols)
       }
       return true
     }
@@ -434,6 +514,7 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
       } else if (key === 'ArrowRight') {
         if (i < chips.length - 1) focusElement(chips[i + 1]!)
       } else if (key === 'ArrowDown') {
+        if (panelRowRef.current === 0 && focusPanel()) return true
         if (itemsLen.current > 0) focusCard(0)
       } else {
         focusHeader()
@@ -465,7 +546,10 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
     if (idx !== null) {
       zone.current = 'grid'
       lastGridIndex.current = Number(idx)
-      revealRow(Math.floor(Number(idx) / COLS))
+      revealRow(Math.floor(Number(idx) / cols))
+    } else if (target.closest('.iplex-live-panel')) {
+      zone.current = 'grid'
+      revealPanel()
     } else if (target.hasAttribute('data-sort-index')) {
       zone.current = 'sort'
       if (scrollerRef.current) animateScrollTop(scrollerRef.current, 0)
@@ -482,7 +566,7 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   const awaiting = fromCatalog ? loading || hasMore : personal && !libraryLoaded
   const showSkeleton = !blocked && items.length === 0 && awaiting
 
-  const rowSlices = useMemo(() => Array.from({ length: Math.ceil(items.length / COLS) }, (_, r) => items.slice(r * COLS, r * COLS + COLS)), [items])
+  const rowSlices = useMemo(() => Array.from({ length: Math.ceil(items.length / cols) }, (_, r) => items.slice(r * cols, r * cols + cols)), [items, cols])
   const rows: Array<{ index: number; items: CatalogItem[] }> = []
   if (!blocked) {
     for (let r = range[0]; r <= Math.min(range[1], totalRows - 1); r += 1) {
@@ -491,8 +575,10 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
   }
   const selectedSideId = sidebar.some((s) => s.id === selected) ? selected : null
 
+  const mainClass = 'iplex-page iplex-page--catalog'
   return (
-    <main className="iplex-page iplex-page--catalog" aria-label={title} data-nav-managed="">
+    <>
+    <main className={mainClass} aria-label={title} data-nav-managed="" style={live ? ({ '--iplex-cols': cols } as React.CSSProperties) : undefined}>
       <nav className="iplex-catalog__side" ref={sideRef} aria-label={`Categorias de ${kindLabel}`} onFocus={onSideFocus}>
         {sidebar.map((entry, i) => {
           const isSelected = entry.id === selectedSideId
@@ -548,19 +634,35 @@ export function CatalogScreen({ kinds, title, initial }: { kinds: ContentKind[];
           })}
         </div>
         {sourceStates}
-        {showSkeleton && <SkeletonGrid count={SKELETONS} cols={COLS} />}
+        {showSkeleton && <SkeletonGrid count={live ? SKELETONS_LIVE : SKELETONS} cols={cols} shape={live ? 'square' : 'poster'} />}
         {!blocked && !showSkeleton && items.length === 0 && <EmptyState title="Nada por aqui ainda" description={emptyText(selected, kindLabel)} />}
         {!blocked && items.length > 0 && (
           <div className="iplex-catalog__grid" ref={gridRef} role="list" aria-label={heading}>
-            <div style={{ height: range[0] * rowHeight }} aria-hidden="true" />
+            <div style={{ height: range[0] * rowHeight + (panelOpen && panelRow < range[0] ? panelH : 0) }} aria-hidden="true" />
             {rows.map((row) => (
-              <GridRow key={row.index} rowIndex={row.index} items={row.items} onOpen={open} />
+              <Fragment key={row.index}>
+                {live && panelMounted && row.index === panelRow && (
+                  <LiveChannelPanel
+                    panelRef={panelRef}
+                    channel={liveState.armed}
+                    open={panelOpen}
+                    favorite={liveState.favorite}
+                    canFavorite={liveState.canFavorite}
+                    busy={liveState.busy}
+                    onWatch={liveState.watch}
+                    onToggleFavorite={() => void liveState.toggleFavorite()}
+                    onLayout={measurePanel}
+                  />
+                )}
+                <GridRow rowIndex={row.index} items={row.items} cols={cols} selectedId={live ? liveState.armedId : null} onOpen={open} />
+              </Fragment>
             ))}
-            <div style={{ height: Math.max(0, totalRows - 1 - range[1]) * rowHeight }} aria-hidden="true" />
+            <div style={{ height: Math.max(0, totalRows - 1 - range[1]) * rowHeight + (panelOpen && panelRow > range[1] ? panelH : 0) }} aria-hidden="true" />
           </div>
         )}
       </div>
     </main>
+    </>
   )
 }
 

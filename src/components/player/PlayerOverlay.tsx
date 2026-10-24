@@ -84,7 +84,7 @@ export function PlayerOverlay({
       {interactive && (
         <div className="iplex-player__transport" role="group" aria-label="Controles de reprodução">
           {!live && seekable && iconButton('Voltar 10 segundos', GoBackward10SecIcon, () => onSkip(-1), 'pc-back')}
-          {iconButton(playing ? 'Pausar' : 'Reproduzir', playing ? PauseIcon : PlayIcon, onToggle, 'pc-toggle', true)}
+          {!live && iconButton(playing ? 'Pausar' : 'Reproduzir', playing ? PauseIcon : PlayIcon, onToggle, 'pc-toggle', true)}
           {!live && seekable && iconButton('Avançar 10 segundos', GoForward10SecIcon, () => onSkip(1), 'pc-forward')}
         </div>
       )}
@@ -98,7 +98,18 @@ export function PlayerOverlay({
                 {episodeTitle && <span>{episodeTitle}</span>}
               </IplexText>
             )}
-            {live && <span className="iplex-player__live">Ao vivo</span>}
+            {live && (
+              <div className="iplex-player__live-row">
+                <span className="iplex-player__live">Ao vivo</span>
+                {badges.length > 0 && (
+                  <ul className="iplex-player__badges iplex-player__badges--live" aria-label="Informações técnicas">
+                    {badges.map((b) => (
+                      <li key={b} className="iplex-player__badge">{b}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
           {!live && hint && (
             <span className="iplex-player__seek-hint" role="status">
@@ -116,9 +127,9 @@ export function PlayerOverlay({
             onBlur={onTimelineBlur}
           />
         )}
-        {(badges.length > 0 || (interactive && (audio.length > 1 || text.length > 0))) && (
+        {((!live && badges.length > 0) || (interactive && (audio.length > 1 || text.length > 0))) && (
           <div className="iplex-player__footer">
-            {badges.length > 0 && (
+            {!live && badges.length > 0 && (
               <ul className="iplex-player__badges" aria-label="Informações técnicas">
                 {badges.map((b) => (
                   <li key={b} className="iplex-player__badge">{b}</li>

@@ -1008,26 +1008,42 @@
 }
 
 /* ---- Busca ----------------------------------------------------------- */
-.iplex-search__layout {
+/* Lado esquerdo fixo: nunca rola. Mais largo que o do catálogo para o teclado da TV não quebrar linhas. */
+.iplex-page--catalog.iplex-page--search {
+  --iplex-side-width: 48rem;
+}
+.iplex-catalog__side.iplex-search__side {
+  overflow: hidden;
+}
+.iplex-search__title {
+  margin: 0 0 var(--iplex-space-4);
+}
+.iplex-search__section {
+  margin-bottom: var(--iplex-space-6);
+}
+.iplex-search__row {
   display: -webkit-flex;
   display: flex;
-  -webkit-align-items: flex-start;
-  align-items: flex-start;
+  margin-bottom: var(--iplex-grid-gap);
 }
-.iplex-search__input-area {
-  -webkit-flex: none;
-  flex: none;
-  width: 34%;
-  max-width: 640px;
-  margin-right: var(--iplex-space-7);
+.iplex-search__cell {
+  width: calc((100% - 4 * var(--iplex-grid-gap)) / 5);
+  margin-right: var(--iplex-grid-gap);
 }
-.iplex-search__results {
-  -webkit-flex: 1;
-  flex: 1;
-  min-width: 0;
+.iplex-search__cell:last-child {
+  margin-right: 0;
 }
-.iplex-search__results .iplex-row:first-child {
-  margin-top: 0;
+.iplex-search__cell .iplex-tile {
+  width: 100%;
+  margin: 0;
+}
+.iplex-search__recents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.iplex-search__recents li {
+  margin: 0 0 var(--iplex-space-2);
 }
 .iplex-search__input {
   width: 100%;
@@ -1424,6 +1440,20 @@
   font-weight: var(--iplex-font-weight-bold);
   color: var(--iplex-text-primary);
 }
+.iplex-player__live-row {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  margin-top: var(--iplex-space-2);
+}
+.iplex-player__live-row .iplex-player__live {
+  margin-top: 0;
+  margin-right: var(--iplex-space-3);
+}
+.iplex-player__badges--live {
+  margin: 0;
+}
 .iplex-player__live {
   display: inline-block;
   margin-top: var(--iplex-space-2);
@@ -1818,10 +1848,54 @@
 }
 .iplex-catalog__row .iplex-tile--poster,
 .iplex-catalog__row .iplex-tile--square {
-  width: calc((100% - 4 * var(--iplex-grid-gap)) / 5);
+  width: calc((100% - (var(--iplex-cols, 5) - 1) * var(--iplex-grid-gap)) / var(--iplex-cols, 5));
   margin-right: var(--iplex-grid-gap);
 }
 .iplex-catalog__row .iplex-tile--poster:last-child,
 .iplex-catalog__row .iplex-tile--square:last-child {
   margin-right: 0;
 }
+
+/* ---- Ao Vivo: painel do canal (abre/fecha com animação) ------------------ */
+.iplex-live-panel {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  -webkit-transition: max-height 350ms ease-out, opacity 350ms ease-out;
+  transition: max-height 350ms ease-out, opacity 350ms ease-out;
+}
+.iplex-live-panel.is-open {
+  max-height: 900px;
+  opacity: 1;
+}
+/* Sem fundo: texto à esquerda e, embaixo dele, os dois botões. */
+.iplex-live-panel__inner {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--iplex-space-3) 0 var(--iplex-grid-gap);
+  text-align: left;
+}
+.iplex-live-panel__text > * + * {
+  margin-top: var(--iplex-space-2);
+}
+.iplex-live-panel__progress {
+  position: relative;
+  max-width: 420px;
+  height: 8px;
+}
+.iplex-live-panel__progress .iplex-progress {
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+.iplex-live-panel__actions {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-justify-content: flex-start;
+  justify-content: flex-start;
+  margin-top: var(--iplex-space-4);
+}
+.iplex-live-panel__actions .iplex-button + .iplex-button {
+  margin-left: var(--iplex-space-4);
+}
+

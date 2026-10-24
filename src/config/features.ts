@@ -47,8 +47,8 @@ export const TIMING = {
   progressSaveIntervalMs: 30_000,
   progressMinDeltaMs: 10_000,
   /** Busca: espera após a última tecla. */
-  searchDebounceMs: 450,
-  searchMinLength: 2,
+  searchDebounceMs: 300,
+  searchMinLength: 3,
   /** Ocultar controles do player sem interação. */
   playerControlsHideMs: 5_000,
   /** Startup: limite para cada etapa remota. */

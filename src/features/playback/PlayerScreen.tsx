@@ -40,6 +40,7 @@ import { createProgressTracker } from './progressTracker'
 import { createStatusReporter, type PlaybackStatusPayload } from './playbackStatus'
 import { createProgressSession, resolveResumeMs, type ProgressSession } from './progressSession'
 import { SEEK_CONFIRM_TIMEOUT_MS, clampSeek, createSeekGate, endedEarly, episodeCode, findNextEpisode, nextEpisodeCountdown, qualityLabel, scrubStepMs, subtitledFromSource } from './playerRules'
+import { neighbourChannel, zapList } from '../live-tv/zapList'
 import { useOverlayTimer } from './useOverlayTimer'
 import { playRequestErrorCode, reportPlayRequest, setPlaybackActive } from '../remote/playRequestReport'
 
@@ -439,10 +440,8 @@ export default function PlayerScreen() {
 
   const zapChannel = (direction: 1 | -1) => {
     if (!live) return
-    const channels = session.catalog.items('channel')
-    const index = channels.findIndex((c) => c.id === itemId)
-    const next = channels[(index + direction + channels.length) % channels.length]
-    if (next && next.id !== itemId) navigate(PATHS.watch({ sourceId: next.sourceId, itemId: next.id, kind: 'channel', title: next.title }), { replace: true })
+    const next = neighbourChannel(zapList(session.catalog.items('channel'), itemId), itemId, direction)
+    if (next) navigate(PATHS.watch({ sourceId: next.sourceId, itemId: next.id, kind: 'channel', title: next.title }), { replace: true })
   }
 
   // ---- Foco: controles ao abrir o modo interativo; cartão do próximo episódio fora dele ----
@@ -481,15 +480,15 @@ export default function PlayerScreen() {
     const interactive = mode === 'interactive'
     switch (key) {
       case 'MediaPlayPause':
-        toggle()
+        if (!live) toggle()
         overlay.reveal('info')
         return true
       case 'MediaPlay':
-        void adapterRef.current?.play()
+        if (!live) void adapterRef.current?.play()
         overlay.reveal('info')
         return true
       case 'MediaPause':
-        void adapterRef.current?.pause()
+        if (!live) void adapterRef.current?.pause()
         overlay.reveal('info')
         return true
       case 'MediaStop':
@@ -511,6 +510,11 @@ export default function PlayerScreen() {
         zapChannel(-1)
         return true
       case 'Enter':
+        // Canal: OK só mostra as informações (não há controles nem pausa).
+        if (live) {
+          overlay.reveal('info')
+          return true
+        }
         if (!interactive) {
           // Cartão do próximo episódio focado: OK o aciona (clique nativo).
           if (focusedId === 'pc-next' && nextVisible) return false
@@ -527,6 +531,13 @@ export default function PlayerScreen() {
       case 'ArrowRight':
       case 'ArrowUp':
       case 'ArrowDown':
+        // Canal: esquerda/direita trocam de canal (lista "Todos") e a troca mostra as informações; cima/baixo só mostram.
+        if (live) {
+          if (key === 'ArrowLeft') zapChannel(-1)
+          else if (key === 'ArrowRight') zapChannel(1)
+          overlay.reveal('info')
+          return true
+        }
         if (!interactive) {
           // Overlay fechado: setas nunca fazem seek. Canais mantêm o comportamento anterior (revelam os controles);
           // com o cartão do próximo episódio focado (OK o aciona), Cima abre os controles.
@@ -572,7 +583,7 @@ export default function PlayerScreen() {
   }
 
   const quality = videoSize ? qualityLabel(videoSize.width, videoSize.height) : null
-  const badges = live ? [] : [quality, subtitledFromSource(item?.title ?? title, item?.category) ? 'Legendado' : null].filter((b): b is string => !!b)
+  const badges = [quality, subtitledFromSource(item?.title ?? title, item?.category) ? 'Legendado' : null].filter((b): b is string => !!b)
   const episodeTitle = (episodeMeta && episodeMeta.id === episode?.id ? episodeMeta.name : '') || episode?.title || undefined
 
   // DIAGNÓSTICO TEMPORÁRIO (ponto no centro): `?diag=1&bare=1` desenha só o plano de vídeo, sem nenhuma camada do Web.
@@ -585,7 +596,7 @@ export default function PlayerScreen() {
   }
 
   return (
-    <main ref={rootRef} className="iplex-player" aria-label={`Reproduzindo ${title}`} tabIndex={-1} onMouseMove={() => overlay.reveal('interactive')}>
+    <main ref={rootRef} className="iplex-player" aria-label={`Reproduzindo ${title}`} tabIndex={-1} onMouseMove={() => overlay.reveal(live ? 'info' : 'interactive')}>
       <div ref={containerRef} className="iplex-player__surface" />
       {cue && <div className="iplex-player__cue">{cue}</div>}
       {phase.status === 'error' ? (

@@ -37,14 +37,14 @@ export function SkeletonRow({ shape = 'poster', count = 15 }: { shape?: 'poster'
 }
 
 /** Grade de placeholders (catálogo): `count` cards em linhas de `cols`, mesmas medidas do grid real. */
-export function SkeletonGrid({ count = 15, cols = 5 }: { count?: number; cols?: number }) {
+export function SkeletonGrid({ count = 15, cols = 5, shape = 'poster' }: { count?: number; cols?: number; shape?: 'poster' | 'square' }) {
   const rows = Math.ceil(count / cols)
   return (
     <div className="iplex-catalog__grid iplex-catalog__grid--skeleton" aria-hidden="true">
       {Array.from({ length: rows }, (_, r) => (
         <div key={r} className="iplex-catalog__row">
           {Array.from({ length: Math.min(cols, count - r * cols) }, (_, c) => (
-            <div key={c} className="iplex-tile iplex-tile--poster">
+            <div key={c} className={`iplex-tile iplex-tile--${shape}`}>
               <div className="iplex-tile__frame iplex-skeleton" />
             </div>
           ))}

@@ -81,11 +81,37 @@ describe('player', () => {
     expect(created[0]!.load.mock.calls[0]![0]).toMatchObject({ url: expect.stringContaining('bipbop'), live: true })
     expect(screen.queryByRole('navigation', { name: 'Menu principal' })).toBeNull()
     expect(await screen.findByText('Ao vivo')).toBeTruthy()
+    // Canal: OK só mostra as informações; não há botão de pausa nem controles.
     enter()
-    expect(await screen.findByRole('button', { name: 'Pausar' })).toBeTruthy()
+    await waitFor(() => expect(overlayMode()).toBe('info'))
+    expect(screen.queryByRole('button', { name: 'Pausar' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reproduzir' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Avançar 10 segundos' })).toBeNull()
     expect(screen.queryByRole('progressbar', { name: 'Posição' })).toBeNull()
     expect(screen.queryByRole('slider', { name: 'Posição' })).toBeNull()
+  })
+
+  it('canal: esquerda/direita trocam de canal pela lista "Todos" e mostram as informações', async () => {
+    start('/assistir?s=demo-source&i=c-1&k=channel&t=Canal')
+    await playing()
+    const id = () => new URLSearchParams(window.location.search).get('i')
+    const first = id()
+    press('ArrowRight', 39)
+    await waitFor(() => expect(id()).not.toBe(first))
+    const second = id()
+    expect(window.location.pathname).toBe('/assistir')
+    press('ArrowLeft', 37)
+    await waitFor(() => expect(id()).toBe(first))
+    expect(second).not.toBe(first)
+    await waitFor(() => expect(overlayMode()).toBe('info'))
+  })
+
+  it('canal: tags técnicas aparecem ao lado de "Ao vivo"', async () => {
+    start('/assistir?s=demo-source&i=c-1&k=channel&t=Canal')
+    const a = await playing()
+    act(() => a.emit('media', { width: 1920, height: 1080 }))
+    const live = await screen.findByText('Ao vivo')
+    await waitFor(() => expect(live.parentElement!.querySelector('.iplex-player__badges--live')?.textContent).toContain('Full HD'))
   })
 
   it('1. filme do zero: sem posição inicial, sessão "restart", progresso salvo na saída', async () => {

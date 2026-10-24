@@ -31,6 +31,12 @@ export async function routeTmdb(service: TmdbService, pathname: string, query: U
     if (m && ID.test(m[1]!)) return ok(await service.tv(Number(m[1])), 86400)
     m = /^\/tv\/(\d+)\/season\/(\d{1,3})$/.exec(path)
     if (m && ID.test(m[1]!)) return ok(await service.season(Number(m[1]), Number(m[2])), 86400)
+    // Busca de atores (a TV só chega aqui com dispositivo autorizado: ver routeAuthorizedTmdb).
+    if (path === '/search/person') {
+      const q = (query.get('q') ?? '').trim()
+      if (q.length < 2 || q.length > 100) return bad()
+      return ok({ results: await service.searchPeople(q) }, 3600)
+    }
     // Pessoa creditada num título autorizado (o escopo é verificado em routeAuthorizedTmdb).
     m = /^\/person\/(\d+)$/.exec(path)
     if (m && ID.test(m[1]!)) return ok(await service.person(Number(m[1])), 86400)

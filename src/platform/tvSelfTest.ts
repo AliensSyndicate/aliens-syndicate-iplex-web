@@ -359,6 +359,56 @@ async function runDetails() {
   report(`${t}:back`, { back: String(back), focused: label(document.activeElement) })
 }
 
+/** Busca: mínimo de 3 letras, ordem das categorias, grid de 5, navegação, lado esquerdo fixo e recentes. */
+async function runSearch() {
+  const t = 'busca'
+  const tab = all('.iplex-header__capsule .iplex-tab').find((b) => b.dataset.navId === 'tab-search')
+  if (!tab) return report(`${t}:enter`, { fail: 'aba Busca não encontrada' })
+  tab.focus()
+  tab.click()
+  if (!(await waitFor(() => !!$('#iplex-search-input'), 15000))) return report(`${t}:enter`, { fail: 'tela não abriu' })
+  await sleep(800)
+  const side = $('.iplex-search__side')
+  const type = async (text: string) => {
+    for (const ch of text) {
+      $(`[data-nav-id="key-${ch}"]`)?.click()
+      await sleep(120)
+    }
+  }
+  await type('ab')
+  await sleep(1200)
+  report(`${t}:min2`, { sections: String(all('[data-sr-block]').length), cells: String(all('[data-sr-cell]').length), hint: ($('.iplex-search__content')?.textContent ?? '').slice(0, 60) })
+  await type('a')
+  await sleep(1500)
+  const blocks = all('[data-sr-block]').map((b) => `${b.dataset.srBlock}:${(b.querySelector('.iplex-catalog__count')?.textContent ?? '').trim()}/${b.querySelectorAll('[data-sr-cell]').length}`)
+  const firstRow = all('[data-sr-cell]').filter((c) => Math.abs(c.getBoundingClientRect().top - (all('[data-sr-cell]')[0]?.getBoundingClientRect().top ?? 0)) < 2).length
+  const lastKey = $('[data-nav-id="key-clear"]')?.getBoundingClientRect()
+  report(`${t}:min3`, { blocks: blocks.join('|'), perRow: String(firstRow), sideScrollable: String(!!side && side.scrollHeight > side.clientHeight + 1), side: `${side?.scrollHeight}/${side?.clientHeight}`, lastKeyBottom: String(Math.round(lastKey?.bottom ?? 0)), vh: String(window.innerHeight), resultsWidth: String(Math.round($('.iplex-search__content')?.getBoundingClientRect().width ?? 0)) })
+  // Navegação: teclado → resultados → descer até o fim → voltar ao campo.
+  const input = $('#iplex-search-input')
+  input?.focus()
+  press('ArrowRight')
+  await sleep(300)
+  const trail: string[] = [label(document.activeElement)]
+  for (let i = 0; i < 12; i++) {
+    press('ArrowDown')
+    await sleep(250)
+    trail.push(`${label(document.activeElement)}@y${Math.round($('.iplex-search__content')?.scrollTop ?? 0)}`)
+  }
+  report(`${t}:down`, { trail: trail.join(' > ') })
+  const up: string[] = []
+  for (let i = 0; i < 14; i++) {
+    press('ArrowUp')
+    await sleep(250)
+    up.push(`${label(document.activeElement)}@y${Math.round($('.iplex-search__content')?.scrollTop ?? 0)}`)
+  }
+  report(`${t}:up`, { trail: up.slice(-6).join(' > ') })
+  // Recentes com o campo vazio.
+  $('[data-nav-id="key-clear"]')?.click()
+  await sleep(1200)
+  report(`${t}:recents`, { title: ($('[data-sr-block="recents"] h2')?.textContent ?? '').trim(), items: all('[data-sr-recent]').map((b) => (b.textContent ?? '').trim()).join('|') })
+}
+
 export async function runTvSelfTest() {
   try {
     diag('st:start', `vp=${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio}`)
@@ -377,6 +427,7 @@ export async function runTvSelfTest() {
     await runScreen('Filmes')
     await runScreen('Séries')
     await runDetails()
+    await runSearch()
     // Ao Vivo: nomes das categorias já padronizadas.
     const live = all('.iplex-header__capsule .iplex-tab').find((b) => (b.textContent ?? '').trim() === 'Ao Vivo')
     if (live) {

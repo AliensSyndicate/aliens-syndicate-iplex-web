@@ -46,6 +46,21 @@ describe('TMDB authorization', () => {
     expect((await routeAuthorizedTmdb(unmatched, '/api/tmdb/person/6384', query, item)).status).toBe(403)
     expect(person).toHaveBeenCalledTimes(2)
   })
+  it('TV: busca de atores só com dispositivo autorizado; a ficha aberta da busca exige via=search', async () => {
+    const searchPeople = vi.fn(async () => [{ tmdbId: 1, name: 'Ator', knownFor: 'Acting', photo: null }])
+    const person = vi.fn(async () => ({ tmdbId: 5 }))
+    const match = vi.fn(async () => ({ status: 'matched', summary: { tmdbId: 12 } }))
+    const movie = vi.fn(async () => ({ cast: [], crew: [] }))
+    const service = { searchPeople, person, match, movie } as unknown as TmdbService
+    const found = await routeAuthorizedTmdb(service, '/api/tmdb/search/person', new URLSearchParams({ sourceId: 's1', itemId: 'i1', q: 'ator' }), item)
+    expect(found.status).toBe(200)
+    expect(found.body).toEqual({ results: [expect.objectContaining({ name: 'Ator' })] })
+    expect(match).not.toHaveBeenCalled()
+    expect((await routeAuthorizedTmdb(service, '/api/tmdb/search/person', new URLSearchParams({ q: 'a' }), item)).status).toBe(400)
+    expect((await routeAuthorizedTmdb(service, '/api/tmdb/person/5', new URLSearchParams({ via: 'search' }), item)).status).toBe(200)
+    // Sem via=search, continua exigindo o crédito no título autorizado.
+    expect((await routeAuthorizedTmdb(service, '/api/tmdb/person/5', new URLSearchParams(), item)).status).toBe(403)
+  })
   it('iPlex Control: App Check token routes to the manager (with the family context); never to the Player', async () => {
     const player = vi.fn(async () => item), control = vi.fn(async () => item)
     const access = createTmdbAccess(player, control)

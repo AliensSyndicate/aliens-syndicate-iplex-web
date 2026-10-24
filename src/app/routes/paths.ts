@@ -12,8 +12,8 @@ export const PATHS = {
     return `/assistir?${qs.toString()}`
   },
   /** Pessoa do elenco/equipe, sempre no escopo de um título autorizado (s, i). */
-  person: (personId: number, scope: { sourceId: string; itemId: string; title: string }) =>
-    `/pessoa/${personId}?${new URLSearchParams({ s: scope.sourceId, i: scope.itemId, t: scope.title }).toString()}`,
+  person: (personId: number, scope: { sourceId: string; itemId: string; title: string }, via?: 'search') =>
+    `/pessoa/${personId}?${new URLSearchParams({ s: scope.sourceId, i: scope.itemId, t: scope.title, ...(via ? { v: via } : {}) }).toString()}`,
   settings: '/configuracoes',
   /** Tela Catálogo reutilizável: coleção (c) e tipos (k) de entrada. */
   catalog: (collection: string, kinds: string[] = ['movie', 'series']) => `/catalogo?c=${encodeURIComponent(collection)}&k=${kinds.join(',')}`,
