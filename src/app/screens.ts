@@ -8,6 +8,7 @@ export const screenLoaders = {
   live: () => import('../features/live-tv/LiveTvScreen'),
   movies: () => import('../features/movies/MoviesScreen'),
   series: () => import('../features/series/SeriesScreen'),
+  adult: () => import('../features/adult/AdultScreen'),
   catalog: () => import('../features/catalog/CatalogRoute'),
   details: () => import('../features/details/DetailsScreen'),
   seasons: () => import('../features/details/SeasonsScreen'),

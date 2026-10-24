@@ -12,33 +12,45 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { usePlatform } from '../../app/providers/PlatformProvider'
 import { useReadySession } from '../../app/providers/SessionProvider'
-import { contentPath } from '../../app/routes/paths'
+import { contentPath, PATHS } from '../../app/routes/paths'
 import { ChannelCard } from '../../components/catalog/ChannelCard'
+import { MetadataTile } from '../../components/catalog/MetadataTile'
 import { PosterCard } from '../../components/catalog/PosterCard'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { IplexText } from '../../components/ui/IplexText'
 import { TIMING } from '../../config/features'
+import { useCatalog } from '../../hooks/useCatalog'
 import { useInitialFocus, useKeyHandler } from '../../navigation/FocusProvider'
 import { animateScrollTop, revealTop } from '../../navigation/scrollMath'
 import { focusElement } from '../../navigation/spatial'
 import { isArrow } from '../../platform/keys'
 import type { CatalogItem } from '../../services/api/types'
+import type { TmdbPersonResult } from '../../services/tmdb/tmdbClient'
+import { useBackend } from '../../app/providers/BackendProvider'
+import { isKids } from '../profiles/profileRules'
+import { isAdultItem } from '../../services/catalog/adult'
 import { searchItems } from '../../services/catalog/search'
 import { VirtualKeyboard } from './VirtualKeyboard'
-import { addRecentSearch, readRecentSearches } from './recentSearches'
+import { addRecent, readRecents, recentKey, type RecentEntry } from './recentSearches'
 
 const COLS = 5
 /** Itens mostrados por categoria (o total real aparece no título). */
 const PER_SECTION = 60
 const PAD = 24
 
+type SectionId = 'recents' | 'channels' | 'movies' | 'series' | 'people'
+/** Um card do grid: canal (quadrado), pôster de filme/série ou ator. */
+type Cell = { key: string; kind: 'channel' | 'poster' | 'person'; item?: CatalogItem; person?: { personId: number; name: string; photo: string | null; knownFor: string; scope: { sourceId: string; itemId: string; title: string } } }
 interface Section {
-  id: 'channels' | 'movies' | 'series'
+  id: SectionId
   title: string
-  items: CatalogItem[]
+  cells: Cell[]
   total: number
 }
+
+const DEPARTMENT: Record<string, string> = { Acting: 'Atuação', Directing: 'Direção', Writing: 'Roteiro', Production: 'Produção' }
+const toCells = (items: CatalogItem[], kind: Cell['kind']): Cell[] => items.map((item) => ({ key: item.id, kind, item }))
 
 export default function SearchScreen() {
   const platform = usePlatform()
@@ -46,11 +58,19 @@ export default function SearchScreen() {
   const location = useLocation()
   const session = useReadySession()
   const { catalog, spaces } = session
+  // Assinam o catálogo: garantem que os três tipos estejam carregados e refazem a busca quando chegarem.
+  const channelCatalog = useCatalog('channel')
+  const movieCatalog = useCatalog('movie')
+  const seriesCatalog = useCatalog('series')
+  const itemsByKind = useMemo(() => ({ channel: channelCatalog.items, movie: movieCatalog.items, series: seriesCatalog.items }), [channelCatalog.items, movieCatalog.items, seriesCatalog.items])
   const { familyId } = session.identity
   const profileId = session.profile.id
   const [term, setTerm] = useState(() => new URLSearchParams(location.search).get('q') ?? '')
   const [debounced, setDebounced] = useState(term)
-  const [recents, setRecents] = useState(() => readRecentSearches(familyId, profileId))
+  const { tmdb } = useBackend()
+  const [recents, setRecents] = useState<RecentEntry[]>(() => readRecents(familyId, profileId))
+  const [people, setPeople] = useState<{ query: string; list: TmdbPersonResult[] } | null>(null)
+  const kids = isKids(session.profile)
   const inputRef = useRef<HTMLInputElement>(null)
   const sideRef = useRef<HTMLElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -67,28 +87,65 @@ export default function SearchScreen() {
   const query = debounced.trim()
   const searching = query.length >= TIMING.searchMinLength
 
-  const sections = useMemo<Section[]>(() => {
-    if (!searching) return []
-    const build = (id: Section['id'], title: string, kind: CatalogItem['kind']): Section => {
-      const r = searchItems(catalog.items(kind), query, PER_SECTION)
-      return { id, title, items: r.items, total: r.total }
-    }
-    return [build('channels', 'Ao Vivo', 'channel'), build('movies', 'Filmes', 'movie'), build('series', 'Séries', 'series')].filter((s) => s.total > 0)
-  }, [searching, query, catalog])
+  /** Qualquer título autorizado e não adulto: prova o acesso do dispositivo na busca de atores. */
+  const scopeItem = useMemo(() => {
+    const pick = (kind: 'movie' | 'series') => itemsByKind[kind].find((i) => !isAdultItem(i))
+    return pick('movie') ?? pick('series') ?? null
+  }, [itemsByKind])
 
-  // Termo que trouxe resultados e ficou parado: vira busca recente.
+  // Atores (TMDB): nunca para perfil infantil; falha de rede só some com a seção.
   useEffect(() => {
-    if (!searching || sections.length === 0) return
-    const id = setTimeout(() => setRecents(addRecentSearch(familyId, profileId, query)), 1500)
-    return () => clearTimeout(id)
-  }, [searching, sections.length, query, familyId, profileId])
+    if (!searching || kids || !scopeItem) return
+    let alive = true
+    tmdb.searchPeople(query, scopeItem).then(
+      (list) => alive && setPeople({ query, list }),
+      () => alive && setPeople({ query, list: [] }),
+    )
+    return () => {
+      alive = false
+    }
+  }, [searching, query, kids, scopeItem, tmdb])
+  const peopleReady = !searching || kids || !scopeItem || people?.query === query
 
-  const open = useCallback(
+  const sections = useMemo<Section[]>(() => {
+    if (!searching) {
+      // Recentes: o item aberto, como estava no catálogo (itens que saíram da lista somem).
+      const cells: Cell[] = []
+      for (const entry of recents) {
+        if (entry.type === 'item') {
+          const item = catalog.findLoaded(entry.itemId)
+          if (item && !isAdultItem(item)) cells.push({ key: recentKey(entry), kind: item.kind === 'channel' ? 'channel' : 'poster', item })
+        } else cells.push({ key: recentKey(entry), kind: 'person', person: entry })
+      }
+      return cells.length ? [{ id: 'recents', title: 'Recentes', cells, total: cells.length }] : []
+    }
+    const build = (id: Section['id'], title: string, kind: CatalogItem['kind'], cell: Cell['kind']): Section => {
+      const r = searchItems(itemsByKind[kind as 'channel' | 'movie' | 'series'], query, PER_SECTION)
+      return { id, title, cells: toCells(r.items, cell), total: r.total }
+    }
+    const list: Section[] = [build('channels', 'Ao Vivo', 'channel', 'channel'), build('movies', 'Filmes', 'movie', 'poster'), build('series', 'Séries', 'series', 'poster')]
+    // "Atores": só quem o TMDB classifica como ator (produtoras e equipe técnica ficam de fora).
+    const actors = people?.query === query ? people.list.filter((p) => p.knownFor === 'Acting') : []
+    if (!kids && scopeItem && actors.length > 0) {
+      const cells: Cell[] = actors.map((p) => ({ key: `p:${p.tmdbId}`, kind: 'person', person: { personId: p.tmdbId, name: p.name, photo: p.photo, knownFor: p.knownFor, scope: { sourceId: scopeItem.sourceId, itemId: scopeItem.id, title: scopeItem.title } } }))
+      list.push({ id: 'people', title: 'Atores', cells, total: cells.length })
+    }
+    return list.filter((sec) => sec.total > 0)
+  }, [searching, query, catalog, itemsByKind, recents, people, kids, scopeItem])
+
+  const openItem = useCallback(
     (item: CatalogItem) => {
-      setRecents(addRecentSearch(familyId, profileId, query))
+      if (!isAdultItem(item)) setRecents(addRecent(familyId, profileId, { type: 'item', kind: item.kind, sourceId: item.sourceId, itemId: item.id }))
       navigate(contentPath(item))
     },
-    [navigate, familyId, profileId, query],
+    [navigate, familyId, profileId],
+  )
+  const openPerson = useCallback(
+    (p: NonNullable<Cell['person']>) => {
+      setRecents(addRecent(familyId, profileId, { type: 'person', personId: p.personId, name: p.name, photo: p.photo, knownFor: p.knownFor, scope: p.scope }))
+      navigate(PATHS.person(p.personId, p.scope, 'search'))
+    },
+    [navigate, familyId, profileId],
   )
 
   useInitialFocus(location.pathname, true)
@@ -108,7 +165,7 @@ export default function SearchScreen() {
     if (target) focusElement(target)
     return !!target
   }
-  const firstResultTarget = () => scrollerRef.current?.querySelector<HTMLElement>('[data-sr-cell] [data-nav], [data-sr-recent]') ?? null
+  const firstResultTarget = () => scrollerRef.current?.querySelector<HTMLElement>('[data-sr-cell] [data-nav]') ?? null
 
   useKeyHandler((key) => {
     if (!isArrow(key)) return false
@@ -147,18 +204,6 @@ export default function SearchScreen() {
       }
       return true
     }
-    // Buscas recentes: lista vertical.
-    if (el.hasAttribute('data-sr-recent')) {
-      const list = Array.from(scrollerRef.current?.querySelectorAll<HTMLElement>('[data-sr-recent]') ?? [])
-      const i = list.indexOf(el)
-      if (key === 'ArrowUp') {
-        if (i > 0) focusElement(list[i - 1]!)
-        else focusHeader()
-      } else if (key === 'ArrowDown') {
-        if (i < list.length - 1) focusElement(list[i + 1]!)
-      } else if (key === 'ArrowLeft') focusInput()
-      return true
-    }
     // Lado esquerdo (campo e teclado): Direita no fim da linha vai aos resultados; Cima no campo vai ao menu.
     if (sideRef.current?.contains(el)) {
       if (el === inputRef.current) {
@@ -193,20 +238,19 @@ export default function SearchScreen() {
     const target = event.target as HTMLElement
     if (!sc) return
     const cell = target.closest<HTMLElement>('[data-sr-cell]')
-    const recent = target.hasAttribute('data-sr-recent')
-    if (!cell && !recent) return
+    if (!cell) return
     const max = Math.max(0, sc.scrollHeight - sc.clientHeight)
     const inset = parseFloat(getComputedStyle(sc).paddingTop) || 0
     const scRect = sc.getBoundingClientRect()
-    const first = !!cell && Number(cell.dataset.srIndex) < COLS
-    const box = (first ? (cell!.closest('[data-sr-block]')?.querySelector('[data-sr-head]') ?? cell!) : (cell ?? target)).getBoundingClientRect()
-    const bottom = (cell ?? target).getBoundingClientRect().bottom
+    const first = Number(cell.dataset.srIndex) < COLS
+    const box = (first ? (cell.closest('[data-sr-block]')?.querySelector('[data-sr-head]') ?? cell) : cell).getBoundingClientRect()
+    const bottom = cell.getBoundingClientRect().bottom
     const top = box.top - scRect.top + sc.scrollTop
-    const isTop = first && sections[0]?.id === cell!.dataset.srSection
-    animateScrollTop(sc, isTop || (recent && target === sc.querySelector('[data-sr-recent]')) ? 0 : revealTop(sc.scrollTop, top, bottom - box.top, sc.clientHeight, PAD, max, inset))
+    const isTop = first && sections[0]?.id === cell.dataset.srSection
+    animateScrollTop(sc, isTop ? 0 : revealTop(sc.scrollTop, top, bottom - box.top, sc.clientHeight, PAD, max, inset))
   }
 
-  const noMatches = searching && sections.length === 0
+  const noMatches = searching && sections.length === 0 && peopleReady
 
   return (
     <main className="iplex-page iplex-page--catalog iplex-page--search" aria-label="Busca" data-nav-managed="">
@@ -244,23 +288,19 @@ export default function SearchScreen() {
       <div className="iplex-catalog__content iplex-search__content" ref={scrollerRef} onFocus={onContentFocus} aria-live="polite">
         {spaces.length === 0 && <ErrorState inline kind="iptv-not-configured" />}
         {spaces.length > 0 && !searching && (
-          <section data-sr-block="recents">
-            <div className="iplex-catalog__head" data-sr-head="">
-              <IplexText variant="page-title" as="h2" className="iplex-catalog__title">
-                {recents.length > 0 ? 'Buscas recentes' : 'Buscar'}
-              </IplexText>
-            </div>
-            {(recents.length === 0 || term.trim() !== '') && <IplexText variant="description">Digite ao menos {TIMING.searchMinLength} letras para buscar.</IplexText>}
-            <ul className="iplex-search__recents">
-              {recents.map((r) => (
-                <li key={r}>
-                  <button type="button" className="iplex-chip iplex-focusable iplex-search__recent" onClick={() => setTerm(r)} data-nav="" data-nav-id={`recent-${r}`} data-nav-group="search-recents" data-sr-recent="">
-                    {r}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <>
+            {term.trim() !== '' && <IplexText variant="description">Digite ao menos {TIMING.searchMinLength} letras para buscar.</IplexText>}
+            {sections.length === 0 && term.trim() === '' && (
+              <section data-sr-block="hint">
+                <div className="iplex-catalog__head" data-sr-head="">
+                  <IplexText variant="page-title" as="h2" className="iplex-catalog__title">
+                    Buscar
+                  </IplexText>
+                </div>
+                <IplexText variant="description">Digite ao menos {TIMING.searchMinLength} letras para buscar. O que você abrir fica em Recentes.</IplexText>
+              </section>
+            )}
+          </>
         )}
         {noMatches && <EmptyState title="Nenhum resultado" description={`Nada encontrado para “${query}” nas fontes deste perfil.`} />}
         {sections.map((section) => (
@@ -274,16 +314,24 @@ export default function SearchScreen() {
               </IplexText>
             </div>
             <div role="list" aria-label={section.title}>
-              {Array.from({ length: Math.ceil(section.items.length / COLS) }, (_, r) => (
+              {Array.from({ length: Math.ceil(section.cells.length / COLS) }, (_, r) => (
                 <div className="iplex-search__row" key={r}>
-                  {section.items.slice(r * COLS, r * COLS + COLS).map((item, c) => {
+                  {section.cells.slice(r * COLS, r * COLS + COLS).map((cell, c) => {
                     const index = r * COLS + c
                     return (
-                      <div className="iplex-search__cell" key={item.id} data-sr-cell="" data-sr-section={section.id} data-sr-index={index}>
-                        {section.id === 'channels' ? (
-                          <ChannelCard item={item} navId={`sr-${item.id}`} navGroup={`sr-${section.id}`} onSelect={open} gridIndex={index} />
-                        ) : (
-                          <PosterCard item={item} navId={`sr-${item.id}`} navGroup={`sr-${section.id}`} onSelect={open} posterOnly />
+                      <div className="iplex-search__cell" key={cell.key} data-sr-cell="" data-sr-section={section.id} data-sr-index={index}>
+                        {cell.kind === 'channel' && cell.item && <ChannelCard item={cell.item} navId={`sr-${section.id}-${cell.key}`} navGroup={`sr-${section.id}`} onSelect={openItem} gridIndex={index} />}
+                        {cell.kind === 'poster' && cell.item && <PosterCard item={cell.item} navId={`sr-${section.id}-${cell.key}`} navGroup={`sr-${section.id}`} onSelect={openItem} posterOnly />}
+                        {cell.kind === 'person' && cell.person && (
+                          <MetadataTile
+                            image={cell.person.photo}
+                            label={cell.person.name}
+                            sublabel={DEPARTMENT[cell.person.knownFor] ?? (cell.person.knownFor || undefined)}
+                            fallback={cell.person.name}
+                            navId={`sr-${section.id}-${cell.key}`}
+                            navGroup={`sr-${section.id}`}
+                            onSelect={() => openPerson(cell.person!)}
+                          />
                         )}
                       </div>
                     )

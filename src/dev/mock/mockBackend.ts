@@ -166,6 +166,10 @@ export function createMockBackend(): Backend {
       // Conta de demonstração, sem foto (avatar padrão).
       return { name: 'Conta Demonstração', photoUrl: null }
     },
+    async verifyAdultPin(_profileId, pin) {
+      await delay(300)
+      return { verified: (await sha256(pin)) === DEMO_PIN_SHA256, required: true }
+    },
     async verifyProfilePin(_profileId, pin) {
       await delay(300)
       return { verified: (await sha256(pin)) === DEMO_PIN_SHA256, required: true }

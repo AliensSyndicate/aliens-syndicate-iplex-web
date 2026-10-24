@@ -9,7 +9,7 @@
  * O backend filtra tudo pelo perfil do lease (infantil, espaços permitidos).
  */
 import { isAdultItem } from './adult'
-import { ADULT_LABEL, categoryKey, categoryLabel } from './categoryLabels'
+import { categoryKey, categoryLabel } from './categoryLabels'
 import { CATALOG } from '../../config/features'
 import type { Backend } from '../api/backend'
 import { AppError, toAppError } from '../api/errors'
@@ -25,6 +25,8 @@ interface SpaceState {
   version: string | null
   loading: Promise<void> | null
   error: AppError | null
+  /** Perfil habilitado ao conteúdo adulto (manifesto do Control). */
+  adultEnabled: boolean
 }
 
 export interface CatalogSnapshot {
@@ -55,21 +57,25 @@ export class CatalogStore {
         version: null,
         loading: null,
         error: null,
+        adultEnabled: false,
       })
     })
   }
 
   /**
-   * Carrega uma fonte inteira a partir dos seis conjuntos (preparados na inicialização, do cache
+   * Carrega uma fonte inteira a partir dos conjuntos (preparados na inicialização, do cache
    * local ou do backend). Fica completa: sem páginas pendentes e sem carregamento progressivo.
+   * O 8º conjunto (`adult`) traz todo o conteúdo adulto, marcado com `isAdult`: ele só aparece na tela Adulto.
    */
-  hydrate(sourceId: string, sets: Record<'live' | 'vod' | 'series' | 'live_categories' | 'vod_categories' | 'series_categories', Array<Record<string, unknown>>>, version: string) {
+  hydrate(sourceId: string, sets: Record<'live' | 'vod' | 'series' | 'live_categories' | 'vod_categories' | 'series_categories', Array<Record<string, unknown>>> & { adult?: Array<Record<string, unknown>> }, version: string, adultEnabled = false) {
     const state = this.states.get(sourceId)
     if (!state) return
     state.items.clear()
     for (const records of [sets.live, sets.vod, sets.series]) {
       for (const record of records) state.items.set(String(record.id), { ...(record as unknown as CatalogItem), sourceId })
     }
+    for (const record of sets.adult ?? []) state.items.set(String(record.id), { ...(record as unknown as CatalogItem), sourceId, isAdult: true })
+    state.adultEnabled = adultEnabled
     state.categories = [...sets.live_categories, ...sets.vod_categories, ...sets.series_categories].map((c) => ({ id: String(c.id), name: String(c.name), kind: c.kind as ContentKind }))
     state.version = version
     state.pages = CATALOG.maxPages
@@ -113,8 +119,42 @@ export class CatalogStore {
 
   items(kind: ContentKind): CatalogItem[] {
     const out: CatalogItem[] = []
-    this.statesFor(kind).forEach((state) => state.items.forEach((item) => item.kind === kind && out.push(item)))
+    this.statesFor(kind).forEach((state) => state.items.forEach((item) => item.kind === kind && !item.isAdult && out.push(item)))
     return out
+  }
+
+  /** Todo o conteúdo adulto (canais, filmes e séries), só para a tela Adulto. */
+  adultItems(): CatalogItem[] {
+    const out: CatalogItem[] = []
+    this.states.forEach((state) => state.items.forEach((item) => item.isAdult && out.push(item)))
+    return out
+  }
+
+  /**
+   * O Control desligou o conteúdo adulto deste perfil: some na hora (menu e itens), sem esperar o catálogo novo
+   * (o download completo leva dezenas de segundos na TV). O catálogo refeito em seguida confirma.
+   */
+  revokeAdult() {
+    this.states.forEach((state) => {
+      state.adultEnabled = false
+      state.items.forEach((item, id) => item.isAdult && state.items.delete(id))
+    })
+    this.bump()
+  }
+
+  /** O Control ligou (ou mudou) o conteúdo adulto: troca só os itens adultos da fonte, sem refazer o resto do catálogo. */
+  applyAdult(sourceId: string, records: Array<Record<string, unknown>>, enabled: boolean) {
+    const state = this.states.get(sourceId)
+    if (!state) return
+    state.items.forEach((item, id) => item.isAdult && state.items.delete(id))
+    for (const record of records) state.items.set(String(record.id), { ...(record as unknown as CatalogItem), sourceId, isAdult: true })
+    state.adultEnabled = enabled
+    this.bump()
+  }
+
+  /** O perfil está habilitado ao conteúdo adulto? (manifesto; backend antigo: há itens adultos). */
+  adultEnabled(): boolean {
+    return Array.from(this.states.values()).some((s) => s.adultEnabled) || this.adultItems().length > 0
   }
 
   /**
@@ -127,10 +167,9 @@ export class CatalogStore {
       const order = new Map(state.categories.filter((c) => c.kind === kind).map((c, i) => [c.id, i]))
       const names = new Map(state.categories.filter((c) => c.kind === kind).map((c) => [c.id, c.name]))
       state.items.forEach((item) => {
-        if (item.kind !== kind) return
+        if (item.kind !== kind || item.isAdult) return
         // De-para: nomes diferentes que viram o mesmo texto são um só grupo; adultas viram "Adulto".
-        // Qualquer item adulto (nome da categoria, título, classificação ou marca do provedor) fica só em "Adulto".
-        const name = isAdultItem(item) ? ADULT_LABEL : categoryLabel((item.categoryId && names.get(item.categoryId)) || item.category || 'Sem categoria')
+        const name = categoryLabel((item.categoryId && names.get(item.categoryId)) || item.category || 'Sem categoria')
         const key = categoryKey(name)
         const rank = order.get(item.categoryId ?? '') ?? 10_000
         const group = groups.get(key) ?? { key, name, items: [], order: rank }
@@ -166,7 +205,7 @@ export class CatalogStore {
         const page = await this.backend.readCatalog(this.profileId, { sourceId: state.space.sourceId, search: titleHint.slice(0, 300) })
         const match = page.items.find((item) => item.id === itemId)
         if (match) {
-          state.items.set(match.id, match)
+          state.items.set(match.id, isAdultItem(match) ? { ...match, isAdult: true } : match)
           this.bump()
           return match
         }
@@ -255,7 +294,8 @@ export class CatalogStore {
         return
       }
       state.version = page.version
-      page.items.forEach((item) => state.items.set(item.id, item))
+      // Backend paginado (antigo): classifica aqui para o adulto não se misturar às listas comuns.
+      page.items.forEach((item) => state.items.set(item.id, isAdultItem(item) ? { ...item, isAdult: true } : item))
       if (page.categories.length) state.categories = page.categories
       state.cursor = page.cursor
       state.hasMore = page.hasMore

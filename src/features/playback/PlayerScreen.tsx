@@ -21,6 +21,7 @@ import { useReadySession, useSession } from '../../app/providers/SessionProvider
 import { PATHS } from '../../app/routes/paths'
 import { diagnosticsEnabled } from '../../platform/diagnostics'
 import { Dialog } from '../../components/dialogs/Dialog'
+import { PinDialog } from '../../components/dialogs/PinDialog'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { NextEpisodeCard } from '../../components/player/NextEpisodeCard'
 import { PlayerOverlay } from '../../components/player/PlayerOverlay'
@@ -79,6 +80,15 @@ export default function PlayerScreen() {
   const containerRef = useRef<HTMLDivElement>(null)
   const adapterRef = useRef<PlaybackAdapter | null>(null)
   const [phase, setPhase] = useState<Phase>({ status: 'preparing' })
+  /** Conteúdo adulto: enquanto houver um pedido de PIN, nada de mídia é resolvida nem mostrada. */
+  const [adultPin, setAdultPin] = useState<((ok: boolean) => void) | null>(null)
+  const askAdultPin = () =>
+    new Promise<boolean>((resolve) =>
+      setAdultPin(() => (ok: boolean) => {
+        setAdultPin(null)
+        resolve(ok)
+      }),
+    )
   const [attempt, setAttempt] = useState(0)
   const [playing, setPlaying] = useState(false)
   /** Tempo real do player, marcado com o conteúdo que o produziu (eventos de outra mídia nunca contam). */
@@ -227,6 +237,15 @@ export default function PlayerScreen() {
         if (!alive) return
         if (!found || found.kind !== kind) throw new AppError('content-unavailable')
         setItem(found)
+        // Adulto: o vídeo só é resolvido depois do PIN parental (o backend também exige, uso único).
+        if (isAdultItem(found)) {
+          const accepted = await askAdultPin()
+          if (!alive) return
+          if (!accepted) {
+            navigate(-1)
+            return
+          }
+        }
         if (found.kind === 'series' && episodeId) {
           const details = await backend.readSeries(session.profile.id, found.sourceId, found.providerRef).catch(() => null)
           const ep = details?.seasons.flatMap((s) => s.episodes).find((e) => e.id === episodeId) ?? null
@@ -618,7 +637,7 @@ export default function PlayerScreen() {
       ) : (
         <>
           <PlayerOverlay
-            mode={mode}
+            mode={adultPin ? 'hidden' : mode}
             title={item?.title ?? title}
             episodeCode={episode ? episodeCode(episode) : undefined}
             episodeTitle={episodeTitle}
@@ -671,6 +690,15 @@ export default function PlayerScreen() {
               ))}
           </div>
         </Dialog>
+      )}
+      {adultPin && (
+        <PinDialog
+          profileName={session.profile.name}
+          description="Conteúdo adulto: digite o PIN parental para assistir."
+          verify={(pin) => backend.verifyAdultPin(session.profile.id, pin)}
+          onCancel={() => adultPin(false)}
+          onSuccess={() => adultPin(true)}
+        />
       )}
     </main>
   )

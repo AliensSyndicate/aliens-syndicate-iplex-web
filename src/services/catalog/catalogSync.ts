@@ -1,5 +1,5 @@
 /**
- * Preparação do catálogo da TV a partir dos seis conjuntos do Control.
+ * Preparação do catálogo da TV a partir dos oito conjuntos do Control (seis comuns + categorias e itens adultos).
  *
  *  1. Manifesto (versão atual + impressão digital das permissões do perfil).
  *  2. Cache local da mesma família/perfil/fonte:
@@ -18,13 +18,14 @@ import { toAppError } from '../api/errors'
 import type { CatalogManifest, CatalogRecord, CatalogSetName } from '../api/types'
 import { CACHE_SCHEMA, SET_ORDER, applyOps, countsOf, emptySets, type CatalogCache, type SetOps, type SourceMeta, type SourceSets } from './catalogCache'
 
-export type SyncGroup = 'movies' | 'series' | 'channels'
+export type SyncGroup = 'movies' | 'series' | 'channels' | 'adult'
 export type SyncMode = 'cache' | 'delta' | 'full'
-export const GROUPS: SyncGroup[] = ['movies', 'series', 'channels']
+export const GROUPS: SyncGroup[] = ['movies', 'series', 'channels', 'adult']
 const GROUP_SETS: Record<SyncGroup, CatalogSetName[]> = {
   movies: ['vod_categories', 'vod'],
   series: ['series_categories', 'series'],
   channels: ['live_categories', 'live'],
+  adult: ['adult_categories', 'adult'],
 }
 const CHUNK_PARALLEL = 3
 
@@ -33,6 +34,8 @@ export interface SourceSync {
   mode: SyncMode
   version: string
   sets: SourceSets
+  /** Perfil habilitado ao conteúdo adulto (do manifesto). */
+  adultEnabled: boolean
   ms: number
 }
 export interface SyncDeps {
@@ -102,7 +105,7 @@ async function plan(deps: SyncDeps, scope: string, profileId: string, sourceId: 
   // Permissões do perfil mudaram (ou esquema antigo): o que foi guardado não vale mais.
   if (cached && cached.meta.viewerKey !== manifest.viewerKey) cached = null
   if (cached && cached.meta.version === manifest.version) {
-    return { sourceId, started, manifest, ready: { sourceId, mode: 'cache', version: manifest.version, sets: cached.sets, ms: Date.now() - started } }
+    return { sourceId, started, manifest, ready: { sourceId, mode: 'cache', version: manifest.version, sets: cached.sets, adultEnabled: manifest.adultEnabled === true, ms: Date.now() - started } }
   }
   if (cached && manifest.deltaAvailable) {
     try {
@@ -111,7 +114,7 @@ async function plan(deps: SyncDeps, scope: string, profileId: string, sourceId: 
         const ops = mergeSteps(delta.steps)
         const sets = applyOps(cached.sets, ops)
         await persist(deps, scope, sourceId, () => deps.cache.patch(scope, sourceId, metaFor(manifest, sets), ops))
-        return { sourceId, started, manifest, ready: { sourceId, mode: 'delta', version: manifest.version, sets, ms: Date.now() - started } }
+        return { sourceId, started, manifest, ready: { sourceId, mode: 'delta', version: manifest.version, sets, adultEnabled: manifest.adultEnabled === true, ms: Date.now() - started } }
       }
       deps.diag?.('sync:delta-rebuild', `${sourceId} full=${delta.full} ${delta.reason ?? ''}`.trim())
     } catch (error) {
@@ -123,7 +126,7 @@ async function plan(deps: SyncDeps, scope: string, profileId: string, sourceId: 
 }
 
 async function fetchSet(deps: SyncDeps, profileId: string, plan: Extract<Plan, { ready: null }>, set: CatalogSetName) {
-  const total = plan.manifest.sets[set].chunks
+  const total = plan.manifest.sets[set]?.chunks ?? 0
   const parts: CatalogRecord[][] = new Array(total)
   let next = 0
   const worker = async () => {
@@ -154,7 +157,7 @@ async function runOnce(deps: SyncDeps, scope: string, profileId: string, sourceI
     }
     const meta = metaFor(p.manifest, p.fresh)
     await persist(deps, scope, p.sourceId, () => deps.cache.replace(scope, p.sourceId, meta, p.fresh))
-    out.push({ sourceId: p.sourceId, mode: 'full', version: p.manifest.version, sets: p.fresh, ms: Date.now() - p.started })
+    out.push({ sourceId: p.sourceId, mode: 'full', version: p.manifest.version, sets: p.fresh, adultEnabled: p.manifest.adultEnabled === true, ms: Date.now() - p.started })
   }
   return out
 }

@@ -9,8 +9,8 @@ import { FEATURES } from '../../config/features'
 import type { Profile, SectionId } from '../../services/api/types'
 
 export type StartupDecision =
-  | { type: 'enter'; profile: Profile; reason: 'single' | 'last-kids' }
-  | { type: 'choose'; reason: 'multiple' | 'last-adult' | 'no-last' }
+  | { type: 'enter'; profile: Profile; reason: 'single' | 'last-kids' | 'last'; /** Perfil adulto com infantil na família: tenta entrar e o servidor decide (PIN ainda válido ou não). */ tryOnly?: boolean }
+  | { type: 'choose'; reason: 'multiple' | 'no-last' }
   | { type: 'none' }
 
 export const isGuest = (p: Pick<Profile, 'type'>) => p.type === 'guest'
@@ -26,9 +26,11 @@ export function sortProfiles(profiles: Profile[]): Profile[] {
 /**
  * Abertura inteligente:
  * - um único perfil autorizado → entra direto;
- * - último perfil usado infantil (e ainda autorizado) → entra direto nele;
- * - vários perfis e último adulto (ou desconhecido) → seleção de perfis.
- * Nunca entra automaticamente num perfil adulto quando há perfil infantil.
+
+ * - último perfil usado (e ainda autorizado) → entra direto nele, de qualquer tipo;
+ * - perfil adulto com infantil na família: o app TENTA entrar e o backend decide. A liberação por PIN dura enquanto a
+ *   sessão estiver ativa (renovada a cada batida; 15 min após sair do app); se já expirou, volta à escolha com o PIN;
+ * - sem último perfil conhecido → seleção de perfis.
  * `lastProfileId` é só uma dica local: o backend valida o perfil no lease.
  */
 export function decideStartupProfile(profiles: Profile[], lastProfileId: string | null): StartupDecision {
@@ -36,7 +38,8 @@ export function decideStartupProfile(profiles: Profile[], lastProfileId: string 
   if (profiles.length === 1) return { type: 'enter', profile: profiles[0]!, reason: 'single' }
   const last = lastProfileId ? profiles.find((p) => p.id === lastProfileId) : undefined
   if (last && isKids(last)) return { type: 'enter', profile: last, reason: 'last-kids' }
-  return { type: 'choose', reason: last ? 'last-adult' : profiles.length > 1 ? 'multiple' : 'no-last' }
+  if (last) return { type: 'enter', profile: last, reason: 'last', ...(requiresPin(last, profiles) ? { tryOnly: true } : {}) }
+  return { type: 'choose', reason: profiles.length > 1 ? 'multiple' : 'no-last' }
 }
 
 /**
@@ -49,9 +52,12 @@ export function requiresPin(target: Profile, profiles: Profile[]): boolean {
   return isAdult(target) && profiles.some(isKids)
 }
 
-/** Abas do menu principal (ordem oficial). O visitante não tem Meu iPlex. */
-export function visibleSections(profile: Pick<Profile, 'type'>): SectionId[] {
-  const all: SectionId[] = ['my-iplex', 'search', 'live', 'movies', 'series']
+/**
+ * Abas do menu principal (ordem oficial). O visitante não tem Meu iPlex. "Adulto" só aparece para perfil habilitado
+ * ao conteúdo adulto no iPlex Control (nunca no infantil).
+ */
+export function visibleSections(profile: Pick<Profile, 'type'>, adultEnabled = false): SectionId[] {
+  const all: SectionId[] = ['my-iplex', 'search', 'live', 'movies', 'series', ...(adultEnabled && !isKids(profile) ? (['adult'] as SectionId[]) : [])]
   return isGuest(profile) ? all.filter((s) => s !== 'my-iplex') : all
 }
 
@@ -70,6 +76,7 @@ export const SECTION_PATHS: Record<SectionId, string> = {
   live: '/ao-vivo',
   movies: '/filmes',
   series: '/series',
+  adult: '/adulto',
 }
 
 export function sectionForPath(pathname: string): SectionId | null {

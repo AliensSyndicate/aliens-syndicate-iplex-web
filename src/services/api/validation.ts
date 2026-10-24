@@ -52,6 +52,8 @@ export function parseHeartbeat(raw: unknown): HeartbeatResult {
   const pointer = isObject(raw) && isObject(raw.playRequest) ? raw.playRequest : null
   return {
     playRequest: pointer && typeof pointer.id === 'string' && ID.test(pointer.id) && typeof pointer.expiresAt === 'number' ? { id: pointer.id, expiresAt: pointer.expiresAt } : null,
+    ...(isObject(raw) && typeof raw.permissionsVersion === 'number' ? { permissionsVersion: raw.permissionsVersion } : {}),
+    ...(isObject(raw) && typeof raw.adultEnabled === 'boolean' ? { adultEnabled: raw.adultEnabled } : {}),
   }
 }
 
@@ -94,6 +96,11 @@ export function parsePlayRequestDoc(id: string, data: unknown, now: number): Pla
     requesterName: typeof data.requesterName === 'string' ? data.requesterName.slice(0, 80) : '',
     title: typeof data.title === 'string' ? data.title.slice(0, 300) : '',
   }
+}
+
+/** Aviso do Control de que as permissões do perfil mudaram (status "access", recente). Só um sinal. */
+export function isAccessMarker(data: unknown, now: number): data is { status: 'access'; createdAt: number } {
+  return isObject(data) && data.status === 'access' && typeof data.createdAt === 'number' && typeof data.expiresAt === 'number' && data.expiresAt > now
 }
 
 /** Marcador de desvinculação (status "revoked", recente): só um sinal para verificar a credencial. */

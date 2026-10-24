@@ -38,6 +38,33 @@ function scenarioBackend(scenario: string) {
   return createMockBackend()
 }
 
+describe('reabrir o app: último perfil usado', () => {
+  const remember = (profileId: string) => localStorage.setItem('iplex.lastProfile.v1', JSON.stringify({ familyId: 'demo-family', profileId }))
+  it('perfil adulto com infantil na família: entra direto quando o servidor aceita (sessão por PIN ainda ativa)', async () => {
+    const real = scenarioBackend('default')
+    remember('admin')
+    const acquire = vi.fn(real.acquireSession)
+    start('/', 'default', { ...real, acquireSession: acquire })
+    expect(await screen.findByRole('navigation', { name: 'Menu principal' }, { timeout: 15000 })).toBeTruthy()
+    expect(screen.queryByText('Quem está assistindo?')).toBeNull()
+    expect(acquire).toHaveBeenCalledWith('admin')
+  }, 30000)
+  it('sessão por PIN expirada: o servidor exige o PIN e o app volta à escolha de perfil, sem mensagem de erro', async () => {
+    const real = scenarioBackend('default')
+    remember('admin')
+    start('/', 'default', { ...real, acquireSession: async () => { throw new AppError('profile-locked', 'profile-pin-required') } })
+    expect(await find('Quem está assistindo?')).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText(/Perfil protegido/)).toBeNull()
+  }, 30000)
+  it('último perfil visitante (sem PIN) entra direto', async () => {
+    const real = scenarioBackend('default')
+    remember('guest')
+    start('/', 'default', { ...real })
+    expect(await screen.findByRole('navigation', { name: 'Menu principal' }, { timeout: 15000 })).toBeTruthy()
+  }, 30000)
+})
+
 describe('carregamento inicial', () => {
   it('só libera a navegação com o catálogo completo, mostrando o progresso', async () => {
     const real = scenarioBackend('single')

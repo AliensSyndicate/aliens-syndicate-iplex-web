@@ -11,6 +11,8 @@ const world = (movies: string[], categories = ['1']): SourceSets => ({
   vod: movies.map((m) => rec(m, { categoryId: '1', kind: 'movie' })),
   live: [rec('c1', { kind: 'channel', categoryId: '9' })],
   live_categories: [rec('9', { name: 'Notícias', kind: 'channel' })],
+  adult_categories: [rec('adult_vod', { name: 'Filmes', kind: 'movie' })],
+  adult: [rec('x1', { kind: 'movie', categoryId: 'adult_vod' })],
 })
 
 /** Backend de teste: servidor com versões encadeadas e blocos de 2 registros. */
@@ -25,6 +27,7 @@ function fakeServer(initial: SourceSets) {
     version: current,
     previousVersion: previous,
     viewerKey,
+    adultEnabled: true,
     deltaAvailable: !!previous && deltas.has(`${previous}>${current}`),
     sets: Object.fromEntries(SET_ORDER.map((n) => [n, { chunks: Math.max(1, Math.ceil(versions.get(current)![n].length / 2)), hash: n }])) as CatalogManifest['sets'],
   })
@@ -56,14 +59,15 @@ function fakeServer(initial: SourceSets) {
 const ids = (rows: CatalogRecord[]) => rows.map((r) => r.id).sort()
 
 describe('syncSources', () => {
-  it('primeira abertura baixa os seis conjuntos, na ordem filmes → séries → canais, e grava o cache', async () => {
+  it('primeira abertura baixa os conjuntos, na ordem filmes → séries → canais → adulto, e grava o cache', async () => {
     const server = fakeServer(world(['a', 'b', 'c']))
     const cache = createMemoryCache()
     const stages: string[] = []
     const [result] = await syncSources({ backend: server.backend, cache }, 'f:p', 'p', ['s1'], (g) => stages.push(g))
     expect(result!.mode).toBe('full')
     expect(ids(result!.sets.vod)).toEqual(['a', 'b', 'c'])
-    expect(stages).toEqual(['movies', 'series', 'channels'])
+    expect(ids(result!.sets.adult)).toEqual(['x1'])
+    expect(stages).toEqual(['movies', 'series', 'channels', 'adult'])
     expect((await cache.load('f:p', 's1'))!.meta.version).toBe('v1')
   })
 

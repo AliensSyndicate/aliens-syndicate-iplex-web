@@ -186,6 +186,10 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
       return account
     },
 
+    async verifyAdultPin(profileId: string, pin: string): Promise<PinCheck> {
+      return parsePinCheck(await call<unknown>('verifyAdultPin', { profileId, pin }))
+    },
+
     async verifyProfilePin(profileId: string, pin: string): Promise<PinCheck> {
       // O PIN vai só para o backend (HTTPS) e é descartado; o resultado é validado aqui.
       return parsePinCheck(await call<unknown>('verifyProfilePin', { profileId, pin }))
@@ -206,14 +210,14 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
       await call('releaseSession', { sessionId, ...(options?.suspend ? { suspend: true } : {}) })
     },
 
-    watchPlayRequests(identity, onPending, onError) {
+    watchPlayRequests(identity, onPending, onError, onAccess) {
       let stop: (() => void) | null = null
       let closed = false
       // Firestore só é carregado quando a TV está pareada (chunk separado).
       void import('./playRequestListener')
         .then(({ listenPlayRequests }) => {
           if (closed) return
-          stop = listenPlayRequests(context().app, identity, onPending, onError)
+          stop = listenPlayRequests(context().app, identity, onPending, onError, onAccess)
         })
         .catch(() => onError('unavailable'))
       return () => {

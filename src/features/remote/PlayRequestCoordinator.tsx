@@ -66,6 +66,7 @@ export function PlayRequestCoordinator() {
         // Sem permissão de leitura: dispositivo excluído ou re-pareado → confirma já.
         if (reason === 'revoked') void checkDevice()
       },
+      () => void session.refreshAccess(),
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backend, deviceKey])

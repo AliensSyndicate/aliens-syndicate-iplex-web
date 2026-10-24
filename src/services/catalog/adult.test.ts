@@ -3,7 +3,6 @@ import { contentPath } from '../../app/routes/paths'
 import type { CatalogItem, CatalogPage } from '../api/types'
 import { isAdultItem } from './adult'
 import { CatalogStore } from './catalogStore'
-import { ADULT_LABEL } from './categoryLabels'
 import { LibraryStore, indexFromItem } from '../library/libraryStore'
 
 const mk = (id: string, over: Partial<CatalogItem> = {}): CatalogItem => ({ id, sourceId: 's1', kind: 'movie', title: id, category: 'Ação', categoryId: 'a', providerRef: id, version: 'v1', ...over })
@@ -19,15 +18,17 @@ describe('conteúdo adulto', () => {
     expect(isAdultItem(mk('Ação Total', { ageRating: '16' }))).toBe(false)
   })
 
-  it('o catálogo agrupa todo item adulto em "Adulto", e só ali', async () => {
+  it('o catálogo separa todo item adulto das listas comuns (só a tela Adulto o vê)', async () => {
     const all = [mk('ok1'), mk('ok2'), mk('Filme XXX'), mk('x3', { ageRating: '18' }), mk('x4', { category: 'Erótico', categoryId: 'e' })]
     const backend = { readCatalog: vi.fn(async (): Promise<CatalogPage> => ({ version: 'v1', items: all, categories: [], cursor: 5, hasMore: false })) }
     const store = new CatalogStore(backend, 'p', [{ sourceId: 's1', name: 'F', kinds: ['movie'] }])
     await store.ensure('movie', 1)
-    const groups = store.categories('movie')
-    const adult = groups.find((g) => g.name === ADULT_LABEL)
-    expect(adult?.items.map((i) => i.id).sort()).toEqual(['Filme XXX', 'x3', 'x4'])
-    for (const g of groups.filter((x) => x.name !== ADULT_LABEL)) expect(g.items.some(isAdultItem)).toBe(false)
+    expect(store.adultItems().map((i) => i.id).sort()).toEqual(['Filme XXX', 'x3', 'x4'])
+    expect(store.adultItems().every((i) => i.isAdult)).toBe(true)
+    expect(store.items('movie').map((i) => i.id).sort()).toEqual(['ok1', 'ok2'])
+    expect(store.categories('movie').flatMap((g) => g.items).some((i) => isAdultItem(i))).toBe(false)
+    expect(store.adultEnabled()).toBe(true)
+    expect(store.findLoaded('x3')?.isAdult).toBe(true)
   })
 
   it('nunca abre detalhes: filme toca direto, série vai aos episódios', () => {
@@ -37,7 +38,7 @@ describe('conteúdo adulto', () => {
     expect(contentPath(mk('b', { kind: 'series' }))).not.toContain('/temporadas')
   })
 
-  it('a biblioteca não grava favorito nem progresso de conteúdo adulto', async () => {
+  it('a biblioteca não guarda favorito nem progresso de conteúdo adulto', async () => {
     const backend = { setFavorite: vi.fn(async () => ({})), saveProgress: vi.fn(async () => ({})) }
     const store = new LibraryStore(backend as never, { familyId: 'f', deviceId: 'd' } as never, { id: 'p', name: 'P', type: 'admin', generations: { favorites: 0, watched: 0, progress: 0 }, permissionsVersion: 1 } as never)
     const adult = mk('Filme XXX')
@@ -45,5 +46,21 @@ describe('conteúdo adulto', () => {
     await store.saveProgress(adult.id, 10, 100, indexFromItem(adult))
     expect(backend.setFavorite).not.toHaveBeenCalled()
     expect(backend.saveProgress).not.toHaveBeenCalled()
+  })
+
+  it('o Control liga/desliga o adulto: applyAdult troca só os itens adultos e revokeAdult os tira na hora', async () => {
+    const backend = { readCatalog: vi.fn(async (): Promise<CatalogPage> => ({ version: 'v1', items: [mk('ok1'), mk('Filme XXX')], categories: [], cursor: 2, hasMore: false })) }
+    const store = new CatalogStore(backend, 'p', [{ sourceId: 's1', name: 'F', kinds: ['movie'] }])
+    await store.ensure('movie', 1)
+    expect(store.adultEnabled()).toBe(true)
+    store.revokeAdult()
+    expect(store.adultItems()).toEqual([])
+    expect(store.adultEnabled()).toBe(false)
+    expect(store.items('movie').map((i) => i.id)).toEqual(['ok1'])
+    store.applyAdult('s1', [{ id: 'novo', kind: 'series', title: 'Série', category: 'Séries', providerRef: 'p', version: 'v1' }], true)
+    expect(store.adultItems().map((i) => i.id)).toEqual(['novo'])
+    expect(store.findLoaded('novo')?.isAdult).toBe(true)
+    expect(store.adultEnabled()).toBe(true)
+    expect(store.items('series')).toEqual([])
   })
 })

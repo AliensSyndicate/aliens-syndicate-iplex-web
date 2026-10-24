@@ -21,6 +21,8 @@ import { EmptyState } from '../../components/feedback/EmptyState'
 import { SkeletonGrid } from '../../components/feedback/LoadingState'
 import { SourceStates } from '../../components/feedback/SourceStates'
 import { IplexText } from '../../components/ui/IplexText'
+import { diag } from '../../platform/diagnostics'
+import { useAdultCatalog } from '../../hooks/useAdultCatalog'
 import { useCatalog } from '../../hooks/useCatalog'
 import { useLibrary } from '../../hooks/useLibrary'
 import { useInitialFocus, useKeyHandler } from '../../navigation/FocusProvider'
@@ -64,7 +66,7 @@ const GridRow = memo(function GridRow({ items, rowIndex, cols, selectedId, onOpe
   )
 })
 
-export function CatalogScreen({ kinds, title, initial, live = false }: { kinds: ContentKind[]; title: string; initial: CollectionId; live?: boolean }) {
+export function CatalogScreen({ kinds, title, initial, live = false, adult = false }: { kinds: ContentKind[]; title: string; initial: CollectionId; live?: boolean; adult?: boolean }) {
   const cols = live ? LIVE_COLS : GRID_COLS
   const navigate = useNavigate()
   const location = useLocation()
@@ -73,11 +75,14 @@ export function CatalogScreen({ kinds, title, initial, live = false }: { kinds: 
   const wantMovies = kinds.includes('movie')
   const wantSeries = kinds.includes('series')
   const wantChannels = kinds.includes('channel')
-  const movies = useCatalog('movie', wantMovies)
-  const series = useCatalog('series', wantSeries)
-  const channels = useCatalog('channel', wantChannels)
+  const movies = useCatalog('movie', wantMovies && !adult)
+  const series = useCatalog('series', wantSeries && !adult)
+  const channels = useCatalog('channel', wantChannels && !adult)
+  const adultCatalog = useAdultCatalog(adult)
   const { library, store, loaded: libraryLoaded } = useLibrary()
-  const personal = hasPersonalLibrary(session.profile)
+  // Adulto: nada é guardado (sem Continuar, Favoritos nem lista); nas outras telas o adulto nunca aparece neles.
+  const personal = !adult && hasPersonalLibrary(session.profile)
+  const inScope = (meta: { isAdult?: boolean; title?: string; category?: string }) => !isAdultItem(meta)
   // A habilitação real vem do backend (perfil no Control): sem ela, nenhum item/categoria adulta chega aqui.
   const allowAdult = !isKids(session.profile)
   const remembered = viewMemory.get(routeKey)
@@ -95,7 +100,10 @@ export function CatalogScreen({ kinds, title, initial, live = false }: { kinds: 
     return () => clearTimeout(id)
   }, [warm])
 
-  const active = useMemo(() => [wantMovies ? movies : null, wantSeries ? series : null, wantChannels ? channels : null].filter((c): c is NonNullable<typeof c> => !!c), [wantMovies, wantSeries, wantChannels, movies, series, channels])
+  const active = useMemo(
+    () => (adult ? [adultCatalog] : [wantMovies ? movies : null, wantSeries ? series : null, wantChannels ? channels : null].filter((c): c is NonNullable<typeof c> => !!c)),
+    [adult, adultCatalog, wantMovies, wantSeries, wantChannels, movies, series, channels],
+  )
   const spacesError = active.find((c) => c.spacesError)?.spacesError ?? null
   const noSources = active.some((c) => c.noSources)
   const noKind = active.length > 0 && active.every((c) => c.noKind)
@@ -124,7 +132,7 @@ export function CatalogScreen({ kinds, title, initial, live = false }: { kinds: 
     return byKey
   }, [active, warm])
   // "Todos" nunca inclui conteúdo adulto: ele só existe dentro da categoria "Adulto".
-  const allItems = useMemo(() => (warm ? active.flatMap((c) => c.items).filter((i) => !isAdultItem(i)) : []), [active, warm])
+  const allItems = useMemo(() => (warm ? active.flatMap((c) => c.items).filter((i) => adult || !isAdultItem(i)) : []), [active, warm, adult])
 
 
   const progressMeta = useMemo(() => {
@@ -132,7 +140,7 @@ export function CatalogScreen({ kinds, title, initial, live = false }: { kinds: 
     if (!personal) return byItem
     for (const entry of library.progress) {
       const meta = store.indexed(entry.contentId)
-      if (!meta || !kinds.includes(meta.kind) || isAdultItem(meta)) continue
+      if (!meta || !kinds.includes(meta.kind) || !inScope(meta)) continue
       if (meta.kind === 'series' && !parseEpisodeContentId(entry.contentId)) continue
       if (entry.duration > 0 && entry.position / entry.duration >= 0.95) continue
       if (!byItem.has(meta.itemId)) byItem.set(meta.itemId, meta)
@@ -142,7 +150,7 @@ export function CatalogScreen({ kinds, title, initial, live = false }: { kinds: 
 
   const libraryLists = useMemo(() => {
     const fromLibrary = (ids: Array<{ contentId: string }>) =>
-      personal ? ids.map((e) => store.indexed(e.contentId)).filter((m): m is IndexedItem => !!m && kinds.includes(m.kind) && !isAdultItem(m)).map(itemFromIndexed) : []
+      personal ? ids.map((e) => store.indexed(e.contentId)).filter((m): m is IndexedItem => !!m && kinds.includes(m.kind) && inScope(m)).map(itemFromIndexed) : []
     return { favorites: fromLibrary(library.favorites), watched: fromLibrary(library.watched) }
   }, [library.favorites, library.watched, store, kinds, personal])
 
@@ -151,6 +159,7 @@ export function CatalogScreen({ kinds, title, initial, live = false }: { kinds: 
       buildSidebar({
         personal,
         allowAdult,
+        showAll: !adult,
         categories: Array.from(groups.values()).filter((g) => g.items.length > 0).map((g) => ({ key: g.key, name: g.name })),
         has: { continue: progressMeta.size > 0, favorites: libraryLists.favorites.length > 0, all: allItems.length > 0 },
       }),
@@ -556,9 +565,15 @@ export function CatalogScreen({ kinds, title, initial, live = false }: { kinds: 
     }
   }
 
+  // Diagnóstico (só com ?diag=1 na TV): o que a tela Adulto recebeu do catálogo.
+  useEffect(() => {
+    if (!adult) return
+    diag('adult:screen', `sidebar=${sidebar.map((s) => s.label).join('|')} itens=${allItems.length} grupos=${groups.size} selecionado=${selected} warm=${warm} personal=${personal} habilitado=${session.catalog.adultEnabled()} adultItems=${session.catalog.adultItems().length}`)
+  }, [adult, sidebar, allItems.length, groups.size, selected, warm, personal, session.catalog])
+
   const label = selected.startsWith('cat:') ? (sidebar.find((s) => s.id === selected)?.label ?? groups.get(selected.slice(4))?.name ?? title) : COLLECTION_TITLES[selected as keyof typeof COLLECTION_TITLES]
   const heading = label
-  const kindLabel = kinds.length === 1 ? (kinds[0] === 'movie' ? 'filmes' : kinds[0] === 'channel' ? 'canais' : 'séries') : 'filmes e séries'
+  const kindLabel = adult ? 'conteúdo adulto' : kinds.length === 1 ? (kinds[0] === 'movie' ? 'filmes' : kinds[0] === 'channel' ? 'canais' : 'séries') : 'filmes e séries'
   const sourceStates = <SourceStates spacesError={spacesError} noSources={noSources} noKind={noKind} error={error} kindLabel={kindLabel} onRetry={reload} />
   const blocked = !!(spacesError || noSources || noKind || error)
   // Sem itens ainda, mas a fonte pode entregar (primeira renderização, página em andamento, mais páginas)

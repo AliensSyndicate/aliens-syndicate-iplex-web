@@ -39,7 +39,7 @@ function writeLock(value: { until: number; attempts: number }) {
  * para validação (verify) e descartado. O backend limita as tentativas e
  * bloqueia; o limite local é só uma camada adicional.
  */
-export function PinDialog({ profileName, verify, onSuccess, onCancel }: { profileName: string; verify: (pin: string) => Promise<PinCheck>; onSuccess: () => void; onCancel: () => void }) {
+export function PinDialog({ profileName, verify, onSuccess, onCancel, description }: { profileName: string; verify: (pin: string) => Promise<PinCheck>; onSuccess: () => void; onCancel: () => void; description?: string }) {
   const [pin, setPinState] = useState('')
   // Ref: teclas em sequência rápida (repetição do controle) não perdem dígitos.
   const pinRef = useRef('')
@@ -129,7 +129,7 @@ export function PinDialog({ profileName, verify, onSuccess, onCancel }: { profil
 
   const remaining = Math.max(0, Math.ceil((lock.until - now) / 1000))
   return (
-    <Dialog title="Digite o PIN" description={`O perfil ${profileName} é protegido porque há um perfil infantil na família.`} onClose={onCancel}>
+    <Dialog title="Digite o PIN" description={description ?? `O perfil ${profileName} é protegido porque há um perfil infantil na família.`} onClose={onCancel}>
       <div className="iplex-pin__dots" aria-label={`${pin.length} de 4 dígitos digitados`} role="status">
         {[0, 1, 2, 3].map((i) => (
           <span key={i} className={i < pin.length ? 'iplex-pin__dot is-filled' : 'iplex-pin__dot'} />

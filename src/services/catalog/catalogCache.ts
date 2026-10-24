@@ -12,8 +12,8 @@
  */
 import type { CatalogRecord, CatalogSetName } from '../api/types'
 
-export const CACHE_SCHEMA = 1
-export const SET_ORDER: CatalogSetName[] = ['live_categories', 'live', 'vod_categories', 'vod', 'series_categories', 'series']
+export const CACHE_SCHEMA = 2
+export const SET_ORDER: CatalogSetName[] = ['live_categories', 'live', 'vod_categories', 'vod', 'series_categories', 'series', 'adult_categories', 'adult']
 export type SourceSets = Record<CatalogSetName, CatalogRecord[]>
 export type SetOps = Partial<Record<CatalogSetName, { upserts: CatalogRecord[]; deletes: string[] }>>
 export interface SourceMeta {
@@ -35,7 +35,7 @@ export interface CatalogCache {
   clearAll(): Promise<void>
 }
 
-export const emptySets = (): SourceSets => ({ live_categories: [], live: [], vod_categories: [], vod: [], series_categories: [], series: [] })
+export const emptySets = (): SourceSets => ({ live_categories: [], live: [], vod_categories: [], vod: [], series_categories: [], series: [], adult_categories: [], adult: [] })
 export const countsOf = (sets: SourceSets): Record<CatalogSetName, number> => {
   const out = {} as Record<CatalogSetName, number>
   for (const name of SET_ORDER) out[name] = sets[name].length

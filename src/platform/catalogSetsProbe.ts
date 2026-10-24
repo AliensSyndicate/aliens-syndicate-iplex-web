@@ -24,19 +24,19 @@ export async function probeCatalogSets(backend: Backend | undefined, diag: Diag)
     for (const space of spaces) {
       const t0 = Date.now()
       const manifest = await backend.readCatalogManifest(profileId, space.sourceId)
-      diag('st:sets:manifest', `versao=${manifest.version.slice(0, 10)} anterior=${manifest.previousVersion ? manifest.previousVersion.slice(0, 10) : 'nenhuma'} delta=${manifest.deltaAvailable} chunks=${SETS.map((s) => `${s}:${manifest.sets[s].chunks}`).join(',')} ${Date.now() - t0}ms`)
+      diag('st:sets:manifest', `versao=${manifest.version.slice(0, 10)} anterior=${manifest.previousVersion ? manifest.previousVersion.slice(0, 10) : 'nenhuma'} delta=${manifest.deltaAvailable} chunks=${SETS.map((s) => `${s}:${(manifest.sets[s]?.chunks ?? 0)}`).join(',')} ${Date.now() - t0}ms`)
       const data = {} as Record<CatalogSetName, CatalogRecord[]>
       for (const set of SETS) {
         const start = Date.now()
         const rows: CatalogRecord[] = []
         let bytes = 0
-        for (let n = 0; n < manifest.sets[set].chunks; n += 1) {
+        for (let n = 0; n < (manifest.sets[set]?.chunks ?? 0); n += 1) {
           const chunk = await backend.readCatalogChunk(profileId, space.sourceId, set, n, manifest.version)
           rows.push(...chunk.records)
           bytes += JSON.stringify(chunk.records).length
         }
         data[set] = rows
-        diag(`st:sets:${set}`, `registros=${rows.length} blocos=${manifest.sets[set].chunks} bytes=${bytes} ${Date.now() - start}ms`)
+        diag(`st:sets:${set}`, `registros=${rows.length} blocos=${(manifest.sets[set]?.chunks ?? 0)} bytes=${bytes} ${Date.now() - start}ms`)
       }
       // Vínculos: todo item aponta para uma categoria do mesmo tipo pelo id original.
       const link = (items: CatalogRecord[], cats: CatalogRecord[]) => {

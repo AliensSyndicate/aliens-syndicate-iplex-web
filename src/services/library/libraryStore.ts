@@ -27,6 +27,8 @@ export interface IndexedItem {
   title: string
   year?: string | number
   category?: string
+  /** Conteúdo adulto: Continuar e Favoritos dele só aparecem na tela Adulto. */
+  isAdult?: boolean
   /** Episódio (progresso de séries). */
   episodeId?: string
   episodeLabel?: string
@@ -128,7 +130,7 @@ export class LibraryStore {
   }
 
   async setFavorite(item: CatalogItem, favorite: boolean): Promise<void> {
-    // Conteúdo adulto nunca é guardado (favoritos, lista, recentes).
+    // Conteúdo adulto nunca é guardado (favoritos, lista, recentes, continuar assistindo).
     if (!this.persistent || (favorite && isAdultItem(item))) return
     const previous = this.snapshot.library
     this.remember(indexFromItem(item))
@@ -188,6 +190,7 @@ export function indexFromItem(item: CatalogItem, episode?: { id: string; label: 
     title: item.title,
     ...(item.year !== undefined ? { year: item.year } : {}),
     ...(item.category ? { category: item.category } : {}),
+    ...(item.isAdult || isAdultItem(item) ? { isAdult: true } : {}),
     ...(episode ? { episodeId: episode.id, episodeLabel: episode.label } : {}),
   }
 }

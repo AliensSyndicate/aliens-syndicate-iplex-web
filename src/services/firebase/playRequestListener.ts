@@ -10,7 +10,7 @@ import type { FirebaseApp } from 'firebase/app'
 import { collection, connectFirestoreEmulator, initializeFirestore, onSnapshot, query, where, type Firestore } from 'firebase/firestore'
 import { EMULATOR_HOST } from '../../config/env'
 import type { DeviceIdentity, PlayRequestNotice } from '../api/types'
-import { isRevocationMarker, parsePlayRequestDoc } from '../api/validation'
+import { isAccessMarker, isRevocationMarker, parsePlayRequestDoc } from '../api/validation'
 import { diag } from '../../platform/diagnostics'
 
 let db: Firestore | null = null
@@ -28,20 +28,31 @@ export function listenPlayRequests(
   identity: DeviceIdentity,
   onPending: (notice: PlayRequestNotice) => void,
   onError: (reason: 'revoked' | 'unavailable') => void,
+  onAccess?: () => void,
 ): () => void {
   const ref = collection(firestore(app), 'families', identity.familyId, 'devices', identity.deviceId, 'play_requests')
   const seen = new Set<string>()
+  let lastAccess = 0
   return onSnapshot(
     // "revoked": marcador gravado pelo backend ao desvincular. As regras não são
     // reavaliadas para um ouvinte já aberto; o marcador avisa na hora e a TV
     // confirma a credencial no backend (heartbeat) antes de voltar à vinculação.
-    query(ref, where('status', 'in', ['pending', 'revoked'])),
+    query(ref, where('status', 'in', ['pending', 'revoked', 'access'])),
     (snapshot) => {
       const now = Date.now()
       if (snapshot.docs.some((doc) => isRevocationMarker(doc.data(), now))) {
         diag('remote', 'unlink marker')
         onError('revoked')
         return
+      }
+      // Permissões mudaram no Control: relê já (cada aviso novo tem um createdAt maior).
+      for (const doc of snapshot.docs) {
+        const data = doc.data()
+        if (isAccessMarker(data, now) && data.createdAt > lastAccess) {
+          lastAccess = data.createdAt
+          diag('remote', 'access marker')
+          onAccess?.()
+        }
       }
       const pending = snapshot.docs
         .map((doc) => parsePlayRequestDoc(doc.id, doc.data(), now))

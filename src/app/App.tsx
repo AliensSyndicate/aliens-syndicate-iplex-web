@@ -29,6 +29,7 @@ const SeriesScreen = lazy(screenLoaders.series)
 const CatalogRoute = lazy(screenLoaders.catalog)
 const DetailsScreen = lazy(screenLoaders.details)
 const PlayerScreen = lazy(screenLoaders.player)
+const AdultScreen = lazy(screenLoaders.adult)
 const SeasonsScreen = lazy(screenLoaders.seasons)
 const PersonScreen = lazy(screenLoaders.person)
 const SettingsScreen = lazy(screenLoaders.settings)
@@ -68,6 +69,7 @@ function SessionGate() {
         <Route path={SECTION_PATHS.live} element={<LiveTvScreen />} />
         <Route path={SECTION_PATHS.movies} element={<MoviesScreen />} />
         <Route path={SECTION_PATHS.series} element={<SeriesScreen />} />
+        <Route path={SECTION_PATHS.adult} element={<AdultScreen />} />
         <Route path="/catalogo" element={<CatalogRoute />} />
         <Route path="/titulo/:sourceId/:itemId" element={<DetailsScreen />} />
         <Route path="/titulo/:sourceId/:itemId/temporadas" element={<SeasonsScreen />} />

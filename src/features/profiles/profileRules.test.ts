@@ -16,9 +16,15 @@ describe('abertura inteligente', () => {
   it('último perfil infantil entra direto', () => {
     expect(decideStartupProfile([admin, kids, guest], 'k')).toMatchObject({ type: 'enter', profile: kids, reason: 'last-kids' })
   })
-  it('vários perfis e último adulto → seleção', () => {
-    expect(decideStartupProfile([admin, regular], 'admin')).toMatchObject({ type: 'choose' })
-    expect(decideStartupProfile([admin, kids], 'admin')).toMatchObject({ type: 'choose' })
+  it('último perfil adulto (sem infantil na família) entra direto', () => {
+    expect(decideStartupProfile([admin, regular], 'admin')).toMatchObject({ type: 'enter', profile: admin, reason: 'last' })
+    expect(decideStartupProfile([admin, regular], 'admin')).not.toHaveProperty('tryOnly')
+    expect(decideStartupProfile([admin, guest], 'guest')).toMatchObject({ type: 'enter', profile: guest })
+  })
+  it('último perfil adulto com infantil na família: tenta entrar e o servidor decide o PIN', () => {
+    expect(decideStartupProfile([admin, kids], 'admin')).toMatchObject({ type: 'enter', profile: admin, tryOnly: true })
+    expect(decideStartupProfile([admin, regular, kids, guest], 'guest')).toMatchObject({ type: 'enter', profile: guest })
+    expect(decideStartupProfile([admin, regular, kids, guest], 'guest')).not.toHaveProperty('tryOnly')
   })
   it('dica de perfil que não existe mais → seleção', () => {
     expect(decideStartupProfile([admin, kids], 'removido')).toMatchObject({ type: 'choose' })
@@ -26,10 +32,13 @@ describe('abertura inteligente', () => {
   it('nenhum perfil', () => {
     expect(decideStartupProfile([], null)).toEqual({ type: 'none' })
   })
-  it('nunca entra automaticamente em adulto quando há perfil infantil', () => {
-    for (const last of [null, 'admin', 'r', 'guest']) {
+  it('sem último perfil conhecido nunca entra sozinho quando há vários perfis', () => {
+    expect(decideStartupProfile([admin, regular, kids], null)).toMatchObject({ type: 'choose' })
+  })
+  it('adulto com infantil só entra por tentativa (o PIN é conferido pelo servidor, nunca pelo cliente)', () => {
+    for (const last of ['admin', 'r']) {
       const d = decideStartupProfile([admin, regular, kids], last)
-      expect(d.type === 'enter' && d.profile.type !== 'kids').toBe(false)
+      expect(d.type === 'enter' && d.tryOnly === true).toBe(true)
     }
   })
 })
@@ -65,4 +74,13 @@ describe('visitante', () => {
 
 it('ordena administrador, regulares, infantis, visitante', () => {
   expect(sortProfiles([guest, kids, regular, admin]).map((x) => x.type)).toEqual(['admin', 'regular', 'kids', 'guest'])
+})
+
+describe('menu Adulto', () => {
+  it('só aparece para perfil habilitado no Control e nunca para o infantil', () => {
+    expect(visibleSections({ type: 'regular' })).not.toContain('adult')
+    expect(visibleSections({ type: 'regular' }, true)).toEqual(['my-iplex', 'search', 'live', 'movies', 'series', 'adult'])
+    expect(visibleSections({ type: 'guest' }, true)).toEqual(['search', 'live', 'movies', 'series', 'adult'])
+    expect(visibleSections({ type: 'kids' }, true)).not.toContain('adult')
+  })
 })

@@ -13,7 +13,7 @@ import { TIMING } from '../../config/features'
 import { decideStartupProfile, requiresPin, sortProfiles } from '../../features/profiles/profileRules'
 import type { HeartbeatResult } from '../../services/api/backend'
 import { AppError, toAppError } from '../../services/api/errors'
-import type { DeviceIdentity, Lease, Profile, Space } from '../../services/api/types'
+import type { CatalogRecord, DeviceIdentity, Lease, Profile, Space } from '../../services/api/types'
 import { CatalogStore } from '../../services/catalog/catalogStore'
 import { CATALOG } from '../../config/features'
 import { prefetchScreens } from '../screens'
@@ -63,6 +63,8 @@ export interface SessionApi {
   recoverSession(): Promise<void>
   /** Confirma agora se a credencial da TV ainda vale (ex.: sinal de desvinculação). */
   checkDevice(): Promise<void>
+  /** Permissões do perfil mudaram no Control: some/aparece o conteúdo adulto na hora e o catálogo é refeito em seguida. */
+  refreshAccess(): Promise<void>
   /** Respostas do heartbeat (pedido de reprodução pendente). Devolve o cancelamento. */
   onHeartbeat(listener: (result: HeartbeatResult) => void): () => void
 }
@@ -80,6 +82,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   })
   const run = useRef(0)
   const handleLost = useRef<(error: AppError) => void>(() => undefined)
+  const onPermissions = useRef<(result: HeartbeatResult) => void>(() => undefined)
+  const refreshing = useRef(false)
+  const refreshAgain = useRef(false)
   const beatListeners = useRef(new Set<(result: HeartbeatResult) => void>())
 
   const leases = useMemo(
@@ -88,7 +93,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         backend,
         heartbeatMs: TIMING.leaseHeartbeatMs,
         onLost: (error) => handleLost.current(error),
-        onBeat: (result) => beatListeners.current.forEach((listener) => listener(result)),
+        onBeat: (result) => {
+          beatListeners.current.forEach((listener) => listener(result))
+          onPermissions.current(result)
+        },
       }),
     [backend],
   )
@@ -103,8 +111,89 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setState({ status: 'pairing' })
   }, [backend, leases])
 
+  /**
+   * As permissões do perfil mudaram no iPlex Control (ex.: conteúdo adulto): relê o perfil e refaz o catálogo em
+   * segundo plano, sem reiniciar a sessão. O menu e as listas se atualizam sozinhos quando o novo catálogo chega.
+   */
+  /** `force`: aviso novo do Control durante uma atualização em andamento → roda de novo ao terminar (a batida repetida não). */
+  const refreshAccess = useCallback(async (force = false): Promise<void> => {
+    const current = stateRef.current
+    if (current.status !== 'ready') return
+    if (refreshing.current) {
+      if (force) refreshAgain.current = true
+      return
+    }
+    refreshing.current = true
+    try {
+      const profiles = sortProfiles(await backend.listProfiles())
+      const profile = profiles.find((p) => p.id === current.profile.id)
+      if (!profile) return
+      // 1) Rápido: o que mudou no conteúdo adulto aparece/some na hora (manifesto + só o conjunto adulto, que é pequeno).
+      try {
+        for (const space of current.spaces) {
+          const manifest = await backend.readCatalogManifest(profile.id, space.sourceId)
+          if (manifest.adultEnabled !== true) {
+            current.catalog.applyAdult(space.sourceId, [], false)
+            continue
+          }
+          const records: CatalogRecord[] = []
+          for (let n = 0; n < (manifest.sets.adult?.chunks ?? 0); n += 1) {
+            const chunk = await backend.readCatalogChunk(profile.id, space.sourceId, 'adult', n, manifest.version)
+            records.push(...chunk.records)
+          }
+          current.catalog.applyAdult(space.sourceId, records, true)
+        }
+        const quick = stateRef.current
+        if (quick.status === 'ready' && quick.profile.id === profile.id) setState({ ...quick, profile, profiles })
+        diag('sync', `adulto atualizado na hora v${profile.permissionsVersion}`)
+      } catch {
+        // Sem os conjuntos (backend antigo) ou rede: o refazer completo abaixo cobre.
+      }
+      // 2) Completo, em segundo plano: demais permissões (fontes, tipos) e cache local.
+      let results: Awaited<ReturnType<typeof syncSources>> | null = null
+      try {
+        results = await syncSources(
+          { backend, cache: getCatalogCache(), diag },
+          `${current.identity.familyId}:${profile.id}`,
+          profile.id,
+          current.spaces.map((space) => space.sourceId),
+        )
+      } catch (raw) {
+        if (toAppError(raw).kind !== 'backend-outdated') throw raw
+        // Backend sem os conjuntos: refaz as páginas (o backend já aplica as novas permissões).
+        await Promise.all((['movie', 'series', 'channel'] as const).map((kind) => current.catalog.reload(kind)))
+      }
+      const now = stateRef.current
+      if (now.status !== 'ready' || now.profile.id !== profile.id) return
+      for (const result of results ?? []) current.catalog.hydrate(result.sourceId, result.sets, result.version, result.adultEnabled)
+      setState({ ...now, profile, profiles })
+      diag('sync', `permissões atualizadas v${profile.permissionsVersion}`)
+    } catch {
+      // Sem rede ou fonte ocupada: a próxima batida tenta de novo.
+    } finally {
+      refreshing.current = false
+      if (refreshAgain.current) {
+        refreshAgain.current = false
+        void refreshAccess(true)
+      }
+    }
+  }, [backend])
+  useEffect(() => {
+    onPermissions.current = (result) => {
+      const current = stateRef.current
+      diag('beat', `versão=${String(result.permissionsVersion)} adulto=${String(result.adultEnabled)} perfil=${current.status === 'ready' ? `${current.profile.name}#${current.profile.permissionsVersion}` : current.status}`)
+      if (current.status !== 'ready' || typeof result.permissionsVersion !== 'number') return
+      // Adulto desligado: some já (a AppLayout relê o catálogo); o catálogo novo chega em seguida.
+      if (result.adultEnabled === false && current.catalog.adultEnabled()) {
+        current.catalog.revokeAdult()
+        setState({ ...current })
+      }
+      if (result.permissionsVersion !== current.profile.permissionsVersion) void refreshAccess()
+    }
+  }, [refreshAccess])
+
   const enter = useCallback(
-    async (identity: DeviceIdentity, profiles: Profile[], profile: Profile, options: { pinVerified?: boolean } = {}) => {
+    async (identity: DeviceIdentity, profiles: Profile[], profile: Profile, options: { pinVerified?: boolean; tryOnly?: boolean } = {}) => {
       const id = ++run.current
       const alive = () => id === run.current
       if (requiresPin(profile, profiles) && !options.pinVerified) {
@@ -124,6 +213,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (!alive()) return
         const error = toAppError(raw)
         if (error.kind === 'device-unpaired') return void toPairing()
+        // Entrada automática no último perfil: PIN exigido pelo servidor → escolha de perfil, sem mensagem de erro.
+        if (options.tryOnly && (error.kind === 'profile-locked' || error.kind === 'parental-pin-missing')) {
+          setState({ status: 'choosing', identity, profiles, notice: error.kind === 'parental-pin-missing' ? error : null })
+          return
+        }
         if (error.kind === 'profile-in-use' || error.kind === 'profile-unavailable') {
           setState({ status: 'choosing', identity, profiles, notice: error })
           return
@@ -178,11 +272,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             profile.id,
             spaces.map((space) => space.sourceId),
             (group) => {
-              if (alive()) setState({ status: 'starting', step: group })
+              // O grupo adulto não tem texto próprio na inicialização.
+              if (alive() && group !== 'adult') setState({ status: 'starting', step: group })
             },
           )
           for (const result of results) {
-            catalog.hydrate(result.sourceId, result.sets, result.version)
+            catalog.hydrate(result.sourceId, result.sets, result.version, result.adultEnabled)
             diag('sync', `fonte=${result.sourceId.slice(0, 8)} modo=${result.mode} ${result.ms}ms`)
           }
           prepared = true
@@ -233,7 +328,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return
     }
     if (decision.type === 'enter') {
-      await enter(identity, profiles, decision.profile)
+      // Adulto com infantil na família: sem PIN no cliente, mas o backend valida (sessão por PIN ainda ativa ou não).
+      await enter(identity, profiles, decision.profile, decision.tryOnly ? { pinVerified: true, tryOnly: true } : {})
       return
     }
     setState({ status: 'choosing', identity, profiles, notice: null })
@@ -345,6 +441,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           throw raw
         }
       },
+      refreshAccess: () => refreshAccess(true),
       checkDevice: async () => {
         const current = stateRef.current
         if (current.status === 'ready') return leases.checkNow()

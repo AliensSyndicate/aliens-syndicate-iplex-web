@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { playRequestPath } from '../../features/remote/PlayRequestCoordinator'
-import { isRevocationMarker, parseAccountIdentity, parseHeartbeat, parsePinCheck, parsePlayRequestClaim, parsePlayRequestDoc, parseProfiles } from './validation'
+import { isAccessMarker, isRevocationMarker, parseAccountIdentity, parseHeartbeat, parsePinCheck, parsePlayRequestClaim, parsePlayRequestDoc, parseProfiles } from './validation'
 
 describe('validação na fronteira com o backend', () => {
   it('perfis: mantém pinRequired do backend e descarta entradas inválidas', () => {
@@ -75,5 +75,26 @@ describe('validação na fronteira com o backend', () => {
     expect(channel.status === 'delivered' && channel.request.resume).toBeFalsy()
     const plain = parsePlayRequestClaim({ ...base, request: { ...base.request, resume: undefined } })
     if (plain.status === 'delivered') expect(playRequestPath('pr_1', plain.request)).not.toContain('r=1')
+  })
+})
+
+describe('parseHeartbeat: permissões do perfil', () => {
+  it('lê versão das permissões e habilitação do adulto quando o backend informa', () => {
+    expect(parseHeartbeat({ ok: true, playRequest: null, permissionsVersion: 4, adultEnabled: false })).toEqual({ playRequest: null, permissionsVersion: 4, adultEnabled: false })
+  })
+  it('backend antigo: sem os campos', () => {
+    expect(parseHeartbeat({ ok: true, playRequest: null })).toEqual({ playRequest: null })
+    expect(parseHeartbeat({ permissionsVersion: 'x' })).toEqual({ playRequest: null })
+  })
+})
+
+describe('aviso de mudança de permissões (Control → TV)', () => {
+  it('só vale se for do tipo access e recente', () => {
+    const now = 1_000_000
+    expect(isAccessMarker({ status: 'access', createdAt: now - 10, expiresAt: now + 5_000 }, now)).toBe(true)
+    expect(isAccessMarker({ status: 'access', createdAt: now - 10, expiresAt: now - 1 }, now)).toBe(false)
+    expect(isAccessMarker({ status: 'revoked', createdAt: now, expiresAt: now + 5_000 }, now)).toBe(false)
+    expect(isAccessMarker({ status: 'pending', createdAt: now, expiresAt: now + 5_000 }, now)).toBe(false)
+    expect(isAccessMarker(null, now)).toBe(false)
   })
 })

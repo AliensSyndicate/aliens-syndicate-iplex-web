@@ -56,13 +56,15 @@ export function buildSidebar(opts: {
   allowAdult: boolean
   categories: Array<{ key: string; name: string }>
   has?: { continue?: boolean; favorites?: boolean; all?: boolean }
+  /** false (tela Adulto): sem "Todos"; só as categorias. */
+  showAll?: boolean
 }): SideEntry[] {
   const has = { continue: true, favorites: true, all: true, ...opts.has }
   const out: SideEntry[] = []
   if (opts.personal && has.continue) out.push({ id: 'continue', label: COLLECTION_TITLES.continue })
   if (opts.personal && has.favorites) out.push({ id: 'favorites', label: COLLECTION_TITLES.favorites })
   const hasCategories = opts.categories.length > 0
-  if (has.all || (!hasCategories && out.length === 0)) out.push({ id: 'all', label: COLLECTION_TITLES.all })
+  if (opts.showAll !== false && (has.all || (!hasCategories && out.length === 0))) out.push({ id: 'all', label: COLLECTION_TITLES.all })
   const sorted = [...opts.categories].sort((a, b) => compareText(a.name, b.name))
   const regular = sorted.filter((c) => !isAdultCategory(c.name))
   const adult = opts.allowAdult ? sorted.filter((c) => isAdultCategory(c.name)) : []
@@ -114,6 +116,7 @@ export function itemFromIndexed(meta: IndexedItem): CatalogItem {
     providerRef: '',
     version: '',
     ...(meta.year !== undefined ? { year: meta.year } : {}),
+    ...(meta.isAdult ? { isAdult: true } : {}),
   }
 }
 

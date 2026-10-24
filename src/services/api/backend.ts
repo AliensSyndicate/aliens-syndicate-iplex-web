@@ -78,6 +78,9 @@ export interface PlaybackStatusWrite {
 
 export interface HeartbeatResult {
   playRequest: { id: string; expiresAt: number } | null
+  /** Versão das permissões do perfil em uso: mudou no Control → o catálogo e o menu são atualizados. */
+  permissionsVersion?: number
+  adultEnabled?: boolean
 }
 
 export interface Backend {
@@ -100,6 +103,8 @@ export interface Backend {
    * com limite de tentativas; o acquireSession seguinte é liberado só para este perfil.
    */
   verifyProfilePin(profileId: string, pin: string): Promise<PinCheck>
+  /** PIN parental para TOCAR conteúdo adulto (sempre exigido; desbloqueio de uso único no backend). */
+  verifyAdultPin(profileId: string, pin: string): Promise<PinCheck>
 
   acquireSession(profileId: string): Promise<Lease>
   /** Renova o lease; devolve um pedido de reprodução pendente (reserva do ouvinte). */
@@ -114,7 +119,8 @@ export interface Backend {
    * (somente leitura, regras do Firestore); devolve a função para encerrar.
    * `onError('revoked')`: a credencial deixou de valer (TV desvinculada).
    */
-  watchPlayRequests(identity: DeviceIdentity, onPending: (notice: PlayRequestNotice) => void, onError: (reason: 'revoked' | 'unavailable') => void): () => void
+  /** `onAccess`: o Control mudou as permissões do perfil (ex.: conteúdo adulto): relê na hora. */
+  watchPlayRequests(identity: DeviceIdentity, onPending: (notice: PlayRequestNotice) => void, onError: (reason: 'revoked' | 'unavailable') => void, onAccess?: () => void): () => void
   claimPlayRequest(id: string): Promise<PlayRequestClaim>
   updatePlayRequest(id: string, status: 'confirming' | 'started' | 'declined' | 'failed', errorCode?: PlayRequestErrorCode): Promise<void>
 

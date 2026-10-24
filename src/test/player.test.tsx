@@ -39,8 +39,8 @@ const { createMockBackend } = await import('../dev/mock/mockBackend')
 const { browserContext } = await import('../platform/environment')
 type Backend = ReturnType<typeof createMockBackend>
 
-function start(path: string, prepare?: (backend: Backend) => unknown) {
-  window.history.replaceState({}, '', '/?mock=single')
+function start(path: string, prepare?: (backend: Backend) => unknown, scenario = 'single') {
+  window.history.replaceState({}, '', `/?mock=${scenario}`)
   const backend = createMockBackend()
   void prepare?.(backend)
   const saveProgress = vi.spyOn(backend, 'saveProgress')
@@ -390,6 +390,46 @@ describe('player', () => {
   it('conteúdo sem fonte reproduzível: erro claro, nada é tocado', async () => {
     start('/assistir?s=demo-source&i=m-cosmos&k=movie&t=Cosmos')
     expect(await screen.findByText('Fonte IPTV indisponível', {}, { timeout: 5000 })).toBeTruthy()
+    expect(created).toHaveLength(0)
+  })
+})
+
+describe('conteúdo adulto no player', () => {
+  const pin = (digits: string) => {
+    for (const d of digits) fireEvent.click(screen.getByRole('button', { name: d }))
+  }
+  const ADULT = { id: 'adult-1', sourceId: 'demo-source', kind: 'movie' as const, title: 'Filme XXX', category: 'Adulto +18', providerRef: 'x', version: 'v' }
+  const withAdult = (backend: Backend) => {
+    vi.spyOn(backend, 'readCatalog').mockResolvedValue({ version: 'v', items: [ADULT], categories: [], cursor: 1, hasMore: false })
+    return vi.spyOn(backend, 'resolveStream').mockResolvedValue({ url: 'https://exemplo.invalid/adulto.m3u8', sourceId: 'demo-source', validatedAt: Date.now() })
+  }
+  it('pede o PIN antes de resolver a mídia e só toca depois do PIN aceito', async () => {
+    let resolve!: ReturnType<typeof withAdult>
+    start('/assistir?s=demo-source&i=adult-1&k=movie&t=Filme+XXX', (backend) => {
+      resolve = withAdult(backend)
+    })
+    expect(await screen.findByText('Digite o PIN', {}, { timeout: 8000 })).toBeTruthy()
+    expect(resolve).not.toHaveBeenCalled()
+    expect(created).toHaveLength(0)
+    // PIN errado: continua sem mídia.
+    pin('0000')
+    await new Promise((r) => setTimeout(r, 700))
+    expect(resolve).not.toHaveBeenCalled()
+    expect(created).toHaveLength(0)
+    // PIN certo: agora a mídia é resolvida e toca.
+    pin('1234')
+    await playing()
+    expect(resolve).toHaveBeenCalledTimes(1)
+  })
+  it('cancelar o PIN volta sem tocar nada', async () => {
+    let resolve!: ReturnType<typeof withAdult>
+    start('/assistir?s=demo-source&i=adult-1&k=movie&t=Filme+XXX', (backend) => {
+      resolve = withAdult(backend)
+    })
+    await screen.findByText('Digite o PIN', {}, { timeout: 8000 })
+    press('Escape', 27)
+    await new Promise((r) => setTimeout(r, 500))
+    expect(resolve).not.toHaveBeenCalled()
     expect(created).toHaveLength(0)
   })
 })

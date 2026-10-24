@@ -3,7 +3,7 @@
  * `manager` do projeto iplex-2c8fc, repositório do Gestor).
  */
 
-export type SectionId = 'my-iplex' | 'search' | 'live' | 'movies' | 'series'
+export type SectionId = 'my-iplex' | 'search' | 'live' | 'movies' | 'series' | 'adult'
 
 export type ProfileType = 'admin' | 'regular' | 'kids' | 'guest'
 
@@ -161,14 +161,20 @@ export interface CatalogPage {
   hasMore: boolean
 }
 
-/** Seis conjuntos do catálogo (blocos por callable, já filtrados para o perfil ativo). */
-export type CatalogSetName = 'live_categories' | 'live' | 'vod_categories' | 'vod' | 'series_categories' | 'series'
+/**
+ * Oito conjuntos do catálogo (blocos por callable, já filtrados para o perfil ativo): seis comuns e, à parte,
+ * `adult_categories` e `adult` (todo conteúdo adulto de canais, filmes e séries, fora dos seis comuns).
+ */
+export type CatalogSetName = 'live_categories' | 'live' | 'vod_categories' | 'vod' | 'series_categories' | 'series' | 'adult_categories' | 'adult'
 export interface CatalogManifest {
   version: string
   previousVersion: string | null
   /** Impressão digital das permissões do perfil: mudou → o cache local é refeito. */
   viewerKey: string
-  sets: Record<CatalogSetName, { chunks: number; hash: string }>
+  /** Backend anterior aos conjuntos adultos não traz `adult*` (tratados como vazios). */
+  sets: Partial<Record<CatalogSetName, { chunks: number; hash: string }>>
+  /** O perfil está habilitado ao conteúdo adulto no iPlex Control (o item "Adulto" do menu depende disso). */
+  adultEnabled?: boolean
   deltaAvailable: boolean
 }
 export type CatalogRecord = Record<string, unknown> & { id: string }

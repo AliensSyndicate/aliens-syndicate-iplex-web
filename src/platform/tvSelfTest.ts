@@ -8,6 +8,7 @@
  * navega, troca categoria/ordenação na própria tela e abre/volta de um detalhe.
  */
 import type { Backend } from '../services/api/backend'
+import { readJson } from '../utils/storage'
 import { probeCatalogCache, probeCatalogSets } from './catalogSetsProbe'
 import { diag } from './diagnostics'
 
@@ -406,7 +407,60 @@ async function runSearch() {
   // Recentes com o campo vazio.
   $('[data-nav-id="key-clear"]')?.click()
   await sleep(1200)
-  report(`${t}:recents`, { title: ($('[data-sr-block="recents"] h2')?.textContent ?? '').trim(), items: all('[data-sr-recent]').map((b) => (b.textContent ?? '').trim()).join('|') })
+  report(`${t}:recents`, { title: ($('[data-sr-block="recents"] h2')?.textContent ?? '').trim(), cells: String(all('[data-sr-block="recents"] [data-sr-cell]').length), blocks: all('[data-sr-block]').map((b) => b.dataset.srBlock).join('|') })
+}
+
+/** Adulto: item de menu condicionado ao Control, layout do catálogo, lista lateral e PIN antes do vídeo. */
+async function runAdult() {
+  const t = 'adulto'
+  const tabs = all('.iplex-header__capsule .iplex-tab').map((b) => b.dataset.navId ?? '')
+  const tab = all('.iplex-header__capsule .iplex-tab').find((b) => b.dataset.navId === 'tab-adult')
+  const backend = (window as unknown as { __iplexBackend?: Backend }).__iplexBackend
+  report(`${t}:menu`, { tabs: tabs.join('|'), hasAdult: String(!!tab) })
+  // Conjuntos 7 e 8 no backend (sem listar títulos).
+  try {
+    const hint = readJson<{ profileId?: string }>('iplex.lastProfile.v1')
+    const profileId = hint?.profileId
+    const spaces = profileId ? await backend?.listSpaces(profileId) : []
+    for (const space of spaces ?? []) {
+      const manifest = await backend!.readCatalogManifest(profileId!, space.sourceId)
+      const sets = manifest.sets
+      report(`${t}:manifest`, { adultEnabled: String(manifest.adultEnabled), adultChunks: String(sets.adult?.chunks), adultCatChunks: String(sets.adult_categories?.chunks) })
+      if (sets.adult && manifest.adultEnabled) {
+        const first = await backend!.readCatalogChunk(profileId!, space.sourceId, 'adult', 0, manifest.version)
+        const cats = await backend!.readCatalogChunk(profileId!, space.sourceId, 'adult_categories', 0, manifest.version)
+        const kinds: Record<string, number> = {}
+        for (const r of first.records) kinds[String(r.kind)] = (kinds[String(r.kind)] ?? 0) + 1
+        report(`${t}:sets`, { firstChunk: String(first.records.length), kinds: JSON.stringify(kinds), categorias: cats.records.map((c) => String(c.name)).join('|') })
+      }
+    }
+  } catch (error) {
+    report(`${t}:manifest`, { error: String((error as Error)?.message ?? error) })
+  }
+  if (!tab) return
+  tab.focus()
+  tab.click()
+  if (!(await waitFor(() => !!$('.iplex-catalog__side'), 15000))) return report(`${t}:enter`, { fail: 'tela Adulto não abriu', path: location.pathname })
+  await sleep(1200)
+  const side = all('[data-side-item]').map((b) => (b.textContent ?? '').trim())
+  const cards = all('[data-grid-index]')
+  const first = cards[0]
+  const perRow = cards.filter((c) => first && Math.abs(c.getBoundingClientRect().top - first.getBoundingClientRect().top) < 2).length
+  report(`${t}:layout`, { path: location.pathname, side: side.join('|'), cards: String(cards.length), perRow: String(perRow), count: ($('.iplex-catalog__count')?.textContent ?? '').trim() })
+  if (!first) return
+  ;(first as HTMLElement).focus()
+  first.click()
+  if (!(await waitFor(() => location.pathname === '/assistir' || location.pathname.endsWith('/temporadas'), 12000))) return report(`${t}:open`, { fail: 'não abriu player nem episódios', path: location.pathname })
+  if (location.pathname.endsWith('/temporadas')) {
+    await sleep(1500)
+    $('.iplex-episode')?.click()
+    await waitFor(() => location.pathname === '/assistir', 10000)
+  }
+  await sleep(2500)
+  report(`${t}:pin`, { path: location.pathname, dialog: String(!!$('.iplex-pin__dots')), video: String(!!$('video')), overlayVisible: String(!!$('.iplex-player__overlay.is-visible')) })
+  press('Escape')
+  await sleep(1200)
+  report(`${t}:cancel`, { path: location.pathname })
 }
 
 export async function runTvSelfTest() {
@@ -428,6 +482,7 @@ export async function runTvSelfTest() {
     await runScreen('Séries')
     await runDetails()
     await runSearch()
+    await runAdult()
     // Ao Vivo: nomes das categorias já padronizadas.
     const live = all('.iplex-header__capsule .iplex-tab').find((b) => (b.textContent ?? '').trim() === 'Ao Vivo')
     if (live) {

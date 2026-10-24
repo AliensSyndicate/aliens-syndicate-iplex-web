@@ -13,7 +13,7 @@ export function AppLayout() {
   const immersive = location.pathname.startsWith('/assistir')
   return (
     <div className="iplex-app">
-      {!immersive && <IplexHeader profile={session.profile} onAvatar={() => setMenu(true)} />}
+      {!immersive && <IplexHeader profile={session.profile} onAvatar={() => setMenu(true)} adultEnabled={session.catalog.adultEnabled()} />}
       <Suspense fallback={<RouteSkeleton pathname={location.pathname} />}>
         <Outlet />
       </Suspense>

@@ -15,6 +15,7 @@ const LABELS: Record<SectionId, string> = {
   live: 'Ao Vivo',
   movies: 'Filmes',
   series: 'Séries',
+  adult: 'Adulto',
 }
 
 /**
@@ -23,13 +24,13 @@ const LABELS: Record<SectionId, string> = {
  * Ordem oficial: Avatar, Meu iPlex, Busca (só ícone), Ao Vivo, Filmes, Séries; Configurações no extremo direito.
  * Visitante: Avatar, Busca, Ao Vivo, Filmes, Séries.
  */
-export function IplexHeader({ profile, onAvatar }: { profile: Profile; onAvatar: () => void }) {
+export function IplexHeader({ profile, onAvatar, adultEnabled = false }: { profile: Profile; onAvatar: () => void; adultEnabled?: boolean }) {
   const navigate = useNavigate()
   const { backend } = useBackend()
   const account = backend.accountIdentity()
   const location = useLocation()
   const current = sectionForPath(location.pathname)
-  const sections = visibleSections(profile)
+  const sections = visibleSections(profile, adultEnabled)
 
   return (
     <header className={`iplex-header${current === 'live' || current === 'movies' || current === 'series' || location.pathname.startsWith('/catalogo') ? ' iplex-header--see-through' : ''}`} data-nav-fixed="">

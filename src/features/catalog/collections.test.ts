@@ -20,6 +20,10 @@ describe('menu lateral do catálogo', () => {
     expect(labels[labels.length - 1]).toMatch(/xxx|adulto/i)
     expect(labels.indexOf('Zen')).toBeLessThan(labels.indexOf('Adulto +18'))
   })
+  it('tela Adulto: só as categorias fixas, sem Todos, Continuar nem Favoritos', () => {
+    const labels = buildSidebar({ personal: false, allowAdult: true, showAll: false, categories: [{ key: 'adult-series', name: 'Séries' }, { key: 'adult-live', name: 'Ao Vivo' }, { key: 'adult-movies', name: 'Filmes' }], has: { all: true } }).map((e) => e.label)
+    expect(labels).toEqual(['Ao Vivo', 'Filmes', 'Séries'])
+  })
   it('adulto só quando permitido; visitante sem coleções pessoais', () => {
     const labels = buildSidebar({ personal: false, allowAdult: false, categories }).map((e) => e.label)
     expect(labels).toEqual(['Todos', 'Ação', 'Drama', 'Terror'])
