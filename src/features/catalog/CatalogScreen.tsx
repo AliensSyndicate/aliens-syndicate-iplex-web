@@ -31,12 +31,11 @@ import { focusElement } from '../../navigation/spatial'
 import { isArrow } from '../../platform/keys'
 import type { CatalogItem, ContentKind } from '../../services/api/types'
 import type { IndexedItem } from '../../services/library/libraryStore'
-import { parseEpisodeContentId } from '../../services/catalog/normalize'
 import { isAdultItem } from '../../services/catalog/adult'
 import { LiveChannelPanel } from '../live-tv/LiveChannelPanel'
 import { useLiveState } from '../live-tv/useLiveState'
 import { hasPersonalLibrary, isKids } from '../profiles/profileRules'
-import { COLLECTION_TITLES, buildSidebar, isAdultCategory, itemFromIndexed, sortItems, sortOptionsFor, type CollectionId, type SortId } from './collections'
+import { COLLECTION_TITLES, buildSidebar, isAdultCategory, itemFromIndexed, sortItems, sortOptionsFor, continuing, latestReleases, type CollectionId, type PersonalCollection, type SideEntry, type SortId } from './collections'
 
 const GRID_COLS = 5
 const LIVE_COLS = 6
@@ -46,6 +45,8 @@ const OVERSCAN = 3
 const DEFAULT_ROW_HEIGHT = 340
 const MIN_FILL = 24
 const REVEAL_PAD = 24
+/** Ordem das categorias no "Ver tudo" (mesmas do Meu iPlex). */
+const SCOPE_ORDER: PersonalCollection[] = ['continue', 'favorites', 'wishlist', 'releases', 'watched']
 
 /** Estado de navegação por rota: ao voltar dos detalhes a tela reaparece como estava. */
 const viewMemory = new Map<string, { selected: CollectionId; sort: SortId; scrollTop: number }>()
@@ -66,7 +67,7 @@ const GridRow = memo(function GridRow({ items, rowIndex, cols, selectedId, onOpe
   )
 })
 
-export function CatalogScreen({ kinds, title, initial, live = false, adult = false }: { kinds: ContentKind[]; title: string; initial: CollectionId; live?: boolean; adult?: boolean }) {
+export function CatalogScreen({ kinds, title, initial, live = false, adult = false, scope }: { kinds: ContentKind[]; title: string; initial: CollectionId; live?: boolean; adult?: boolean; scope?: PersonalCollection }) {
   const cols = live ? LIVE_COLS : GRID_COLS
   const navigate = useNavigate()
   const location = useLocation()
@@ -138,12 +139,8 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   const progressMeta = useMemo(() => {
     const byItem = new Map<string, IndexedItem>()
     if (!personal) return byItem
-    for (const entry of library.progress) {
-      const meta = store.indexed(entry.contentId)
-      if (!meta || !kinds.includes(meta.kind) || !inScope(meta)) continue
-      if (meta.kind === 'series' && !parseEpisodeContentId(entry.contentId)) continue
-      if (entry.duration > 0 && entry.position / entry.duration >= 0.95) continue
-      if (!byItem.has(meta.itemId)) byItem.set(meta.itemId, meta)
+    for (const { meta } of continuing(library.progress, (id) => store.indexed(id))) {
+      if (kinds.includes(meta.kind) && inScope(meta)) byItem.set(meta.itemId, meta)
     }
     return byItem
   }, [library.progress, store, kinds, personal])
@@ -151,31 +148,60 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   const libraryLists = useMemo(() => {
     const fromLibrary = (ids: Array<{ contentId: string }>) =>
       personal ? ids.map((e) => store.indexed(e.contentId)).filter((m): m is IndexedItem => !!m && kinds.includes(m.kind) && inScope(m)).map(itemFromIndexed) : []
-    return { favorites: fromLibrary(library.favorites), watched: fromLibrary(library.watched) }
-  }, [library.favorites, library.watched, store, kinds, personal])
+    return {
+      favorites: fromLibrary(library.favorites),
+      wishlist: fromLibrary(library.wishlist ?? []),
+      watched: fromLibrary(library.watched),
+    }
+  }, [library.favorites, library.wishlist, library.watched, store, kinds, personal])
+
+  // "Ver tudo" (como no Control): uma tela só; o menu lateral troca entre as categorias do Meu iPlex que têm
+  // conteúdo (abre na tocada) e cada uma mostra TODOS os seus itens.
+  const scopeLists = useMemo<Record<PersonalCollection, CatalogItem[]>>(() => {
+    if (!scope) return { continue: [], favorites: [], wishlist: [], releases: [], watched: [] }
+    return {
+      continue: Array.from(progressMeta.values()).map(itemFromIndexed),
+      favorites: libraryLists.favorites,
+      wishlist: libraryLists.wishlist,
+      releases: latestReleases(allItems, 500),
+      watched: libraryLists.watched,
+    }
+  }, [scope, progressMeta, allItems, libraryLists])
 
   const sidebar = useMemo(
     () =>
-      buildSidebar({
+      scope
+        ? SCOPE_ORDER.filter((id) => id === scope || scopeLists[id].length > 0).map((id) => ({ id: id as CollectionId, label: COLLECTION_TITLES[id] }) as SideEntry)
+        : buildSidebar({
         personal,
         allowAdult,
         showAll: !adult,
         categories: Array.from(groups.values()).filter((g) => g.items.length > 0).map((g) => ({ key: g.key, name: g.name })),
-        has: { continue: progressMeta.size > 0, favorites: libraryLists.favorites.length > 0, all: allItems.length > 0 },
+        has: {
+          continue: progressMeta.size > 0 || initial === 'continue',
+          favorites: libraryLists.favorites.length > 0 || initial === 'favorites',
+          wishlist: libraryLists.wishlist.length > 0 || initial === 'wishlist',
+          watched: libraryLists.watched.length > 0 || initial === 'watched',
+          all: allItems.length > 0,
+        },
       }),
-    [personal, allowAdult, groups, progressMeta, libraryLists.favorites, allItems.length],
+    [personal, allowAdult, adult, groups, progressMeta, libraryLists.favorites, libraryLists.wishlist, libraryLists.watched, allItems.length, initial, scope, scopeLists],
   )
 
   // Primeira coleção do menu com conteúdo real (nunca prende o foco em categoria vazia).
   const firstWithContent = useMemo<CollectionId>(() => {
+    if (scope) return scope
+    if (initial && sidebar.some((s) => s.id === initial)) return initial
     for (const entry of sidebar) {
       if (entry.id === 'continue' && progressMeta.size > 0) return entry.id
       if (entry.id === 'favorites' && libraryLists.favorites.length > 0) return entry.id
+      if (entry.id === 'wishlist' && libraryLists.wishlist.length > 0) return entry.id
+      if (entry.id === 'watched' && libraryLists.watched.length > 0) return entry.id
       if (entry.id === 'all' && allItems.length > 0) return entry.id
       if (entry.id.startsWith('cat:') && (groups.get(entry.id.slice(4))?.items.length ?? 0) > 0) return entry.id
     }
     return sidebar.some((s) => s.id === 'all') ? 'all' : (sidebar[0]?.id ?? initial)
-  }, [sidebar, progressMeta, libraryLists.favorites, allItems.length, groups, initial])
+  }, [sidebar, progressMeta, libraryLists.favorites, libraryLists.wishlist, libraryLists.watched, allItems.length, groups, initial, scope])
 
   const ready = (!personal || libraryLoaded) && (!loading || allItems.length > 0 || !!(spacesError || noSources || noKind || error))
   useEffect(() => {
@@ -190,14 +216,16 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   const liveState = useLiveState({ enabled: live, catalog: session.catalog, store, favoriteIds, personal })
 
   const base = useMemo<CatalogItem[]>(() => {
+    if (scope) return scopeLists[selected as PersonalCollection] ?? []
     if (selected === 'continue') return Array.from(progressMeta.values()).map(itemFromIndexed)
     if (selected === 'favorites') return libraryLists.favorites
+    if (selected === 'wishlist') return libraryLists.wishlist
     if (selected === 'watched') return libraryLists.watched
     if (selected === 'all') return allItems
     const group = groups.get(selected.slice(4))
     if (!group || (isAdultCategory(group.name) && !allowAdult)) return []
     return group.items
-  }, [selected, progressMeta, libraryLists, allItems, groups, allowAdult])
+  }, [selected, progressMeta, libraryLists, allItems, groups, allowAdult, scope, scopeLists])
 
   const sortOptions = useMemo(() => sortOptionsFor(base), [base])
   const effectiveSort: SortId = sortOptions.some((o) => o.id === sort) ? sort : 'az'
@@ -341,7 +369,7 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   }, [selected, effectiveSort])
 
   // Coleções vindas do catálogo paginado: busca mais páginas até preencher a tela.
-  const fromCatalog = selected === 'all' || selected.startsWith('cat:')
+  const fromCatalog = !scope && (selected === 'all' || selected.startsWith('cat:'))
   useEffect(() => {
     if (fromCatalog && hasMore && !loading && items.length < MIN_FILL) loadMore()
   }, [fromCatalog, hasMore, loading, items.length, loadMore])
@@ -571,9 +599,9 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
     diag('adult:screen', `sidebar=${sidebar.map((s) => s.label).join('|')} itens=${allItems.length} grupos=${groups.size} selecionado=${selected} warm=${warm} personal=${personal} habilitado=${session.catalog.adultEnabled()} adultItems=${session.catalog.adultItems().length}`)
   }, [adult, sidebar, allItems.length, groups.size, selected, warm, personal, session.catalog])
 
-  const label = selected.startsWith('cat:') ? (sidebar.find((s) => s.id === selected)?.label ?? groups.get(selected.slice(4))?.name ?? title) : COLLECTION_TITLES[selected as keyof typeof COLLECTION_TITLES]
+  const label = scope ? COLLECTION_TITLES[selected as PersonalCollection] : selected.startsWith('cat:') ? (sidebar.find((s) => s.id === selected)?.label ?? groups.get(selected.slice(4))?.name ?? title) : COLLECTION_TITLES[selected as keyof typeof COLLECTION_TITLES]
   const heading = label
-  const kindLabel = adult ? 'conteúdo adulto' : kinds.length === 1 ? (kinds[0] === 'movie' ? 'filmes' : kinds[0] === 'channel' ? 'canais' : 'séries') : 'filmes e séries'
+  const kindLabel = scope ? 'itens' : adult ? 'conteúdo adulto' : kinds.length === 1 ? (kinds[0] === 'movie' ? 'filmes' : kinds[0] === 'channel' ? 'canais' : 'séries') : 'filmes e séries'
   const sourceStates = <SourceStates spacesError={spacesError} noSources={noSources} noKind={noKind} error={error} kindLabel={kindLabel} onRetry={reload} />
   const blocked = !!(spacesError || noSources || noKind || error)
   // Sem itens ainda, mas a fonte pode entregar (primeira renderização, página em andamento, mais páginas)
@@ -686,7 +714,9 @@ const formatCount = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.
 
 function emptyText(selected: CollectionId, kindLabel: string): string {
   if (selected === 'continue') return 'O que você começar a assistir aparece aqui.'
-  if (selected === 'favorites') return 'Use “Adicionar à lista” nos detalhes para guardar títulos aqui.'
+  if (selected === 'favorites') return 'Use “Favoritar” nos detalhes para guardar títulos aqui.'
+  if (selected === 'wishlist') return 'Use “Adicionar à lista de desejo” nos detalhes para guardar títulos aqui.'
+  if (selected === 'releases') return 'Os lançamentos do catálogo aparecem aqui.'
   if (selected === 'watched') return 'Os títulos que você terminar aparecem aqui.'
   return `Não há ${kindLabel} nesta categoria para este perfil.`
 }

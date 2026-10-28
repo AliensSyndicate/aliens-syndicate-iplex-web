@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useReadySession } from '../../app/providers/SessionProvider'
 import { contentPath, PATHS } from '../../app/routes/paths'
@@ -23,18 +23,38 @@ import { SECTION_PATHS } from '../profiles/profileRules'
 const ROW = 10
 const LAUNCHES_PER_KIND = 5
 
-function Hero({ item, greeting, onOpen }: { item: CatalogItem; greeting: string; onOpen: (item: CatalogItem) => void }) {
+const providerImage = (item: CatalogItem) => (item.imageRef && /^https:\/\//i.test(item.imageRef) ? item.imageRef : null)
+
+/**
+ * Destaque: parte de um lançamento sorteado e, se ele não tiver imagem nenhuma (sem correspondência no TMDB
+ * e sem capa da fonte), passa ao próximo, até achar um com imagem. Se nenhum tiver, mostra o primeiro com
+ * fundo neutro (nunca fica preso em carregamento). Os já descartados são lembrados por id, então a lista
+ * crescer ou mudar de ordem (páginas do catálogo chegando) não reinicia a busca nem troca o título à toa.
+ */
+function Hero({ candidates, start, greeting, onOpen }: { candidates: CatalogItem[]; start: number; greeting: string; onOpen: (item: CatalogItem) => void }) {
+  const [failedIds, setFailedIds] = useState<string[]>([])
+  const first = candidates[start % candidates.length]!
+  const rotated = [...candidates.slice(start % candidates.length), ...candidates.slice(0, start % candidates.length)]
+  const next = rotated.find((c) => !failedIds.includes(c.id))
+  const exhausted = !next
+  const item = next ?? first
   const meta = useMatch(item)
   const summary = meta.status === 'ready' ? meta.summary : null
+  const image = summary?.backdrop ?? summary?.poster ?? providerImage(item)
+  const failed = !image && (meta.status === 'missing' || meta.status === 'error' || (meta.status === 'ready' && !exhausted))
+  useEffect(() => {
+    if (failed && !exhausted) setFailedIds((ids) => (ids.includes(item.id) ? ids : [...ids, item.id]))
+  }, [failed, exhausted, item.id])
   const title = summary?.title || item.title
   return (
     <section className="iplex-home__hero" aria-label="Lançamento em destaque">
       <div className="iplex-details__backdrop" aria-hidden="true">
-        <Artwork src={summary?.backdrop ?? summary?.poster ?? (item.imageRef && /^https:\/\//i.test(item.imageRef) ? item.imageRef : null)} alt="" fallback="" />
+        {image ? <Artwork key={item.id} src={image} alt="" fallback="" /> : exhausted || failed ? null : <div className="iplex-skeleton iplex-details__backdrop-skeleton" />}
         <div className="iplex-hero__scrim" />
       </div>
       <div className="iplex-home__hero-info">
-        <IplexText variant="meta">{greeting} · Lançamento em destaque</IplexText>
+        <IplexText variant="meta">{greeting}</IplexText>
+        <IplexText variant="meta">Lançamento em destaque</IplexText>
         <IplexText variant="hero-title">{title}</IplexText>
         {summary?.overview && (
           <IplexText variant="description" clamp={3} className="iplex-details__overview">
@@ -68,7 +88,7 @@ export default function MyIplexScreen() {
 
   // Destaque: um dos lançamentos, sorteado uma vez por visita à tela.
   const [pick] = useState(() => Math.random())
-  const featured = launches.length ? launches[Math.floor(pick * launches.length)]! : null
+  const featured = launches.length > 0
 
   const ready = loaded && (!!featured || !(movies.loading || series.loading))
   useInitialFocus(`${location.pathname}${location.search}`, ready)
@@ -76,12 +96,12 @@ export default function MyIplexScreen() {
 
   const openItem = (i: CatalogItem) => navigate(contentPath(i))
   const greeting = `Olá, ${session.profile.name}`
-  const empty = loaded &&!continueRow.length && !favorites.length && !wishlist.length && !watched.length && !launches.length
+  const empty = loaded && !continueRow.length && !favorites.length && !wishlist.length && !watched.length
 
   return (
     <main className="iplex-page iplex-home" aria-label="Meu iPlex" data-nav-managed-y="">
       {featured ? (
-        <Hero item={featured} greeting={greeting} onOpen={openItem} />
+        <Hero candidates={launches} start={Math.floor(pick * launches.length)} greeting={greeting} onOpen={openItem} />
       ) : (
         <div style={{ paddingTop: 'var(--iplex-content-top)' }}>
           <IplexText variant="page-title" className="iplex-page__title">
@@ -125,7 +145,7 @@ export default function MyIplexScreen() {
       )}
       {([
         { id: 'favorites', title: 'Favoritos', items: favorites },
-        { id: 'wishlist', title: 'Lista de desejos', items: wishlist },
+        { id: 'wishlist', title: 'Lista de desejo', items: wishlist },
         { id: 'releases', title: 'Lançamentos', items: launches },
         { id: 'watched', title: 'Assistidos', items: watched },
       ] as const).map(({ id, title, items }) => items.length > 0 && (

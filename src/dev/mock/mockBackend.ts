@@ -107,7 +107,7 @@ export function createMockBackend(): Backend {
   let paired = mode !== 'unpaired' && sessionStorage.getItem('iplex.mock.unpaired') !== '1'
   let pairingStarted = 0
   let lease: Lease | null = null
-  const library: Library = { favorites: [], watched: [], progress: [] }
+  const library: Library = { favorites: [], wishlist: [], watched: [], progress: [] }
   const generations = { favorites: 0, watched: 0, progress: 0 }
   const profiles: Profile[] =
     mode === 'single'
@@ -263,7 +263,7 @@ export function createMockBackend(): Backend {
     },
     async readLibrary(_identity, profileId) {
       await delay(200)
-      return profiles.find((p) => p.id === profileId)?.type === 'guest' ? { favorites: [], watched: [], progress: [] } : library
+      return profiles.find((p) => p.id === profileId)?.type === 'guest' ? { favorites: [], wishlist: [], watched: [], progress: [] } : library
     },
     async setFavorite({ contentId, title, remove }) {
       if (viewer()?.type === 'guest') throw new AppError('not-supported', 'guest-not-persisted')

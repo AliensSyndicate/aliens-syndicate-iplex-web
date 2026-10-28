@@ -40,20 +40,36 @@ export function cancelScroll(el: HTMLElement) {
 /** Rola até `target` (ease-out curto). `instant` ou salto longo: posiciona direto. */
 export function animateScrollTop(el: HTMLElement, target: number, instant = false) {
   cancelScroll(el)
-  const max = Math.max(0, el.scrollHeight - el.clientHeight)
+  const isDoc = typeof document !== 'undefined' && (el === document.documentElement || el === document.body || el === document.scrollingElement)
+  const docEl = typeof document !== 'undefined' ? document.documentElement : null
+  const body = typeof document !== 'undefined' ? document.body : null
+  const max = isDoc
+    ? Math.max(0, Math.max(docEl?.scrollHeight ?? 0, body?.scrollHeight ?? 0) - (typeof window !== 'undefined' ? window.innerHeight : 0))
+    : Math.max(0, el.scrollHeight - el.clientHeight)
   const to = clamp(Math.round(target), 0, max)
-  const from = el.scrollTop
+  const from = isDoc
+    ? (typeof window !== 'undefined' ? (window.scrollY || window.pageYOffset) : 0) || el.scrollTop || docEl?.scrollTop || 0
+    : el.scrollTop
   const distance = to - from
   if (Math.abs(distance) < 1) return
-  if (instant || Math.abs(distance) > el.clientHeight * 1.5) {
-    el.scrollTop = to
+  const apply = (val: number) => {
+    if (isDoc) {
+      if (typeof window !== 'undefined') window.scrollTo(0, val)
+      if (docEl) docEl.scrollTop = val
+      if (body) body.scrollTop = val
+    } else {
+      el.scrollTop = val
+    }
+  }
+  if (instant || Math.abs(distance) > (isDoc && typeof window !== 'undefined' ? window.innerHeight : el.clientHeight) * 1.5) {
+    apply(to)
     return
   }
   const start = performance.now()
   const step = (now: number) => {
     const t = Math.min(1, (now - start) / DURATION_MS)
     const eased = 1 - (1 - t) * (1 - t)
-    el.scrollTop = from + distance * eased
+    apply(from + distance * eased)
     if (t < 1) active.set(el, requestAnimationFrame(step))
     else active.delete(el)
   }

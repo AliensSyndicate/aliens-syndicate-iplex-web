@@ -228,7 +228,7 @@ export default function DetailsScreen() {
           </div>
         )}
         <div className="iplex-details__actions" data-nav-group-root="details-actions" data-nav-row="x">
-          {item.kind === 'movie' &&
+          {!session.unavailable && item.kind === 'movie' &&
             (movieResumable ? (
               <>
                 <IplexButton navId="d-continue" navGroup="details-actions" autoFocus onClick={() => playMovie(true)}>
@@ -243,7 +243,7 @@ export default function DetailsScreen() {
                 Assistir agora
               </IplexButton>
             ))}
-          {item.kind === 'series' &&
+          {!session.unavailable && item.kind === 'series' &&
             (resume ? (
               <>
                 <IplexButton navId="d-continue" navGroup="details-actions" autoFocus onClick={() => playEpisode(resume.episode, !resume.fresh)}>

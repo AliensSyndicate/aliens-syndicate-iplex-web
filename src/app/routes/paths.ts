@@ -16,7 +16,7 @@ export const PATHS = {
     `/pessoa/${personId}?${new URLSearchParams({ s: scope.sourceId, i: scope.itemId, t: scope.title, ...(via ? { v: via } : {}) }).toString()}`,
   settings: '/configuracoes',
   /** Tela Catálogo reutilizável: coleção (c) e tipos (k) de entrada. */
-  catalog: (collection: string, kinds: string[] = ['movie', 'series']) => `/catalogo?c=${encodeURIComponent(collection)}&k=${kinds.join(',')}`,
+  catalog: (collection: string, kinds?: string[]) => `/catalogo?c=${encodeURIComponent(collection)}${kinds ? `&k=${kinds.join(',')}` : ''}`,
 } as const
 
 /** Para onde um item abre. Conteúdo adulto nunca abre a tela de detalhes: filme e canal tocam direto; série vai aos episódios. */

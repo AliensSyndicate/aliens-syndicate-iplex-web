@@ -12,7 +12,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { TIMING } from '../../config/features'
 import { decideStartupProfile, requiresPin, sortProfiles } from '../../features/profiles/profileRules'
 import type { HeartbeatResult } from '../../services/api/backend'
-import { AppError, toAppError } from '../../services/api/errors'
+import { AppError, isAmbiguousAuthFailure, toAppError } from '../../services/api/errors'
 import type { CatalogRecord, DeviceIdentity, Lease, Profile, Space } from '../../services/api/types'
 import { CatalogStore } from '../../services/catalog/catalogStore'
 import { CATALOG } from '../../config/features'
@@ -38,6 +38,8 @@ export interface ReadySession {
   lease: Lease
   spaces: Space[]
   spacesError: AppError | null
+  /** Servidor/lista não respondeu: a TV navega normalmente, sem conteúdo (marca d'água e sem botões de reproduzir). */
+  unavailable: boolean
   catalog: CatalogStore
   library: LibraryStore
 }
@@ -70,6 +72,13 @@ export interface SessionApi {
 }
 
 const LAST_PROFILE_KEY = 'iplex.lastProfile.v1'
+const UNAVAILABLE_RETRY_MS = 30_000
+
+/** Desvínculo de verdade (revogada/removida no Gestor). Falha ambígua de credencial NÃO desvincula. */
+const isUnpaired = (error: AppError) => error.kind === 'device-unpaired' && !isAmbiguousAuthFailure(error)
+/** Falhas em que o servidor/lista não respondeu: a TV entra mesmo assim, sem conteúdo. */
+const isUnavailable = (error: AppError) =>
+  error.kind === 'server-unavailable' || error.kind === 'offline' || error.kind === 'iptv-unavailable' || error.kind === 'backend-outdated' || error.kind === 'unknown' || isAmbiguousAuthFailure(error)
 const Ctx = createContext<SessionApi | null>(null)
 
 export function SessionProvider({ children }: { children: ReactNode }) {
@@ -192,6 +201,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshAccess])
 
+  /** Entra sem conteúdo: catálogo e biblioteca vazios, sem lease; tenta de novo em segundo plano. */
+  const enterUnavailable = useCallback(
+    (identity: DeviceIdentity, profiles: Profile[], profile: Profile) => {
+      const catalog = new CatalogStore(backend, profile.id, [])
+      const library = new LibraryStore(backend, identity, profile, (id) => catalog.findLoaded(id))
+      library.markLoaded()
+      diag('session', 'indisponível: entrando sem lista')
+      setState({ status: 'ready', identity, profiles, profile, lease: { id: 'unavailable', profileId: profile.id, expiresAt: 0 }, spaces: [], spacesError: null, unavailable: true, catalog, library })
+    },
+    [backend],
+  )
+
   const enter = useCallback(
     async (identity: DeviceIdentity, profiles: Profile[], profile: Profile, options: { pinVerified?: boolean; tryOnly?: boolean } = {}) => {
       const id = ++run.current
@@ -212,7 +233,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       } catch (raw) {
         if (!alive()) return
         const error = toAppError(raw)
-        if (error.kind === 'device-unpaired') return void toPairing()
+        if (isUnpaired(error)) return void toPairing()
         // Entrada automática no último perfil: PIN exigido pelo servidor → escolha de perfil, sem mensagem de erro.
         if (options.tryOnly && (error.kind === 'profile-locked' || error.kind === 'parental-pin-missing')) {
           setState({ status: 'choosing', identity, profiles, notice: error.kind === 'parental-pin-missing' ? error : null })
@@ -222,6 +243,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setState({ status: 'choosing', identity, profiles, notice: error })
           return
         }
+        if (isUnavailable(error)) return void enterUnavailable(identity, profiles, profile)
         setState({ status: 'blocked', error, identity, profiles, retryProfile: profile })
         return
       }
@@ -232,8 +254,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Qualquer falha vira erro claro com "Tentar novamente", que recomeça do zero.
       const fail = (raw: unknown): void => {
         const error = toAppError(raw)
-        if (error.kind === 'device-unpaired') return void toPairing()
-        setState({ status: 'blocked', error: error.kind === 'unknown' ? new AppError('iptv-unavailable', error.code) : error, identity, profiles, retryProfile: profile })
+        if (isUnpaired(error)) return void toPairing()
+        if (isUnavailable(error)) return void enterUnavailable(identity, profiles, profile)
+        setState({ status: 'blocked', error, identity, profiles, retryProfile: profile })
       }
       let spaces: Space[]
       try {
@@ -303,9 +326,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return
       }
       if (!alive()) return catalog.dispose()
-      setState({ status: 'ready', identity, profiles, profile, lease, spaces, spacesError: null, catalog, library })
+      setState({ status: 'ready', identity, profiles, profile, lease, spaces, spacesError: null, unavailable: false, catalog, library })
     },
-    [backend, leases, toPairing],
+    [backend, leases, toPairing, enterUnavailable],
   )
 
   const loadProfiles = useCallback(async (identity: DeviceIdentity, alive: () => boolean) => {
@@ -316,7 +339,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch (raw) {
       if (!alive()) return
       const error = toAppError(raw)
-      if (error.kind === 'device-unpaired') return void toPairing()
+      if (isUnpaired(error)) return void toPairing()
+      // Sem a lista de perfis: entra no último perfil usado (sem conteúdo) em vez de bloquear.
+      const hint = readJson<{ familyId: string; profileId: string }>(LAST_PROFILE_KEY)
+      if (isUnavailable(error) && hint && hint.familyId === identity.familyId) {
+        const fallback: Profile = { id: hint.profileId, name: 'iPlex', type: 'regular', generations: { favorites: 0, watched: 0, progress: 0 }, permissionsVersion: 0 }
+        return void enterUnavailable(identity, [fallback], fallback)
+      }
       setState({ status: 'blocked', error, identity, profiles: [], retryProfile: null })
       return
     }
@@ -333,7 +362,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return
     }
     setState({ status: 'choosing', identity, profiles, notice: null })
-  }, [backend, enter, toPairing])
+  }, [backend, enter, toPairing, enterUnavailable])
 
   const boot = useCallback(async () => {
     const id = ++run.current
@@ -358,7 +387,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     handleLost.current = (error: AppError) => {
       const current = stateRef.current
       if (current.status !== 'ready') return
-      if (error.kind === 'device-unpaired') return void toPairing()
+      if (isUnpaired(error)) return void toPairing()
       setState({ status: 'blocked', error, identity: current.identity, profiles: current.profiles, retryProfile: current.profile })
     }
   }, [toPairing])
@@ -373,6 +402,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       run.current += 1
     }
   }, [boot])
+
+  // Sem conteúdo (servidor não respondeu): confere a cada 30 s e, ao voltar, recarrega a sessão completa.
+  const unavailable = state.status === 'ready' && state.unavailable
+  useEffect(() => {
+    if (!unavailable) return
+    const id = setInterval(() => {
+      backend.listProfiles().then(() => void boot(), () => undefined)
+    }, UNAVAILABLE_RETRY_MS)
+    return () => clearInterval(id)
+  }, [unavailable, backend, boot])
 
   // Multitarefa: oculto libera a vaga; ao voltar, retoma o lease do mesmo perfil.
   const visible = platform.visible
@@ -449,7 +488,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         try {
           await backend.listProfiles()
         } catch (raw) {
-          if (toAppError(raw).kind === 'device-unpaired' && stateRef.current === current) await toPairing()
+          if (isUnpaired(toAppError(raw)) && stateRef.current === current) await toPairing()
         }
       },
       onHeartbeat: (listener) => {

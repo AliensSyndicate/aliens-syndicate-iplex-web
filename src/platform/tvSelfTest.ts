@@ -496,6 +496,33 @@ async function runHome() {
   await sleep(450)
   await keys('ArrowRight', 12, 120)
   report(`${t}:right`, { focused: label(document.activeElement), y: y() })
+  report(`${t}:hero`, { img: String(!!$('.iplex-home__hero img')), skeleton: String(!!$('.iplex-home__hero .iplex-skeleton')) })
+  // "Ver tudo": uma tela com as categorias do Meu iPlex que têm conteúdo (abre na tocada).
+  for (const id of ['releases', 'favorites', 'wishlist', 'watched', 'continue']) {
+    const button = $(`[data-nav-id="see-all-my-${id}"]`)
+    if (!button) {
+      report(`${t}:seeall-${id}`, { note: 'fileira ausente' })
+      continue
+    }
+    button.focus()
+    button.click()
+    const opened = await waitFor(() => !!$('.iplex-catalog__side') && all('[data-side-item]').length > 0, 15000)
+    await sleep(1500)
+    const items = all('[data-side-item]')
+    const typeButton = items.find((b) => b.dataset.sideSelected !== 'true')
+    const total = ($('.iplex-catalog__count')?.textContent ?? '-').trim()
+    let filtered = '-'
+    if (typeButton) {
+      typeButton.focus()
+      typeButton.click()
+      await sleep(900)
+      filtered = `${(typeButton.textContent ?? '').trim()}=${($('.iplex-catalog__count')?.textContent ?? '-').trim()}`
+    }
+    report(`${t}:seeall-${id}`, { opened: String(opened), h1: ($('h1')?.textContent ?? '').trim(), side: items.map((b) => (b.textContent ?? '').trim()).join('|'), total, filtered, cards: String(all('[data-grid-index]').length) })
+    press('Escape')
+    await waitFor(() => !!$('.iplex-home'), 10000)
+    await sleep(1500)
+  }
 }
 
 export async function runTvSelfTest() {

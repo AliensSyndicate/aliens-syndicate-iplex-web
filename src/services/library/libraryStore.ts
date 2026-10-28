@@ -42,7 +42,7 @@ export interface LibrarySnapshot {
   library: Library
 }
 
-const EMPTY: Library = { favorites: [], watched: [], progress: [] }
+const EMPTY: Library = { favorites: [], wishlist: [], watched: [], progress: [] }
 const indexKey = (familyId: string, profileId: string) => `iplex.library.index.v1.${familyId}.${profileId}`
 
 export class LibraryStore {
@@ -82,6 +82,11 @@ export class LibraryStore {
   async whenLoaded(timeoutMs: number): Promise<void> {
     if (this.snapshot.loaded || !this.loading) return
     await Promise.race([this.loading.catch(() => undefined), new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))])
+  }
+
+  /** Sem servidor: biblioteca vazia e já "carregada" (nada de skeleton eterno). */
+  markLoaded() {
+    this.set(EMPTY, true)
   }
 
   load(): Promise<void> {

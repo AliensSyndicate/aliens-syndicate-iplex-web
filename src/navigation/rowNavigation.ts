@@ -31,14 +31,15 @@ export function scrollToItem(el: HTMLElement, rows: HTMLElement[]) {
   const row = rowOf(el)
   const view = window.innerHeight
   const max = Math.max(0, scroller.scrollHeight - view)
-  // [data-nav-top]: o primeiro item da lista leva a página ao topo (ex.: filmografia).
-  const toTop = !!row && (rows[0] === row || row.hasAttribute('data-nav-top'))
+  // O primeiro item (primeira fileira ou data-nav-top) SEMPRE leva a página ao topo real (0)
+  const isFirstRow = !!row && rows[0] === row
+  const toTop = isFirstRow || (!!row && row.hasAttribute('data-nav-top'))
   if (row && toTop && (isList(row) ? rowItems(row)[0] === el : true)) {
     animateScrollTop(scroller, 0)
     return
   }
   const inset = topInset()
-  const current = scroller.scrollTop
+  const current = (typeof window !== 'undefined' ? window.scrollY : 0) || scroller.scrollTop || 0
   if (row && rows[rows.length - 1] === row && (!isList(row) || rowItems(row).pop() === el)) {
     animateScrollTop(scroller, max)
     return

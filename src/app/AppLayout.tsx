@@ -41,6 +41,9 @@ export function AppLayout() {
       <Suspense fallback={<RouteSkeleton pathname={location.pathname} />}>
         <Outlet />
       </Suspense>
+      {session.unavailable && !immersive && (
+        <p className="iplex-watermark" role="status">Conteúdo indisponível, favor contatar seu fornecedor de IPTV</p>
+      )}
       {menu && <ProfileMenu onClose={() => setMenu(false)} />}
     </div>
   )

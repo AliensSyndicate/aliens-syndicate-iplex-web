@@ -78,20 +78,17 @@ describe('carregamento inicial', () => {
     release()
     expect(await screen.findByRole('navigation', { name: 'Menu principal' }, { timeout: 15000 })).toBeTruthy()
   }, 30000)
-  it('falha no carregamento mostra erro claro e tentar novamente recomeça', async () => {
+  it('falha no carregamento entra na TV sem lista: menu, marca d\'água e sem pedir vínculo', async () => {
     const real = scenarioBackend('single')
-    let fail = true
     start('/', 'single', {
       ...real,
-      readCatalog: async (profileId, query) => {
-        if (fail) throw new AppError('iptv-unavailable', 'down')
-        return real.readCatalog(profileId, query)
+      readCatalog: async () => {
+        throw new AppError('iptv-unavailable', 'down')
       },
     })
-    const retry = await screen.findByRole('button', { name: /Tentar novamente/ }, { timeout: 5000 })
-    fail = false
-    retry.click()
     expect(await screen.findByRole('navigation', { name: 'Menu principal' }, { timeout: 15000 })).toBeTruthy()
+    expect(screen.getByText('Conteúdo indisponível, favor contatar seu fornecedor de IPTV')).toBeTruthy()
+    expect(screen.queryByText(/Vincule esta TV/)).toBeNull()
   }, 30000)
 })
 
@@ -260,9 +257,8 @@ describe('estados de acesso', () => {
   it('fonte IPTV fora do ar não é confundida com assinatura', async () => {
     start('/', 'iptv-down')
     ;(await screen.findByRole('button', { name: /Infantil Demo/ }, { timeout: 5000 })).click()
-    // Carregamento inicial completo: a falha aparece já na inicialização, com "Tentar novamente".
-    expect(await find('Fonte IPTV indisponível')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Tentar novamente/ })).toBeTruthy()
+    // Fonte fora do ar: entra normalmente, com a marca d'água de conteúdo indisponível.
+    expect(await find('Conteúdo indisponível, favor contatar seu fornecedor de IPTV')).toBeTruthy()
     expect(screen.queryByText('Assinatura inativa')).toBeNull()
   })
 })
@@ -301,8 +297,8 @@ describe('compatibilidade com backend anterior', () => {
     expect(screen.getByRole('img', { name: /QR Code de vinculação/ })).toBeTruthy()
     expect(screen.queryByText('123-456')).toBeNull()
   })
-  it('sem listagem de fontes no backend: mensagem de servidor desatualizado', async () => {
+  it('sem listagem de fontes no backend: entra sem lista, com marca d\'água', async () => {
     start('/', 'single', { listSpaces: async () => { throw new AppError('backend-outdated', 'invalid-action') } })
-    expect(await find('Servidor do iPlex desatualizado')).toBeTruthy()
+    expect(await find('Conteúdo indisponível, favor contatar seu fornecedor de IPTV')).toBeTruthy()
   })
 })

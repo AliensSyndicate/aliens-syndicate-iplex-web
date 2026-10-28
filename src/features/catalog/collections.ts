@@ -9,7 +9,7 @@ import { isAdultName } from '../../services/catalog/categoryLabels'
 import type { IndexedItem } from '../../services/library/libraryStore'
 
 export type PersonalCollection = 'continue' | 'favorites' | 'wishlist' | 'watched' | 'releases'
-export type CollectionId = PersonalCollection | 'all' | `cat:${string}`
+export type CollectionId = PersonalCollection | 'all' | `cat:${string}` | `type:${ContentKind}`
 export type SortId = 'az' | 'za' | 'added'
 
 export const SORT_OPTIONS: Array<{ id: SortId; label: string }> = [
@@ -29,7 +29,7 @@ export interface SideEntry {
 export const COLLECTION_TITLES: Record<PersonalCollection | 'all', string> = {
   continue: 'Continuar assistindo',
   favorites: 'Favoritos',
-  wishlist: 'Lista de desejos',
+  wishlist: 'Lista de desejo',
   releases: 'Lançamentos',
   watched: 'Assistidos',
   all: 'Todos',
@@ -49,24 +49,24 @@ const compareText = (a: string, b: string) => (collator ? collator.compare(a, b)
 
 /**
  * Menu lateral, só com coleções que têm conteúdo: Continuar assistindo,
- * Favoritos, Todos, categorias do fornecedor em ordem alfabética e, por último,
- * as adultas (só se permitido). Lista de desejos fica de fora até o backend ter
- * essa coleção (hoje "Adicionar à lista" grava em Favoritos). Sem nenhum
- * conteúdo (ou ainda carregando), "Todos" permanece para sempre haver um item
- * selecionado e para hospedar o estado vazio/carregando.
+ * Favoritos, Lista de desejo, Todos, categorias do fornecedor em ordem alfabética e, por último,
+ * as adultas (só se permitido). Sem nenhum conteúdo (ou ainda carregando),
+ * "Todos" permanece para sempre haver um item selecionado e para hospedar o estado vazio/carregando.
  */
 export function buildSidebar(opts: {
   personal: boolean
   allowAdult: boolean
   categories: Array<{ key: string; name: string }>
-  has?: { continue?: boolean; favorites?: boolean; all?: boolean }
+  has?: { continue?: boolean; favorites?: boolean; wishlist?: boolean; watched?: boolean; all?: boolean }
   /** false (tela Adulto): sem "Todos"; só as categorias. */
   showAll?: boolean
 }): SideEntry[] {
-  const has = { continue: true, favorites: true, all: true, ...opts.has }
+  const has = { continue: true, favorites: true, wishlist: false, watched: false, all: true, ...opts.has }
   const out: SideEntry[] = []
   if (opts.personal && has.continue) out.push({ id: 'continue', label: COLLECTION_TITLES.continue })
   if (opts.personal && has.favorites) out.push({ id: 'favorites', label: COLLECTION_TITLES.favorites })
+  if (opts.personal && has.wishlist) out.push({ id: 'wishlist', label: COLLECTION_TITLES.wishlist })
+  if (opts.personal && has.watched) out.push({ id: 'watched', label: COLLECTION_TITLES.watched })
   const hasCategories = opts.categories.length > 0
   if (opts.showAll !== false && (has.all || (!hasCategories && out.length === 0))) out.push({ id: 'all', label: COLLECTION_TITLES.all })
   const sorted = [...opts.categories].sort((a, b) => compareText(a.name, b.name))
