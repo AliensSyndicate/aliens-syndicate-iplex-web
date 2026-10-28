@@ -115,12 +115,9 @@ export default function MyIplexScreen() {
   const openItem = (i: CatalogItem) => navigate(contentPath(i))
   const greeting = `Olá, ${session.profile.name}`
   const loading = !loaded || movies.loading || series.loading
-  const favoritesBy = (kind: CatalogItem['kind']) => favoriteTitles.filter((item) => item.kind === kind).slice(0, ROW)
-  // Seções pessoais (visitante só tem Lançamentos). Favoritos separados por tipo; nenhuma seção vazia entra.
+  // Seções pessoais (visitante só tem Lançamentos). Nenhuma seção vazia entra.
   const sections = [
-    { id: 'fav-movies', title: 'Favoritos de Filmes', items: favoritesBy('movie'), scope: 'favorites', kind: 'movie' },
-    { id: 'fav-series', title: 'Favoritos de Séries', items: favoritesBy('series'), scope: 'favorites', kind: 'series' },
-    { id: 'fav-channels', title: 'Favoritos de Canais', items: favoritesBy('channel'), scope: 'favorites', kind: 'channel' },
+    { id: 'favorites', title: 'Favoritos', items: favoriteTitles.slice(0, ROW), scope: 'favorites' },
     { id: 'wishlist', title: 'Lista de desejo', items: wishlist, scope: 'wishlist' },
     { id: 'releases', title: 'Lançamentos', items: launches, scope: 'releases' },
     { id: 'watched', title: 'Assistidos', items: watched, scope: 'watched' },
@@ -172,14 +169,15 @@ export default function MyIplexScreen() {
         </ContentCarousel>
       )}
       {visible.map((section) => (
-        <ContentCarousel key={section.id} title={section.title} id={`my-${section.id}`} onSeeAll={() => navigate(PATHS.catalog(section.scope, 'kind' in section ? [section.kind] : undefined))}>
-          {section.items.map((item) =>
-            item.kind === 'channel' ? (
-              <ChannelCard key={item.id} item={item} square navId={`my-${section.id}-${item.id}`} navGroup={`my-${section.id}`} onSelect={openItem} />
-            ) : (
-              <PosterCard key={item.id} item={item} posterOnly navId={`my-${section.id}-${item.id}`} navGroup={`my-${section.id}`} onSelect={openItem} />
-            ),
-          )}
+        <ContentCarousel key={section.id} title={section.title} id={`my-${section.id}`} shape={section.id === 'favorites' ? 'landscape' : undefined} onSeeAll={() => navigate(PATHS.catalog(section.scope))}>
+          {section.items.map((item) => {
+            const navId = `my-${section.id}-${item.id}`
+            const navGroup = `my-${section.id}`
+            if (item.kind === 'channel') return <ChannelCard key={item.id} item={item} square navId={navId} navGroup={navGroup} onSelect={openItem} />
+            // Favoritos (filmes e séries) usam a capa 16:9; as demais seções, o pôster.
+            if (section.id === 'favorites') return <LandscapeCard key={item.id} title={item.title} sourceId={item.sourceId} itemId={item.id} kind={item.kind} year={item.year} imageOnly navId={navId} navGroup={navGroup} onSelect={() => openItem(item)} />
+            return <PosterCard key={item.id} item={item} posterOnly navId={navId} navGroup={navGroup} onSelect={openItem} />
+          })}
         </ContentCarousel>
       ))}
     </main>

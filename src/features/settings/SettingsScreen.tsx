@@ -18,6 +18,9 @@ import { IplexCard } from '../../components/ui/IplexCard'
 import { IplexText } from '../../components/ui/IplexText'
 import { WEB_VERSION } from '../../config/env'
 import { FEATURES } from '../../config/features'
+import { SECTION_PATHS, startSection } from '../profiles/profileRules'
+import { readJson } from '../../utils/storage'
+import { formatDateTime } from '../../utils/time'
 import { useInitialFocus } from '../../navigation/FocusProvider'
 import { useRowNavigation } from '../../navigation/rowNavigation'
 
@@ -45,6 +48,13 @@ export default function SettingsScreen() {
   useRowNavigation()
 
   const account = backend.accountIdentity()
+  // Quando a lista foi conferida neste aparelho (reserva se o servidor não informar a data).
+  const localSync = readJson<Record<string, number>>(`iplex.sourceSync.v1.${ready.identity.familyId}.${ready.profile.id}`) ?? {}
+  /** Troca a lista: volta à página inicial e recarrega tudo desde o começo. */
+  const switchSource = (sourceId: string) => {
+    navigate(SECTION_PATHS[startSection(ready.profile)], { replace: true })
+    void session.selectSource(sourceId)
+  }
   const masked = (id: string) => (id.length > 8 ? `${id.slice(0, 4)}••••${id.slice(-4)}` : id)
   const sourceState = ready.spacesError
     ? ERROR_COPY[ready.spacesError.kind].title
@@ -76,6 +86,37 @@ export default function SettingsScreen() {
             <AccountBadge account={account} />
           </IplexCard>
         )}
+
+        <IplexCard compact className="iplex-settings__card">
+          <IplexText variant="section-title">Listas IPTV</IplexText>
+          {ready.allSpaces.length === 0 ? (
+            <IplexText variant="meta">Nenhuma lista cadastrada. Adicione uma no iPlex Gestor.</IplexText>
+          ) : (
+            <ul className="iplex-settings__lists">
+              {ready.allSpaces.map((space, index) => {
+                const current = ready.spaces.some((s) => s.sourceId === space.sourceId)
+                const updated = space.lastSyncAt ?? localSync[space.sourceId]
+                return (
+                  <li key={space.sourceId} className="iplex-settings__list" data-nav-row="x">
+                    <div className="iplex-settings__list-info">
+                      <IplexText variant="content-title" as="p">{space.name || `Lista ${index + 1}`}</IplexText>
+                      <IplexText variant="meta" secondary as="p">
+                        {current ? 'Lista atual' : 'Disponível'}
+                        {space.unavailable ? ' · com erro no fornecedor' : ''}
+                      </IplexText>
+                      <IplexText variant="meta" secondary as="p">Última atualização: {updated ? formatDateTime(updated) : 'sem registro'}</IplexText>
+                    </div>
+                    {!current && (
+                      <IplexButton variant="secondary" navId={`set-source-${space.sourceId}`} onClick={() => switchSource(space.sourceId)}>
+                        Usar esta lista
+                      </IplexButton>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </IplexCard>
 
         <IplexCard compact className="iplex-settings__card">
           <IplexText variant="section-title">Dispositivo</IplexText>

@@ -35,7 +35,7 @@ export const COLLECTION_TITLES: Record<PersonalCollection | 'all', string> = {
   all: 'Todos',
 }
 
-/** Tipos de cada "Ver tudo" (menu lateral): só favoritos tem canais; continuar assistindo e as demais, filmes e séries. */
+/** Tipos de cada "Ver tudo" (menu lateral): só favoritos tem Ao Vivo; continuar assistindo e as demais, filmes e séries. */
 export const SCOPE_KINDS: Record<PersonalCollection, ContentKind[]> = {
   continue: ['movie', 'series'],
   favorites: ['movie', 'series', 'channel'],
@@ -43,7 +43,7 @@ export const SCOPE_KINDS: Record<PersonalCollection, ContentKind[]> = {
   releases: ['movie', 'series'],
   watched: ['movie', 'series'],
 }
-export const KIND_LABELS: Record<ContentKind, string> = { movie: 'Filmes', series: 'Séries', channel: 'Canais' }
+export const KIND_LABELS: Record<ContentKind, string> = { movie: 'Filmes', series: 'Séries', channel: 'Ao Vivo' }
 
 /** Categoria adulta do fornecedor (o backend já filtra por perfil; isto só a posiciona no fim). */
 export const isAdultCategory = isAdultName
@@ -67,7 +67,7 @@ export function buildSidebar(opts: {
   personal: boolean
   allowAdult: boolean
   categories: Array<{ key: string; name: string }>
-  has?: { continue?: boolean; favorites?: boolean; wishlist?: boolean; watched?: boolean; all?: boolean }
+  has?: { continue?: boolean; favorites?: boolean; wishlist?: boolean; watched?: boolean; releases?: boolean; all?: boolean }
   /** false (tela Adulto): sem "Todos"; só as categorias. */
   showAll?: boolean
 }): SideEntry[] {
@@ -77,6 +77,8 @@ export function buildSidebar(opts: {
   if (opts.personal && has.favorites) out.push({ id: 'favorites', label: COLLECTION_TITLES.favorites })
   if (opts.personal && has.wishlist) out.push({ id: 'wishlist', label: COLLECTION_TITLES.wishlist })
   if (opts.personal && has.watched) out.push({ id: 'watched', label: COLLECTION_TITLES.watched })
+  // Lançamentos vem logo depois do conteúdo pessoal e antes de Todos e das categorias.
+  if (opts.has?.releases) out.push({ id: 'releases', label: COLLECTION_TITLES.releases })
   const hasCategories = opts.categories.length > 0
   if (opts.showAll !== false && (has.all || (!hasCategories && out.length === 0))) out.push({ id: 'all', label: COLLECTION_TITLES.all })
   const sorted = [...opts.categories].sort((a, b) => compareText(a.name, b.name))

@@ -41,7 +41,7 @@ const STEP_LABEL: Record<StartupStep, string> = {
   profile: 'Carregando perfil...',
   movies: 'Configurando filmes...',
   series: 'Configurando séries...',
-  channels: 'Configurando canais...',
+  channels: 'Configurando Ao Vivo...',
   done: 'Tudo pronto!',
 }
 

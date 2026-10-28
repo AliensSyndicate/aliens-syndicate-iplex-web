@@ -37,7 +37,10 @@ export interface ReadySession {
   profiles: Profile[]
   profile: Profile
   lease: Lease
+  /** Lista IPTV em uso (a escolhida em Configurações; por padrão a primeira). */
   spaces: Space[]
+  /** Todas as listas IPTV cadastradas na conta que este perfil pode usar. */
+  allSpaces: Space[]
   spacesError: AppError | null
   /** Fonte IPTV do usuário com erro: a TV navega normalmente, sem conteúdo (marca d'água e sem botões de reproduzir). */
   unavailable: boolean
@@ -68,11 +71,22 @@ export interface SessionApi {
   checkDevice(): Promise<void>
   /** Permissões do perfil mudaram no Control: some/aparece o conteúdo adulto na hora e o catálogo é refeito em seguida. */
   refreshAccess(): Promise<void>
+  /** Passa a usar outra lista IPTV e recarrega tudo desde o início. */
+  selectSource(sourceId: string): Promise<void>
   /** Respostas do heartbeat (pedido de reprodução pendente). Devolve o cancelamento. */
   onHeartbeat(listener: (result: HeartbeatResult) => void): () => void
 }
 
 const LAST_PROFILE_KEY = 'iplex.lastProfile.v1'
+const activeSourceKey = (identity: DeviceIdentity, profile: Profile) => `iplex.activeSource.v1.${identity.familyId}.${profile.id}`
+const syncTimesKey = (identity: DeviceIdentity, profile: Profile) => `iplex.sourceSync.v1.${identity.familyId}.${profile.id}`
+
+/** Uma lista por vez, como no iPlex Control: a escolhida (se ainda existir) ou a primeira. */
+function activeSpaces(all: Space[], identity: DeviceIdentity, profile: Profile): Space[] {
+  if (all.length === 0) return []
+  const chosen = readJson<string>(activeSourceKey(identity, profile))
+  return [all.find((space) => space.sourceId === chosen) ?? all[0]!]
+}
 const UNAVAILABLE_RETRY_MS = 30_000
 
 /** Desvínculo de verdade (revogada/removida no Gestor). Falha ambígua de credencial NÃO desvincula. */
@@ -211,7 +225,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    */
   const enterUnavailable = useCallback(
     async (identity: DeviceIdentity, profiles: Profile[], profile: Profile, alive: () => boolean, known: Space[] | null = null) => {
-      const all = known ?? (await backend.listSpaces(profile.id).catch(() => [] as Space[]))
+      const registered = known ?? (await backend.listSpaces(profile.id).catch(() => [] as Space[]))
+      const all = activeSpaces(registered, identity, profile)
       const scope = `${identity.familyId}:${profile.id}`
       const cached: Array<{ space: Space; result: NonNullable<Awaited<ReturnType<ReturnType<typeof getCatalogCache>['load']>>> }> = []
       for (const space of all) {
@@ -226,7 +241,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await library.load().catch(() => library.markLoaded())
       if (!alive()) return catalog.dispose()
       diag('session', `indisponível: entrando com ${spaces.length} fonte(s) do cache`)
-      setState({ status: 'ready', identity, profiles, profile, lease: { id: 'unavailable', profileId: profile.id, expiresAt: 0 }, spaces, spacesError: null, unavailable: true, catalog, library })
+      setState({ status: 'ready', identity, profiles, profile, lease: { id: 'unavailable', profileId: profile.id, expiresAt: 0 }, spaces, allSpaces: registered, spacesError: null, unavailable: true, catalog, library })
     },
     [backend],
   )
@@ -280,15 +295,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setState({ status: 'blocked', error, identity, profiles, retryProfile: profile })
       }
       let spaces: Space[]
+      let registered: Space[]
       try {
-        spaces = await backend.listSpaces(profile.id)
+        registered = await backend.listSpaces(profile.id)
+        spaces = activeSpaces(registered, identity, profile)
       } catch (raw) {
         if (alive()) fail(raw)
         return
       }
       if (!alive()) return
       // Todas as fontes IPTV do usuário com erro: entra sem conteúdo (marca d'água), sem tocar no nosso servidor.
-      if (spaces.length > 0 && spaces.every((space) => space.unavailable)) return void (await enterUnavailable(identity, profiles, profile, alive, spaces))
+      if (spaces.length > 0 && spaces.every((space) => space.unavailable)) return void (await enterUnavailable(identity, profiles, profile, alive, registered))
       const catalog = new CatalogStore(backend, profile.id, spaces)
       const library = new LibraryStore(backend, identity, profile, (id) => catalog.findLoaded(id))
       try {
@@ -352,7 +369,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return
       }
       if (!alive()) return catalog.dispose()
-      setState({ status: 'ready', identity, profiles, profile, lease, spaces, spacesError: null, unavailable: false, catalog, library })
+      writeJson(syncTimesKey(identity, profile), { ...(readJson<Record<string, number>>(syncTimesKey(identity, profile)) ?? {}), ...Object.fromEntries(spaces.map((space) => [space.sourceId, Date.now()])) })
+      setState({ status: 'ready', identity, profiles, profile, lease, spaces, allSpaces: registered, spacesError: null, unavailable: false, catalog, library })
     },
     [backend, leases, toPairing, enterUnavailable],
   )
@@ -429,7 +447,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!unavailableProfileId) return
     const id = setInterval(() => {
       const probe = async () => {
-        const spaces = await backend.listSpaces(unavailableProfileId)
+        const current = stateRef.current
+        const spaces = current.status === 'ready' ? activeSpaces(await backend.listSpaces(unavailableProfileId), current.identity, current.profile) : await backend.listSpaces(unavailableProfileId)
         if (spaces.length === 0 || spaces.every((space) => space.unavailable)) throw new AppError('iptv-unavailable', 'still-down')
       }
       probe().then(() => void boot(), () => undefined)
@@ -520,6 +539,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return () => {
           beatListeners.current.delete(listener)
         }
+      },
+      selectSource: async (sourceId) => {
+        const current = stateRef.current
+        if (current.status !== 'ready') return
+        writeJson(activeSourceKey(current.identity, current.profile), sourceId)
+        await enter(current.identity, current.profiles, current.profile, { pinVerified: true })
       },
       reloadSpaces: async () => {
         const current = stateRef.current

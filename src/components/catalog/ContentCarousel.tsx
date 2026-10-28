@@ -21,7 +21,7 @@ export function ContentCarousel({
   onNearEnd?: () => void
   count?: number
   shape?: 'poster' | 'landscape' | 'channel'
-  /** "Ver tudo": abre a tela Catálogo (ou a seção) com o contexto da fileira. */
+  /** "Ver tudo": último item da fileira; abre a tela Catálogo com o contexto dela. */
   onSeeAll?: () => void
 }) {
   const headingId = `row-${id}`
@@ -45,13 +45,15 @@ export function ContentCarousel({
         }}
       >
         {children}
+        {/* "Ver tudo" é o último elemento da própria fileira (depois dos itens), no tamanho de um card. */}
+        {onSeeAll && (
+          <button type="button" className={`iplex-tile iplex-tile--${shape} iplex-tile--see-all iplex-focusable`} onClick={onSeeAll} data-nav="" data-nav-id={`see-all-${id}`} data-nav-group={id}>
+            <span className="iplex-tile__frame">
+              <span className="iplex-tile__see-all-label">Ver tudo</span>
+            </span>
+          </button>
+        )}
       </div>
-      {/* Depois da trilha no DOM (a seta direita do último card chega aqui); posicionado no extremo direito do título. */}
-      {onSeeAll && (
-        <button type="button" className="iplex-chip iplex-focusable iplex-row__see-all" onClick={onSeeAll} data-nav="" data-nav-id={`see-all-${id}`} data-nav-group={`${id}-head`}>
-          Ver tudo
-        </button>
-      )}
     </section>
   )
 }

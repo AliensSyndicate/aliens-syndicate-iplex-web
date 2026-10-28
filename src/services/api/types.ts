@@ -120,6 +120,8 @@ export interface Space {
   kinds: ContentKind[]
   /** A fonte IPTV do usuário está com erro (credenciais inválidas ou última sincronização falhou). */
   unavailable?: boolean
+  /** Última atualização da lista no servidor (ms), quando o backend informa. */
+  lastSyncAt?: number
 }
 
 export interface CatalogCategory {

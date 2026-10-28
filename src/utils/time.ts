@@ -11,3 +11,9 @@ export function formatRuntime(minutes: number | null | undefined): string | null
   const m = minutes % 60
   return h ? `${h} h ${m ? `${m} min` : ''}`.trim() : `${m} min`
 }
+
+/** "28/10/2026 13:05" (sem Intl, para a TV). */
+export function formatDateTime(ms: number): string {
+  const d = new Date(ms)
+  return `${two(d.getDate())}/${two(d.getMonth() + 1)}/${d.getFullYear()} ${two(d.getHours())}:${two(d.getMinutes())}`
+}

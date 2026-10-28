@@ -93,7 +93,8 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
 
   // Coleção confirmada (OK/Enter) ou lembrada; enquanto nula vale a primeira com conteúdo.
   const [chosen, setChosen] = useState<CollectionId | null>(remembered?.selected ?? (initial === 'all' ? null : initial))
-  const [sort, setSort] = useState<SortId>(remembered?.sort ?? 'az')
+  // Ordenação escolhida pelo usuário para uma coleção; sem escolha, cada coleção tem a sua padrão (Lançamentos: mais recentes).
+  const [sortChoice, setSortChoice] = useState<{ for: CollectionId; sort: SortId } | null>(remembered ? { for: remembered.selected, sort: remembered.sort } : null)
 
   // Primeira renderização: pinta o skeleton antes do trabalho pesado (categorias e ordenação de dezenas de
   // milhares de itens travam a TV). Ao voltar dos detalhes (view lembrada) já nasce pronta, para restaurar a rolagem.
@@ -148,6 +149,9 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
     return byItem
   }, [library.progress, store, kinds, personal])
 
+  // Lançamentos (filmes e séries com data de inclusão no catálogo): primeira categoria depois do conteúdo pessoal.
+  const releasesItems = useMemo(() => (adult || live ? [] : latestReleases(allItems, 500).filter((i) => typeof i.addedAt === 'number')), [allItems, adult, live])
+
   // Barra de progresso dos cards 16:9 (Continuar assistindo), por item.
   const progressById = useMemo(() => {
     const out = new Map<string, number | null>()
@@ -192,10 +196,11 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
           favorites: libraryLists.favorites.length > 0 || initial === 'favorites',
           wishlist: libraryLists.wishlist.length > 0 || initial === 'wishlist',
           watched: libraryLists.watched.length > 0 || initial === 'watched',
+          releases: releasesItems.length > 0,
           all: allItems.length > 0,
         },
       }),
-    [personal, allowAdult, adult, groups, progressMeta, libraryLists.favorites, libraryLists.wishlist, libraryLists.watched, allItems.length, initial, scope, scopeLists],
+    [personal, allowAdult, adult, groups, progressMeta, libraryLists.favorites, libraryLists.wishlist, libraryLists.watched, allItems.length, releasesItems.length, initial, scope, scopeLists],
   )
 
   // Primeira coleção do menu com conteúdo real (nunca prende o foco em categoria vazia).
@@ -232,12 +237,14 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
     if (selected === 'wishlist') return libraryLists.wishlist
     if (selected === 'watched') return libraryLists.watched
     if (selected === 'all') return allItems
+    if (selected === 'releases') return releasesItems
     const group = groups.get(selected.slice(4))
     if (!group || (isAdultCategory(group.name) && !allowAdult)) return []
     return group.items
-  }, [selected, progressMeta, libraryLists, allItems, groups, allowAdult, scope, scopeLists])
+  }, [selected, progressMeta, libraryLists, allItems, releasesItems, groups, allowAdult, scope, scopeLists])
 
   const sortOptions = useMemo(() => sortOptionsFor(base), [base])
+  const sort: SortId = sortChoice && sortChoice.for === selected ? sortChoice.sort : selected === 'releases' && !scope ? 'added' : 'az'
   const effectiveSort: SortId = sortOptions.some((o) => o.id === sort) ? sort : 'az'
   const items = useMemo(() => sortItems(base, effectiveSort), [base, effectiveSort])
   // Painel do canal (Ao Vivo): abre na linha imediatamente acima do canal selecionado.
@@ -613,7 +620,7 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
 
   const label = scope ? COLLECTION_TITLES[scope] : selected.startsWith('cat:') ? (sidebar.find((s) => s.id === selected)?.label ?? groups.get(selected.slice(4))?.name ?? title) : COLLECTION_TITLES[selected as keyof typeof COLLECTION_TITLES]
   const heading = label
-  const kindLabel = scope ? 'itens' : adult ? 'conteúdo adulto' : kinds.length === 1 ? (kinds[0] === 'movie' ? 'filmes' : kinds[0] === 'channel' ? 'canais' : 'séries') : 'filmes e séries'
+  const kindLabel = scope ? 'itens' : adult ? 'conteúdo adulto' : kinds.length === 1 ? (kinds[0] === 'movie' ? 'filmes' : kinds[0] === 'channel' ? 'conteúdo ao vivo' : 'séries') : 'filmes e séries'
   const sourceStates = <SourceStates spacesError={spacesError} noSources={noSources} noKind={noKind} error={error} kindLabel={kindLabel} onRetry={reload} />
   const blocked = !!(spacesError || noSources || noKind || error)
   // Sem itens ainda, mas a fonte pode entregar (primeira renderização, página em andamento, mais páginas)
@@ -681,7 +688,7 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
                 data-nav-group="catalog-sort"
                 data-sort-index={i}
                 data-sort-selected={isSelected ? 'true' : 'false'}
-                onClick={() => setSort(option.id)}
+                onClick={() => setSortChoice({ for: selected, sort: option.id })}
               >
                 {option.label}
               </button>

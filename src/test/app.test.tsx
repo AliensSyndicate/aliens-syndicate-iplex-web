@@ -142,6 +142,28 @@ describe('cards do catálogo', () => {
   }, 40000)
 })
 
+describe('listas IPTV nas configurações', () => {
+  it('mostra as listas, a atual e a última atualização; trocar recarrega desde o início com a nova lista', async () => {
+    const when = new Date(2026, 9, 28, 13, 5).getTime()
+    const kinds = ['movie', 'series'] as const
+    start('/configuracoes', 'single', {
+      listSpaces: async () => [
+        { sourceId: 'a', name: 'Lista A', kinds: [...kinds], lastSyncAt: when },
+        { sourceId: 'b', name: 'Lista B', kinds: [...kinds] },
+      ],
+    })
+    await screen.findByRole('main', { name: 'Configurações' }, { timeout: 15000 })
+    expect(await find('Listas IPTV')).toBeTruthy()
+    expect(screen.getByText('Lista A')).toBeTruthy()
+    expect(screen.getByText('Última atualização: 28/10/2026 13:05')).toBeTruthy()
+    expect(screen.getAllByText('Lista atual').length).toBe(1)
+    screen.getByRole('button', { name: 'Usar esta lista' }).click()
+    // Volta ao início (Meu iPlex) com a lista nova guardada.
+    await waitFor(() => expect(window.location.pathname).toBe('/meu-iplex'), { timeout: 15000 })
+    expect(JSON.parse(localStorage.getItem('iplex.activeSource.v1.demo-family.admin') ?? 'null')).toBe('b')
+  }, 40000)
+})
+
 describe('troca de perfil', () => {
   it('avatar abre a mesma seleção sem reiniciar o app e, ao trocar, o avatar e o menu seguem o novo perfil', async () => {
     localStorage.setItem('iplex.lastProfile.v1', JSON.stringify({ familyId: 'demo-family', profileId: 'guest' }))

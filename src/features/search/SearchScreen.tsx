@@ -268,7 +268,7 @@ export default function SearchScreen() {
           className="iplex-search__input iplex-focusable"
           value={term}
           onChange={(e) => setTerm(e.target.value)}
-          placeholder="Canais, filmes ou séries"
+          placeholder="Ao Vivo, filmes ou séries"
           autoComplete="off"
           spellCheck={false}
           readOnly={platform.isTv}
