@@ -35,7 +35,7 @@ export function diag(event: string, detail = ''): void {
   sequence += 1
   try {
     window.parent.postMessage(
-      { protocol: BRIDGE_PROTOCOL, version: BRIDGE_VERSION, kind: 'request', id: `diag-${sequence}`, method: clean(`diag:${event}:${detail}`), params: null },
+      { protocol: BRIDGE_PROTOCOL, version: BRIDGE_VERSION, kind: 'request', id: `diag-${sequence}`, method: clean(`diag:${event}:${detail} @${Math.round(performance.now())}ms`), params: null },
       '*',
     )
   } catch {

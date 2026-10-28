@@ -87,6 +87,8 @@ export interface Backend {
   readonly label: 'firebase' | 'mock'
   /** Restaura a credencial do dispositivo (Firebase Auth persistido). null = não pareado. */
   restoreDevice(): Promise<DeviceIdentity | null>
+  /** Começa a restaurar a credencial antes de a interface existir; o próximo restoreDevice reaproveita o resultado. */
+  warmUp?(): void
   beginPairing(request: PairingRequest): Promise<PairingSession>
   pollPairing(token: string): Promise<PairingPoll>
   /** Esquece a credencial local (após revogação no backend). */

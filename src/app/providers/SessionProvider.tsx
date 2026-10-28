@@ -14,12 +14,13 @@ import { decideStartupProfile, requiresPin, sortProfiles } from '../../features/
 import type { HeartbeatResult } from '../../services/api/backend'
 import { AppError, isAmbiguousAuthFailure, toAppError } from '../../services/api/errors'
 import type { CatalogRecord, DeviceIdentity, Lease, Profile, Space } from '../../services/api/types'
+import type { SourceMeta, SourceSets } from '../../services/catalog/catalogCache'
 import { CatalogStore } from '../../services/catalog/catalogStore'
 import { CATALOG } from '../../config/features'
 import { prefetchScreens } from '../screens'
 import { resetViewMemory } from '../../features/catalog/viewMemory'
 import { getCatalogCache } from '../../services/catalog/catalogCache'
-import { syncSources } from '../../services/catalog/catalogSync'
+import { openFromCache, streamFromCache, syncSources } from '../../services/catalog/catalogSync'
 import { LibraryStore } from '../../services/library/libraryStore'
 import { LeaseManager } from '../../services/session/leaseManager'
 import { readJson, writeJson } from '../../utils/storage'
@@ -96,6 +97,12 @@ const isUnpaired = (error: AppError) => error.kind === 'device-unpaired' && !isA
  * (verificação do dispositivo, perfis, conta) barra o app na tela inicial, com "Tentar novamente".
  */
 const isUnavailable = (error: AppError) => error.kind === 'iptv-unavailable'
+/** Biblioteca que a entrada já começou a ler (evita ler de novo ao cair na entrada sem fonte). */
+interface EarlyLibrary {
+  library: LibraryStore
+  loading: Promise<void>
+  attach: (catalog: CatalogStore) => void
+}
 const Ctx = createContext<SessionApi | null>(null)
 
 export function SessionProvider({ children }: { children: ReactNode }) {
@@ -224,24 +231,41 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * Sem lease e sem reprodução; a marca d'água avisa e a sessão completa volta sozinha quando a fonte responder.
    */
   const enterUnavailable = useCallback(
-    async (identity: DeviceIdentity, profiles: Profile[], profile: Profile, alive: () => boolean, known: Space[] | null = null) => {
+    async (identity: DeviceIdentity, profiles: Profile[], profile: Profile, alive: () => boolean, known: Space[] | null = null, early: EarlyLibrary | null = null) => {
       const registered = known ?? (await backend.listSpaces(profile.id).catch(() => [] as Space[]))
       const all = activeSpaces(registered, identity, profile)
       const scope = `${identity.familyId}:${profile.id}`
-      const cached: Array<{ space: Space; result: NonNullable<Awaited<ReturnType<ReturnType<typeof getCatalogCache>['load']>>> }> = []
+      const cache = getCatalogCache()
+      // Cache no esquema atual: abre já e os grupos chegam em segundo plano. Cache do esquema antigo: o `load` migra (uma vez).
+      const fast: Array<{ space: Space; meta: SourceMeta }> = []
+      const legacy: Array<{ space: Space; result: NonNullable<Awaited<ReturnType<typeof cache.load>>> }> = []
       for (const space of all) {
-        const result = await getCatalogCache().load(scope, space.sourceId).catch(() => null)
-        if (result) cached.push({ space, result })
+        const meta = await cache.loadMeta(scope, space.sourceId).catch(() => null)
+        if (meta) {
+          fast.push({ space, meta })
+          continue
+        }
+        const result = await cache.load(scope, space.sourceId).catch(() => null)
+        if (result) legacy.push({ space, result })
       }
       if (!alive()) return
-      const spaces = cached.map((entry) => entry.space)
+      const spaces = [...fast.map((entry) => entry.space), ...legacy.map((entry) => entry.space)]
       const catalog = new CatalogStore(backend, profile.id, spaces)
-      for (const { space, result } of cached) catalog.hydrate(space.sourceId, result.sets, result.meta.version, result.sets.adult.length > 0)
-      const library = new LibraryStore(backend, identity, profile, (id) => catalog.findLoaded(id))
-      await library.load().catch(() => library.markLoaded())
+      for (const { space, meta } of fast) catalog.beginProgressive(space.sourceId, meta.version, meta.counts.adult > 0)
+      for (const { space, result } of legacy) catalog.hydrate(space.sourceId, result.sets, result.meta.version, result.sets.adult.length > 0)
+      const library = early?.library ?? new LibraryStore(backend, identity, profile, (id) => catalog.findLoaded(id))
+      early?.attach(catalog)
+      await (early?.loading ?? library.load()).catch(() => library.markLoaded())
       if (!alive()) return catalog.dispose()
       diag('session', `indisponível: entrando com ${spaces.length} fonte(s) do cache`)
       setState({ status: 'ready', identity, profiles, profile, lease: { id: 'unavailable', profileId: profile.id, expiresAt: 0 }, spaces, allSpaces: registered, spacesError: null, unavailable: true, catalog, library })
+      for (const { space, meta } of fast) {
+        void streamFromCache({ cache, diag }, catalog, scope, space.sourceId, meta, meta.counts.adult > 0)
+          .catch(() => null)
+          .then((sets) => {
+            if (!sets) catalog.finishProgressive(space.sourceId)
+          })
+      }
     },
     [backend],
   )
@@ -263,6 +287,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       if (switching) resetViewMemory()
       setState({ status: 'starting', step: switching ? 'profile' : 'account' })
+      // O código das telas não depende de nada do backend: baixa enquanto o lease é obtido.
+      const prefetched = prefetchScreens()
+      let catalogRef: CatalogStore | null = null
+      const library = new LibraryStore(backend, identity, profile, (id) => catalogRef?.findLoaded(id) ?? null)
       let lease: Lease
       try {
         lease = await step(leases.acquire(profile.id))
@@ -294,10 +322,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (isUnavailable(error)) return void enterUnavailable(identity, profiles, profile, alive, known)
         setState({ status: 'blocked', error, identity, profiles, retryProfile: profile })
       }
+      // O backend só atende espaços e biblioteca com o lease ativo (session-expired sem ele): depois do lease,
+      // os dois são independentes e saem juntos.
+      const listing = backend.listSpaces(profile.id)
+      const loadingLibrary = library.load()
+      for (const started of [listing, loadingLibrary]) started.catch(() => undefined)
+      const early: EarlyLibrary = { library, loading: loadingLibrary, attach: (catalog) => void (catalogRef = catalog) }
       let spaces: Space[]
       let registered: Space[]
       try {
-        registered = await backend.listSpaces(profile.id)
+        registered = await listing
         spaces = activeSpaces(registered, identity, profile)
       } catch (raw) {
         if (alive()) fail(raw)
@@ -305,11 +339,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       if (!alive()) return
       // Todas as fontes IPTV do usuário com erro: entra sem conteúdo (marca d'água), sem tocar no nosso servidor.
-      if (spaces.length > 0 && spaces.every((space) => space.unavailable)) return void (await enterUnavailable(identity, profiles, profile, alive, registered))
+      if (spaces.length > 0 && spaces.every((space) => space.unavailable)) return void (await enterUnavailable(identity, profiles, profile, alive, registered, early))
       const catalog = new CatalogStore(backend, profile.id, spaces)
-      const library = new LibraryStore(backend, identity, profile, (id) => catalog.findLoaded(id))
+      catalogRef = catalog
       try {
-        await library.load()
+        await loadingLibrary
       } catch (raw) {
         catalog.dispose()
         if (alive()) fail(raw, spaces)
@@ -325,25 +359,53 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           if (error) throw error
         }
       }
+      let background: (() => Promise<void>) | null = null
       try {
         // Seis conjuntos (cache local + diferenças); o formato paginado só entra se o backend for antigo.
         let prepared = false
         try {
-          const results = await syncSources(
-            { backend, cache: getCatalogCache(), diag },
-            `${identity.familyId}:${profile.id}`,
-            profile.id,
-            spaces.map((space) => space.sourceId),
-            (group) => {
+          const syncDeps = { backend, cache: getCatalogCache(), diag }
+          const scope = `${identity.familyId}:${profile.id}`
+          const sourceIds = spaces.map((space) => space.sourceId)
+          // Cache válido (esquema atual e mesmas permissões): a interface abre já e os grupos chegam em segundo plano.
+          const open = await openFromCache(syncDeps, scope, profile.id, sourceIds)
+          if (open) {
+            for (const entry of open) catalog.beginProgressive(entry.sourceId, entry.meta.version, entry.manifest?.adultEnabled === true)
+            background = async () => {
+              try {
+                const preloaded = new Map<string, { meta: SourceMeta; sets: SourceSets }>()
+                for (const entry of open) {
+                  const sets = await streamFromCache(syncDeps, catalog, scope, entry.sourceId, entry.meta, entry.manifest?.adultEnabled === true)
+                  if (!alive()) return
+                  if (sets) preloaded.set(entry.sourceId, { meta: entry.meta, sets })
+                }
+                // Versão nova (ou cache corrompido): diferenças/baixa completa em segundo plano e troca de uma vez.
+                if (open.some((entry) => !preloaded.has(entry.sourceId) || entry.manifest?.version !== entry.meta.version)) {
+                  const results = await syncSources({ ...syncDeps, preloaded }, scope, profile.id, sourceIds)
+                  if (!alive()) return
+                  for (const result of results) {
+                    await catalog.hydrateAsync(result.sourceId, result.sets, result.version, result.adultEnabled)
+                    diag('sync', `fonte=${result.sourceId.slice(0, 8)} modo=${result.mode} ${result.ms}ms (segundo plano)`)
+                  }
+                }
+                if (alive()) writeJson(syncTimesKey(identity, profile), { ...(readJson<Record<string, number>>(syncTimesKey(identity, profile)) ?? {}), ...Object.fromEntries(sourceIds.map((sourceId) => [sourceId, Date.now()])) })
+              } catch (raw) {
+                diag('sync', `segundo plano falhou: ${toAppError(raw).kind}`)
+                for (const sourceId of sourceIds) catalog.finishProgressive(sourceId)
+              }
+            }
+            prepared = true
+          } else {
+            const results = await syncSources(syncDeps, scope, profile.id, sourceIds, (group) => {
               // O grupo adulto não tem texto próprio na inicialização.
               if (alive() && group !== 'adult' && !switching) setState({ status: 'starting', step: group })
-            },
-          )
-          for (const result of results) {
-            catalog.hydrate(result.sourceId, result.sets, result.version, result.adultEnabled)
-            diag('sync', `fonte=${result.sourceId.slice(0, 8)} modo=${result.mode} ${result.ms}ms`)
+            })
+            for (const result of results) {
+              catalog.hydrate(result.sourceId, result.sets, result.version, result.adultEnabled)
+              diag('sync', `fonte=${result.sourceId.slice(0, 8)} modo=${result.mode} ${result.ms}ms`)
+            }
+            prepared = true
           }
-          prepared = true
         } catch (raw) {
           if (toAppError(raw).kind !== 'backend-outdated') throw raw
           diag('sync', 'backend sem seis conjuntos: formato paginado')
@@ -357,8 +419,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           await loadKinds(['channel'])
         }
         // Meu iPlex é preparado junto (telas já carregadas na troca de perfil; biblioteca e catálogo já estão prontos aqui).
-        await prefetchScreens()
-        if (!switching) {
+        await prefetched
+        if (!switching && !background) {
           if (alive()) setState({ status: 'starting', step: 'done' })
           // O texto final precisa ser legível antes de entrar na interface.
           await new Promise((resolve) => setTimeout(resolve, 400))
@@ -369,8 +431,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return
       }
       if (!alive()) return catalog.dispose()
-      writeJson(syncTimesKey(identity, profile), { ...(readJson<Record<string, number>>(syncTimesKey(identity, profile)) ?? {}), ...Object.fromEntries(spaces.map((space) => [space.sourceId, Date.now()])) })
+      if (!background) writeJson(syncTimesKey(identity, profile), { ...(readJson<Record<string, number>>(syncTimesKey(identity, profile)) ?? {}), ...Object.fromEntries(spaces.map((space) => [space.sourceId, Date.now()])) })
       setState({ status: 'ready', identity, profiles, profile, lease, spaces, allSpaces: registered, spacesError: null, unavailable: false, catalog, library })
+      if (background) void background()
     },
     [backend, leases, toPairing, enterUnavailable],
   )

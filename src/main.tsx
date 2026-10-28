@@ -7,8 +7,16 @@ import './styles/app.css'
 import { App } from './app/App'
 import { diag, diagnosticsEnabled, installDiagnostics } from './platform/diagnostics'
 import { prepareTypography } from './styles/fonts'
+import { firebaseConfig, USE_MOCKS } from './config/env'
+import { sharedFirebaseBackend } from './services/firebase/firebaseBackend'
 
 installDiagnostics()
+
+// Credencial do dispositivo restaurada enquanto as fontes carregam e o React monta (era só depois disso).
+if (!(import.meta.env.DEV && USE_MOCKS)) {
+  const config = firebaseConfig()
+  if (config) sharedFirebaseBackend(config).warmUp?.()
+}
 
 /**
  * A interface só é montada com a Google Sans pronta (sem FOUT). Enquanto

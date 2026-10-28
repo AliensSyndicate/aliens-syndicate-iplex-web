@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { AppError } from '../api/errors'
 import type { CatalogChunk, CatalogDelta, CatalogManifest, CatalogRecord, CatalogSetName } from '../api/types'
 import { applyOps, createMemoryCache, emptySets, SET_ORDER, type SourceSets } from './catalogCache'
-import { mergeSteps, syncSources } from './catalogSync'
+import { mergeSteps, openFromCache, streamFromCache, syncSources } from './catalogSync'
 
 const rec = (id: string, extra: Record<string, unknown> = {}): CatalogRecord => ({ id, title: id, ...extra })
 const world = (movies: string[], categories = ['1']): SourceSets => ({
@@ -45,6 +45,9 @@ function fakeServer(initial: SourceSets) {
   }
   return {
     backend,
+    setViewerKey(key: string) {
+      viewerKey = key
+    },
     publish(next: SourceSets, version: string, steps: Array<{ version: string; sets: Partial<Record<CatalogSetName, { upserts: CatalogRecord[]; deletes: string[] }>> }> | null) {
       previous = current
       current = version
@@ -178,5 +181,72 @@ describe('syncSources', () => {
     await cache.clearScope('f:kids')
     expect(await cache.load('f:kids', 's1')).toBeNull()
     expect(await cache.load('f:admin', 's1')).not.toBeNull()
+  })
+})
+
+describe('entrada rápida pelo cache', () => {
+  const scope = 'fam:perfil'
+  const meta = (sets: SourceSets, viewerKey = 'viewer-A') => ({ schema: 3, version: 'v1', viewerKey, counts: Object.fromEntries(SET_ORDER.map((n) => [n, sets[n].length])) as Record<CatalogSetName, number>, updatedAt: 1 })
+  const target = () => {
+    const calls: string[] = []
+    return {
+      calls,
+      fillGroup: vi.fn(async (_s: string, group: string, _c: CatalogRecord[], records: CatalogRecord[]) => void calls.push(`${group}:${records.length}`)),
+      finishProgressive: vi.fn((s: string) => void calls.push(`fim:${s}`)),
+    }
+  }
+  const deps = (cache: ReturnType<typeof createMemoryCache>) => ({ cache, backend: fakeServer(world(['m1'])).backend })
+
+  it('abre pelo cache só com o mesmo viewerKey; permissões diferentes baixam tudo', async () => {
+    const sets = world(['m1', 'm2', 'm3'])
+    const cache = createMemoryCache()
+    await cache.replace(scope, 's1', meta(sets), sets)
+    const server = fakeServer(sets)
+    const ok = await openFromCache({ cache, backend: server.backend }, scope, 'perfil', ['s1'])
+    expect(ok?.[0]?.meta.version).toBe('v1')
+    server.setViewerKey('viewer-B')
+    expect(await openFromCache({ cache, backend: server.backend }, scope, 'perfil', ['s1'])).toBeNull()
+    expect(await openFromCache({ cache, backend: server.backend }, scope, 'perfil', ['sem-cache'])).toBeNull()
+  })
+
+  it('entrega canais, filmes, séries e adulto em ordem e devolve os conjuntos', async () => {
+    const sets = world(['m1', 'm2', 'm3'])
+    const cache = createMemoryCache()
+    await cache.replace(scope, 's1', meta(sets), sets)
+    const t = target()
+    const out = await streamFromCache(deps(cache), t, scope, 's1', meta(sets), true)
+    expect(t.calls).toEqual(['channel:1', 'movie:3', 'series:0', 'adult:1', 'fim:s1'])
+    expect(out?.vod).toHaveLength(3)
+  })
+
+  it('sem o grupo adulto quando o perfil não é habilitado', async () => {
+    const sets = world(['m1'])
+    const cache = createMemoryCache()
+    await cache.replace(scope, 's1', meta(sets), sets)
+    const t = target()
+    await streamFromCache(deps(cache), t, scope, 's1', meta(sets), false)
+    expect(t.calls).not.toContain('adult:1')
+  })
+
+  it('contagem divergente = cache corrompido: devolve null sem concluir', async () => {
+    const sets = world(['m1', 'm2'])
+    const cache = createMemoryCache()
+    await cache.replace(scope, 's1', meta(sets), sets)
+    const t = target()
+    const bad = meta(sets)
+    bad.counts.vod = 99
+    expect(await streamFromCache(deps(cache), t, scope, 's1', bad, true)).toBeNull()
+    expect(t.finishProgressive).not.toHaveBeenCalled()
+  })
+
+  it('syncSources usa os conjuntos já lidos (preloaded) sem reler o cache', async () => {
+    const sets = world(['m1'])
+    const cache = createMemoryCache()
+    await cache.replace(scope, 's1', meta(sets), sets)
+    const load = vi.spyOn(cache, 'load')
+    const server = fakeServer(sets)
+    const [result] = await syncSources({ cache, backend: server.backend, preloaded: new Map([['s1', { meta: meta(sets), sets }]]) }, scope, 'perfil', ['s1'])
+    expect(result?.mode).toBe('cache')
+    expect(load).not.toHaveBeenCalled()
   })
 })

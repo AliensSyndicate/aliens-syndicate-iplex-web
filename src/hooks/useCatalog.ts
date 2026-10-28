@@ -22,15 +22,21 @@ export function useCatalog(kind: ContentKind, enabled = true) {
 
   // revision força recomputar quando o store muda.
   const items = useMemo(() => (enabled ? catalog.items(kind) : EMPTY_ITEMS), [catalog, kind, enabled, snapshot.revision]) // eslint-disable-line react-hooks/exhaustive-deps
-  const categories = useMemo(() => (enabled ? catalog.categories(kind) : EMPTY_CATEGORIES), [catalog, kind, enabled, snapshot.revision]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Objeto estável enquanto o store não muda: as telas derivam listas enormes dele (categorias, ordenação)
   // e não podem refazer esse trabalho a cada renderização (foco, rolagem).
+  // `categories` só é calculado quando uma tela o lê (só o Catálogo): agrupar dezenas de milhares de itens a cada
+  // mudança do store, em telas que não usam categorias, custava segundos na TV durante o carregamento do cache.
   return useMemo(
-    () => ({
+    () => {
+      let grouped: typeof EMPTY_CATEGORIES | null = null
+      return {
       catalog,
       items,
-      categories,
+      get categories() {
+        if (!enabled) return EMPTY_CATEGORIES
+        return (grouped ??= catalog.categories(kind))
+      },
       spaces: kindSpaces,
       spacesError,
       noSources: !spacesError && !unavailable && spaces.length === 0,
@@ -40,8 +46,9 @@ export function useCatalog(kind: ContentKind, enabled = true) {
       hasMore: catalog.hasMore(kind),
       loadMore,
       reload,
-    }),
+      }
+    },
     // snapshot.revision: loading/error/hasMore mudam junto com o store.
-    [catalog, kind, items, categories, kindSpaces, spacesError, unavailable, spaces.length, snapshot.revision, loadMore, reload], // eslint-disable-line react-hooks/exhaustive-deps
+    [catalog, kind, enabled, items, kindSpaces, spacesError, unavailable, spaces.length, snapshot.revision, loadMore, reload], // eslint-disable-line react-hooks/exhaustive-deps
   )
 }

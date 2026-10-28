@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { firebaseConfig, USE_MOCKS } from '../../config/env'
 import type { Backend } from '../../services/api/backend'
 import { AppError } from '../../services/api/errors'
-import { createFirebaseBackend } from '../../services/firebase/firebaseBackend'
+import { sharedFirebaseBackend } from '../../services/firebase/firebaseBackend'
 import { createTmdbClient, type TmdbClient } from '../../services/tmdb/tmdbClient'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { SplashScreen } from '../../features/startup/SplashScreen'
@@ -23,7 +23,7 @@ async function createBackend(): Promise<Backend> {
   }
   const config = firebaseConfig()
   if (!config) throw new AppError('not-configured', 'firebase-config-missing')
-  return createFirebaseBackend(config)
+  return sharedFirebaseBackend(config)
 }
 
 export function BackendProvider({ children, backend: injected }: { children: ReactNode; backend?: Backend }) {

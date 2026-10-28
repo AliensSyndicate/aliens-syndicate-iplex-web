@@ -63,6 +63,12 @@ interface Context {
 /** Callable do Player no backend (repositório do Gestor). */
 export const PLAYER_CALLABLE = 'player'
 
+let shared: Backend | null = null
+/** Uma só instância por página: a pré-aquecida em main.tsx é a mesma que a interface usa. */
+export function sharedFirebaseBackend(config: FirebaseWebConfig): Backend {
+  return (shared ??= createFirebaseBackend(config))
+}
+
 export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
   let ctx: Context | null = null
   let account: AccountIdentity | null = null
@@ -105,6 +111,21 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
     }
   }
 
+  async function restore(): Promise<DeviceIdentity | null> {
+    const started = performance.now()
+    const { auth } = context()
+    try {
+      await auth.authStateReady()
+      diag('auth', `ready ${Math.round(performance.now() - started)}ms`)
+      const identity = await identityFromUser()
+      diag('auth', `identity ${Math.round(performance.now() - started)}ms`)
+      return identity
+    } catch (error) {
+      throw toAppError(error)
+    }
+  }
+  let warmed: Promise<DeviceIdentity | null> | null = null
+
   async function identityFromUser(): Promise<DeviceIdentity | null> {
     const { auth } = context()
     const user = auth.currentUser
@@ -124,13 +145,19 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
     label: 'firebase',
 
     async restoreDevice() {
-      const { auth } = context()
-      try {
-        await auth.authStateReady()
-        return await identityFromUser()
-      } catch (error) {
-        throw toAppError(error)
+      // Reaproveita, uma única vez, a restauração iniciada por warmUp (depois disso cada chamada confere de novo).
+      if (warmed) {
+        const early = warmed
+        warmed = null
+        return early
       }
+      return restore()
+    },
+
+    warmUp() {
+      if (warmed) return
+      warmed = restore()
+      warmed.catch(() => undefined)
     },
 
     async beginPairing(request: PairingRequest): Promise<PairingSession> {
