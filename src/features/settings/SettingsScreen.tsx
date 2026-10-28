@@ -98,19 +98,19 @@ export default function SettingsScreen() {
                 const updated = space.lastSyncAt ?? localSync[space.sourceId]
                 return (
                   <li key={space.sourceId} className="iplex-settings__list" data-nav-row="x">
-                    <div className="iplex-settings__list-info">
-                      <IplexText variant="content-title" as="p">{space.name || `Lista ${index + 1}`}</IplexText>
-                      <IplexText variant="meta" secondary as="p">
-                        {current ? 'Lista atual' : 'Disponível'}
-                        {space.unavailable ? ' · com erro no fornecedor' : ''}
-                      </IplexText>
-                      <IplexText variant="meta" secondary as="p">Última atualização: {updated ? formatDateTime(updated) : 'sem registro'}</IplexText>
-                    </div>
-                    {!current && (
-                      <IplexButton variant="secondary" navId={`set-source-${space.sourceId}`} onClick={() => switchSource(space.sourceId)}>
-                        Usar esta lista
-                      </IplexButton>
-                    )}
+                    {/* Cada lista é um botão com o nome; o atual é o destacado. A data fica embaixo. */}
+                    <IplexButton
+                      variant={current ? 'primary' : 'secondary'}
+                      navId={`set-source-${space.sourceId}`}
+                      aria-current={current ? 'true' : undefined}
+                      aria-label={`${space.name || `Lista ${index + 1}`}${current ? ', lista atual' : ''}`}
+                      onClick={() => !current && switchSource(space.sourceId)}
+                    >
+                      {space.name || `Lista ${index + 1}`}
+                    </IplexButton>
+                    <IplexText variant="meta" secondary as="p" className="iplex-settings__list-date">
+                      {updated ? formatDateTime(updated) : 'sem registro'}
+                    </IplexText>
                   </li>
                 )
               })}

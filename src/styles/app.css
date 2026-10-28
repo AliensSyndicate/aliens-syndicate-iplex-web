@@ -1434,20 +1434,15 @@
   padding: 0;
   list-style: none;
 }
-.iplex-settings__list {
-  display: -webkit-flex;
-  display: flex;
-  -webkit-align-items: center;
-  align-items: center;
-  -webkit-justify-content: space-between;
-  justify-content: space-between;
-}
 .iplex-settings__list + .iplex-settings__list {
   margin-top: var(--iplex-space-4);
 }
-.iplex-settings__list-info {
-  min-width: 0;
-  margin-right: var(--iplex-space-4);
+.iplex-settings__list .iplex-button {
+  width: 100%;
+}
+.iplex-settings__list-date {
+  margin: var(--iplex-space-2) 0 0;
+  text-align: center;
 }
 .iplex-settings__danger {
   margin-top: var(--iplex-space-5);
@@ -1868,8 +1863,11 @@
   align-items: center;
   -webkit-justify-content: center;
   justify-content: center;
+  /* Mesma fonte do nome mostrado quando a imagem do card não carrega. */
+  font-size: calc(var(--iplex-type-meta) - 4px);
+  font-weight: var(--iplex-font-weight-medium);
+  line-height: var(--iplex-line-height-tight);
   color: var(--iplex-text-primary);
-  font-weight: 600;
 }
 .iplex-row__see-all {
   position: absolute;
