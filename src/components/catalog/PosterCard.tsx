@@ -31,6 +31,9 @@ export function PosterCard({ item, navId, navGroup, onSelect, progress, autoFocu
   const meta = useMatch(item, visible && !adult && !sourceImage)
   const summary = meta.status === 'ready' ? meta.summary : null
   const title = summary?.title || item.title
+  const poster = sourceImage ?? summary?.poster ?? null
+  // Nunca um quadro vazio: sem imagem, o nome aparece (só espera em silêncio enquanto o TMDB responde).
+  const showName = !poster && (adult || meta.status !== 'loading')
   return (
     <button
       ref={ref}
@@ -46,7 +49,7 @@ export function PosterCard({ item, navId, navGroup, onSelect, progress, autoFocu
       {...(gridIndex !== undefined ? { 'data-grid-index': String(gridIndex) } : {})}
     >
       <span className="iplex-tile__frame">
-        <Artwork src={sourceImage ?? summary?.poster} alt="" fallback={posterOnly || (!adult && (meta.status === 'idle' || meta.status === 'loading')) ? '' : item.title} />
+        <Artwork src={poster} alt="" fallback={showName ? item.title : ''} failedText={item.title} />
         {typeof progress === 'number' && <ProgressBar value={progress} />}
       </span>
       {!posterOnly && <span className="iplex-tile__label">{title}</span>}

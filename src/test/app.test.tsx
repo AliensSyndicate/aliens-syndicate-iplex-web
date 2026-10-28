@@ -131,6 +131,17 @@ describe('catálogo', () => {
   }, 40000)
 })
 
+describe('cards do catálogo', () => {
+  it('nenhum card fica vazio: sem imagem aparece o nome', async () => {
+    start('/filmes', 'single')
+    await waitFor(() => expect(document.querySelectorAll('[data-grid-index]').length).toBeGreaterThan(0), { timeout: 15000 })
+    await waitFor(() => {
+      const empty = Array.from(document.querySelectorAll('[data-grid-index]')).filter((el) => !el.querySelector('img') && !(el.querySelector('.iplex-artwork__text')?.textContent ?? '').trim())
+      expect(empty.length).toBe(0)
+    }, { timeout: 8000 })
+  }, 40000)
+})
+
 describe('troca de perfil', () => {
   it('avatar abre a mesma seleção sem reiniciar o app e, ao trocar, o avatar e o menu seguem o novo perfil', async () => {
     localStorage.setItem('iplex.lastProfile.v1', JSON.stringify({ familyId: 'demo-family', profileId: 'guest' }))

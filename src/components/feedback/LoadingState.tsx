@@ -37,7 +37,7 @@ export function SkeletonRow({ shape = 'poster', count = 15 }: { shape?: 'poster'
 }
 
 /** Grade de placeholders (catálogo): `count` cards em linhas de `cols`, mesmas medidas do grid real. */
-export function SkeletonGrid({ count = 15, cols = 5, shape = 'poster' }: { count?: number; cols?: number; shape?: 'poster' | 'square' }) {
+export function SkeletonGrid({ count = 15, cols = 5, shape = 'poster' }: { count?: number; cols?: number; shape?: 'poster' | 'square' | 'landscape' }) {
   const rows = Math.ceil(count / cols)
   return (
     <div className="iplex-catalog__grid iplex-catalog__grid--skeleton" aria-hidden="true">

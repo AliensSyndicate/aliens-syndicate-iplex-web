@@ -16,6 +16,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useReadySession } from '../../app/providers/SessionProvider'
 import { contentPath, PATHS } from '../../app/routes/paths'
 import { ChannelCard } from '../../components/catalog/ChannelCard'
+import { LandscapeCard } from '../../components/catalog/LandscapeCard'
 import { PosterCard } from '../../components/catalog/PosterCard'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { SkeletonGrid } from '../../components/feedback/LoadingState'
@@ -36,10 +37,11 @@ import { viewMemory } from './viewMemory'
 import { LiveChannelPanel } from '../live-tv/LiveChannelPanel'
 import { useLiveState } from '../live-tv/useLiveState'
 import { hasPersonalLibrary, isKids } from '../profiles/profileRules'
-import { COLLECTION_TITLES, buildSidebar, isAdultCategory, itemFromIndexed, sortItems, sortOptionsFor, continuing, latestReleases, type CollectionId, type PersonalCollection, type SideEntry, type SortId } from './collections'
+import { COLLECTION_TITLES, KIND_LABELS, SCOPE_KINDS, buildSidebar, isAdultCategory, itemFromIndexed, sortItems, sortOptionsFor, continuing, latestReleases, type CollectionId, type PersonalCollection, type SideEntry, type SortId } from './collections'
 
 const GRID_COLS = 5
 const LIVE_COLS = 6
+const LANDSCAPE_COLS = 4
 /** Primeiro lote e lotes seguintes do grid (também a quantidade de skeletons). */
 const BATCH = 30
 const SKELETONS = BATCH
@@ -48,28 +50,28 @@ const OVERSCAN = 3
 const DEFAULT_ROW_HEIGHT = 340
 const MIN_FILL = 24
 const REVEAL_PAD = 24
-/** Ordem das categorias no "Ver tudo" (mesmas do Meu iPlex). */
-const SCOPE_ORDER: PersonalCollection[] = ['continue', 'favorites', 'wishlist', 'releases', 'watched']
 
 
-const GridCard = memo(function GridCard({ item, index, onOpen, selected }: { item: CatalogItem; index: number; onOpen: (item: CatalogItem) => void; selected: boolean }) {
+const GridCard = memo(function GridCard({ item, index, onOpen, selected, landscape, progress }: { item: CatalogItem; index: number; onOpen: (item: CatalogItem) => void; selected: boolean; landscape?: boolean; progress?: number | null }) {
+  // Único grid vertical em 16:9: Continuar assistindo (capa do TMDB).
+  if (landscape) return <LandscapeCard title={item.title} sourceId={item.sourceId} itemId={item.id} kind={item.kind} year={item.year} progress={progress} navId={`card-${item.id}`} navGroup="catalog-grid" imageOnly onSelect={() => onOpen(item)} gridIndex={index} />
   if (item.kind === 'channel') return <ChannelCard item={item} navId={`card-${item.id}`} navGroup="catalog-grid" onSelect={onOpen} gridIndex={index} selected={selected} />
   return <PosterCard item={item} navId={`card-${item.id}`} navGroup="catalog-grid" onSelect={onOpen} posterOnly gridIndex={index} />
 })
 
 /** Linha do grid: memoizada para que só as linhas que entram/saem da janela sejam montadas. */
-const GridRow = memo(function GridRow({ items, rowIndex, cols, selectedId, onOpen }: { items: CatalogItem[]; rowIndex: number; cols: number; selectedId: string | null; onOpen: (item: CatalogItem) => void }) {
+const GridRow = memo(function GridRow({ items, rowIndex, cols, selectedId, onOpen, landscape, progressById }: { items: CatalogItem[]; rowIndex: number; cols: number; selectedId: string | null; onOpen: (item: CatalogItem) => void; landscape?: boolean; progressById?: Map<string, number | null> }) {
   return (
     <div className="iplex-catalog__row">
       {items.map((item, c) => (
-        <GridCard key={item.id} item={item} index={rowIndex * cols + c} onOpen={onOpen} selected={item.id === selectedId} />
+        <GridCard key={item.id} item={item} index={rowIndex * cols + c} onOpen={onOpen} selected={item.id === selectedId} landscape={landscape} progress={progressById?.get(item.id)} />
       ))}
     </div>
   )
 })
 
 export function CatalogScreen({ kinds, title, initial, live = false, adult = false, scope }: { kinds: ContentKind[]; title: string; initial: CollectionId; live?: boolean; adult?: boolean; scope?: PersonalCollection }) {
-  const cols = live ? LIVE_COLS : GRID_COLS
+  const cols = live ? LIVE_COLS : scope === 'continue' ? LANDSCAPE_COLS : GRID_COLS
   const navigate = useNavigate()
   const location = useLocation()
   const session = useReadySession()
@@ -146,6 +148,13 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
     return byItem
   }, [library.progress, store, kinds, personal])
 
+  // Barra de progresso dos cards 16:9 (Continuar assistindo), por item.
+  const progressById = useMemo(() => {
+    const out = new Map<string, number | null>()
+    for (const { entry, meta } of continuing(library.progress, (id) => store.indexed(id))) out.set(meta.itemId, entry.duration > 0 ? entry.position / entry.duration : null)
+    return out
+  }, [library.progress, store])
+
   const libraryLists = useMemo(() => {
     const fromLibrary = (ids: Array<{ contentId: string }>) =>
       personal ? ids.map((e) => store.indexed(e.contentId)).filter((m): m is IndexedItem => !!m && kinds.includes(m.kind) && inScope(m)).map(itemFromIndexed) : []
@@ -172,7 +181,7 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   const sidebar = useMemo(
     () =>
       scope
-        ? SCOPE_ORDER.filter((id) => id === scope || scopeLists[id].length > 0).map((id) => ({ id: id as CollectionId, label: COLLECTION_TITLES[id] }) as SideEntry)
+        ? scopeSidebar(scope, scopeLists[scope], initial)
         : buildSidebar({
         personal,
         allowAdult,
@@ -191,7 +200,7 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
 
   // Primeira coleção do menu com conteúdo real (nunca prende o foco em categoria vazia).
   const firstWithContent = useMemo<CollectionId>(() => {
-    if (scope) return scope
+    if (scope) return sidebar.some((s) => s.id === initial) ? initial : (sidebar[0]?.id ?? initial)
     if (initial && sidebar.some((s) => s.id === initial)) return initial
     for (const entry of sidebar) {
       if (entry.id === 'continue' && progressMeta.size > 0) return entry.id
@@ -217,7 +226,7 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   const liveState = useLiveState({ enabled: live, catalog: session.catalog, store, favoriteIds, personal, canPlay: !session.unavailable })
 
   const base = useMemo<CatalogItem[]>(() => {
-    if (scope) return scopeLists[selected as PersonalCollection] ?? []
+    if (scope) return scopeLists[scope].filter((i) => `type:${i.kind}` === selected)
     if (selected === 'continue') return Array.from(progressMeta.values()).map(itemFromIndexed)
     if (selected === 'favorites') return libraryLists.favorites
     if (selected === 'wishlist') return libraryLists.wishlist
@@ -241,12 +250,12 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   const liveActivate = liveState.activate
   const open = useCallback(
     (item: CatalogItem) => {
-      const meta = selected === 'continue' ? progressMeta.get(item.id) : undefined
+      const meta = selected === 'continue' || scope === 'continue' ? progressMeta.get(item.id) : undefined
       if (meta && !session.unavailable) navigate(PATHS.watch({ sourceId: meta.sourceId, itemId: meta.itemId, kind: meta.kind, title: meta.title, episodeId: meta.episodeId, resume: true }))
       else if (live && item.kind === 'channel') liveActivate(item)
       else navigate(contentPath(item))
     },
-    [navigate, selected, progressMeta, live, liveActivate, session.unavailable],
+    [navigate, selected, scope, progressMeta, live, liveActivate, session.unavailable],
   )
 
   // ---- janelamento do grid ------------------------------------------------
@@ -602,7 +611,7 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
     diag('adult:screen', `sidebar=${sidebar.map((s) => s.label).join('|')} itens=${allItems.length} grupos=${groups.size} selecionado=${selected} warm=${warm} personal=${personal} habilitado=${session.catalog.adultEnabled()} adultItems=${session.catalog.adultItems().length}`)
   }, [adult, sidebar, allItems.length, groups.size, selected, warm, personal, session.catalog])
 
-  const label = scope ? COLLECTION_TITLES[selected as PersonalCollection] : selected.startsWith('cat:') ? (sidebar.find((s) => s.id === selected)?.label ?? groups.get(selected.slice(4))?.name ?? title) : COLLECTION_TITLES[selected as keyof typeof COLLECTION_TITLES]
+  const label = scope ? COLLECTION_TITLES[scope] : selected.startsWith('cat:') ? (sidebar.find((s) => s.id === selected)?.label ?? groups.get(selected.slice(4))?.name ?? title) : COLLECTION_TITLES[selected as keyof typeof COLLECTION_TITLES]
   const heading = label
   const kindLabel = scope ? 'itens' : adult ? 'conteúdo adulto' : kinds.length === 1 ? (kinds[0] === 'movie' ? 'filmes' : kinds[0] === 'channel' ? 'canais' : 'séries') : 'filmes e séries'
   const sourceStates = <SourceStates spacesError={spacesError} noSources={noSources} noKind={noKind} error={error} kindLabel={kindLabel} onRetry={reload} />
@@ -624,7 +633,7 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   const mainClass = 'iplex-page iplex-page--catalog'
   return (
     <>
-    <main className={mainClass} aria-label={title} data-nav-managed="" style={live ? ({ '--iplex-cols': cols } as React.CSSProperties) : undefined}>
+    <main className={mainClass} aria-label={title} data-nav-managed="" style={cols !== GRID_COLS ? ({ '--iplex-cols': cols } as React.CSSProperties) : undefined}>
       <nav className="iplex-catalog__side" ref={sideRef} aria-label={`Categorias de ${kindLabel}`} onFocus={onSideFocus}>
         {sidebar.map((entry, i) => {
           const isSelected = entry.id === selectedSideId
@@ -680,8 +689,8 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
           })}
         </div>
         {sourceStates}
-        {showSkeleton && <SkeletonGrid count={live ? SKELETONS_LIVE : SKELETONS} cols={cols} shape={live ? 'square' : 'poster'} />}
-        {!blocked && !showSkeleton && items.length === 0 && <EmptyState title="Nada por aqui ainda" description={emptyText(selected, kindLabel)} />}
+        {showSkeleton && <SkeletonGrid count={live ? SKELETONS_LIVE : SKELETONS} cols={cols} shape={live ? 'square' : scope === 'continue' ? 'landscape' : 'poster'} />}
+        {!blocked && !showSkeleton && items.length === 0 && <EmptyState title="Nada por aqui ainda" description={emptyText(scope ?? selected, kindLabel)} />}
         {!blocked && items.length > 0 && (
           <div className="iplex-catalog__grid" ref={gridRef} role="list" aria-label={heading}>
             <div style={{ height: range[0] * rowHeight + (panelOpen && panelRow < range[0] ? panelH : 0) }} aria-hidden="true" />
@@ -701,7 +710,7 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
                     onLayout={measurePanel}
                   />
                 )}
-                <GridRow rowIndex={row.index} items={row.items} cols={cols} selectedId={live ? liveState.armedId : null} onOpen={open} />
+                <GridRow rowIndex={row.index} items={row.items} cols={cols} selectedId={live ? liveState.armedId : null} onOpen={open} landscape={scope === 'continue'} progressById={progressById} />
               </Fragment>
             ))}
             <div style={{ height: Math.max(0, totalRows - 1 - range[1]) * rowHeight + (panelOpen && panelRow > range[1] ? panelH : 0) }} aria-hidden="true" />
@@ -715,6 +724,13 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
 
 /** 15103 → "15.103" (sem depender de Intl na TV). */
 const formatCount = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+
+/** Menu lateral do "Ver tudo": só os tipos da seção que têm conteúdo (nunca uma entrada vazia). */
+function scopeSidebar(scope: PersonalCollection, items: CatalogItem[], initial: CollectionId): SideEntry[] {
+  const entries = SCOPE_KINDS[scope].filter((kind) => items.some((i) => i.kind === kind)).map((kind) => ({ id: `type:${kind}` as CollectionId, label: KIND_LABELS[kind] }))
+  // Sem nada ainda (carregando): uma entrada só, para hospedar o carregamento/estado vazio.
+  return entries.length ? entries : [{ id: initial.startsWith('type:') ? initial : (`type:${SCOPE_KINDS[scope][0]!}` as CollectionId), label: KIND_LABELS[(initial.startsWith('type:') ? initial.slice(5) : SCOPE_KINDS[scope][0]!) as ContentKind] }]
+}
 
 function emptyText(selected: CollectionId, kindLabel: string): string {
   if (selected === 'continue') return 'O que você começar a assistir aparece aqui.'

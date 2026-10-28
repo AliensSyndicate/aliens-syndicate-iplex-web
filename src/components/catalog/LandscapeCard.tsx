@@ -58,7 +58,7 @@ export function LandscapeCard({
       {...(autoFocus ? { 'data-nav-autofocus': '' } : {})}
     >
       <span className="iplex-tile__frame">
-        <Artwork src={src} alt="" fallback={imageOnly ? '' : title} />
+        <Artwork src={src} alt="" fallback={!src && (!imageOnly || meta.status !== 'loading') ? label : ''} failedText={label} />
         {typeof progress === 'number' && <ProgressBar value={progress} />}
       </span>
       {!imageOnly && <span className="iplex-tile__label">{label}</span>}

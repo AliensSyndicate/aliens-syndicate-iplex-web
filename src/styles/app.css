@@ -1958,11 +1958,13 @@
   margin-bottom: var(--iplex-grid-gap);
 }
 .iplex-catalog__row .iplex-tile--poster,
+.iplex-catalog__row .iplex-tile--landscape,
 .iplex-catalog__row .iplex-tile--square {
   width: calc((100% - (var(--iplex-cols, 5) - 1) * var(--iplex-grid-gap)) / var(--iplex-cols, 5));
   margin-right: var(--iplex-grid-gap);
 }
 .iplex-catalog__row .iplex-tile--poster:last-child,
+.iplex-catalog__row .iplex-tile--landscape:last-child,
 .iplex-catalog__row .iplex-tile--square:last-child {
   margin-right: 0;
 }

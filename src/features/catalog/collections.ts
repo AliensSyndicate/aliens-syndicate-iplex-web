@@ -35,6 +35,16 @@ export const COLLECTION_TITLES: Record<PersonalCollection | 'all', string> = {
   all: 'Todos',
 }
 
+/** Tipos de cada "Ver tudo" (menu lateral): só favoritos tem canais; continuar assistindo e as demais, filmes e séries. */
+export const SCOPE_KINDS: Record<PersonalCollection, ContentKind[]> = {
+  continue: ['movie', 'series'],
+  favorites: ['movie', 'series', 'channel'],
+  wishlist: ['movie', 'series'],
+  releases: ['movie', 'series'],
+  watched: ['movie', 'series'],
+}
+export const KIND_LABELS: Record<ContentKind, string> = { movie: 'Filmes', series: 'Séries', channel: 'Canais' }
+
 /** Categoria adulta do fornecedor (o backend já filtra por perfil; isto só a posiciona no fim). */
 export const isAdultCategory = isAdultName
 
@@ -133,6 +143,7 @@ export const parseKinds = (raw: string | null, fallback: ContentKind[]): Content
 export function parseCollection(raw: string | null): CollectionId {
   if (raw === 'continue' || raw === 'favorites' || raw === 'watched' || raw === 'wishlist' || raw === 'releases' || raw === 'all') return raw
   if (raw && raw.startsWith('cat:')) return raw as CollectionId
+  if (raw === 'type:movie' || raw === 'type:series' || raw === 'type:channel') return raw
   return 'all'
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useReadySession } from '../../app/providers/SessionProvider'
 import { contentPath, PATHS } from '../../app/routes/paths'
@@ -19,6 +19,7 @@ import { useRowNavigation } from '../../navigation/rowNavigation'
 import type { CatalogItem } from '../../services/api/types'
 import { continuing, latestReleases, libraryTitles, itemFromIndexed } from '../catalog/collections'
 import { hasPersonalLibrary, SECTION_PATHS } from '../profiles/profileRules'
+import { readDailyPick, writeDailyPick } from './dailyPick'
 
 const ROW = 10
 const LAUNCHES_PER_KIND = 5
@@ -31,7 +32,7 @@ const providerImage = (item: CatalogItem) => (item.imageRef && /^https:\/\//i.te
  * fundo neutro (nunca fica preso em carregamento). Os já descartados são lembrados por id, então a lista
  * crescer ou mudar de ordem (páginas do catálogo chegando) não reinicia a busca nem troca o título à toa.
  */
-function Hero({ candidates, start, greeting, onOpen }: { candidates: CatalogItem[]; start: number; greeting: string; onOpen: (item: CatalogItem) => void }) {
+function Hero({ candidates, start, greeting, onOpen, onShown }: { candidates: CatalogItem[]; start: number; greeting: string; onOpen: (item: CatalogItem) => void; onShown: (id: string) => void }) {
   const [failedIds, setFailedIds] = useState<string[]>([])
   const first = candidates[start % candidates.length]!
   const rotated = [...candidates.slice(start % candidates.length), ...candidates.slice(0, start % candidates.length)]
@@ -46,6 +47,10 @@ function Hero({ candidates, start, greeting, onOpen }: { candidates: CatalogItem
     if (failed && !exhausted) setFailedIds((ids) => (ids.includes(item.id) ? ids : [...ids, item.id]))
   }, [failed, exhausted, item.id])
   const title = summary?.title || item.title
+  // O destaque que de fato apareceu (com imagem) vira o do dia.
+  useEffect(() => {
+    if (image) onShown(item.id)
+  }, [image, item.id, onShown])
   return (
     <section className="iplex-home__hero" aria-label="Lançamento em destaque">
       <div className="iplex-details__backdrop" aria-hidden="true">
@@ -81,16 +86,27 @@ export default function MyIplexScreen() {
   const movies = useCatalog('movie')
   const series = useCatalog('series')
 
-  const continueRow = useMemo(() => continuing(library.progress, (id) => store.indexed(id)).slice(0, ROW), [library.progress, store, movies.items, series.items])
-  const favorites = useMemo(() => libraryTitles(library.favorites, (id) => store.indexed(id)).slice(0, ROW), [library.favorites, store, movies.items, series.items])
-  const wishlist = useMemo(() => libraryTitles(library.wishlist ?? [], (id) => store.indexed(id)).slice(0, ROW), [library.wishlist, store, movies.items, series.items])
-  const watched = useMemo(() => libraryTitles(library.watched, (id) => store.indexed(id)).slice(0, ROW), [library.watched, store, movies.items, series.items])
+  const indexed = (id: string) => store.indexed(id)
+  // Continuar assistindo: só filmes e séries.
+  const continueRow = useMemo(() => continuing(library.progress, indexed).filter(({ meta }) => meta.kind !== 'channel').slice(0, ROW), [library.progress, store, movies.items, series.items]) // eslint-disable-line react-hooks/exhaustive-deps
+  const favoriteTitles = useMemo(() => libraryTitles(library.favorites, indexed, true), [library.favorites, store, movies.items, series.items]) // eslint-disable-line react-hooks/exhaustive-deps
+  const wishlist = useMemo(() => libraryTitles(library.wishlist ?? [], indexed).slice(0, ROW), [library.wishlist, store, movies.items, series.items]) // eslint-disable-line react-hooks/exhaustive-deps
+  const watched = useMemo(() => libraryTitles(library.watched, indexed).slice(0, ROW), [library.watched, store, movies.items, series.items]) // eslint-disable-line react-hooks/exhaustive-deps
   const launches = useMemo(() => [...latestReleases(movies.items, LAUNCHES_PER_KIND), ...latestReleases(series.items, LAUNCHES_PER_KIND)]
     .sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)), [movies.items, series.items])
 
-  // Destaque: um dos lançamentos, sorteado uma vez por visita à tela.
+  // Destaque do dia: um só por dia e por perfil, guardado no aparelho (não é sorteado de novo a cada abertura).
+  const pickKey = `iplex.hero.v1.${session.identity.familyId}.${session.profile.id}`
+  const [daily] = useState(() => readDailyPick(pickKey))
   const [pick] = useState(() => Math.random())
-  const featured = launches.length > 0
+  const heroCandidates = useMemo(() => {
+    const known = daily ? launches.find((l) => l.id === daily) ?? session.catalog.findLoaded(daily) : null
+    if (!known || known.kind === 'channel' || known.isAdult) return launches
+    return [known, ...launches.filter((l) => l.id !== known.id)]
+  }, [daily, launches, session.catalog])
+  const heroStart = daily && heroCandidates[0]?.id === daily ? 0 : Math.floor(pick * heroCandidates.length)
+  const onHeroShown = useCallback((id: string) => writeDailyPick(pickKey, id), [pickKey])
+  const featured = heroCandidates.length > 0
 
   const ready = loaded && (!!featured || !(movies.loading || series.loading))
   useInitialFocus(`${location.pathname}${location.search}`, ready)
@@ -99,12 +115,23 @@ export default function MyIplexScreen() {
   const openItem = (i: CatalogItem) => navigate(contentPath(i))
   const greeting = `Olá, ${session.profile.name}`
   const loading = !loaded || movies.loading || series.loading
-  const empty = !loading && !launches.length && !continueRow.length && !favorites.length && !wishlist.length && !watched.length
+  const favoritesBy = (kind: CatalogItem['kind']) => favoriteTitles.filter((item) => item.kind === kind).slice(0, ROW)
+  // Seções pessoais (visitante só tem Lançamentos). Favoritos separados por tipo; nenhuma seção vazia entra.
+  const sections = [
+    { id: 'fav-movies', title: 'Favoritos de Filmes', items: favoritesBy('movie'), scope: 'favorites', kind: 'movie' },
+    { id: 'fav-series', title: 'Favoritos de Séries', items: favoritesBy('series'), scope: 'favorites', kind: 'series' },
+    { id: 'fav-channels', title: 'Favoritos de Canais', items: favoritesBy('channel'), scope: 'favorites', kind: 'channel' },
+    { id: 'wishlist', title: 'Lista de desejo', items: wishlist, scope: 'wishlist' },
+    { id: 'releases', title: 'Lançamentos', items: launches, scope: 'releases' },
+    { id: 'watched', title: 'Assistidos', items: watched, scope: 'watched' },
+  ] as const
+  const visible = sections.filter((section) => section.items.length > 0 && (section.id === 'releases' || personal))
+  const empty = !loading && !(personal && continueRow.length > 0) && visible.length === 0
 
   return (
     <main className="iplex-page iplex-home" aria-label="Meu iPlex" data-nav-managed-y="">
       {featured ? (
-        <Hero candidates={launches} start={Math.floor(pick * launches.length)} greeting={greeting} onOpen={openItem} />
+        <Hero candidates={heroCandidates} start={heroStart} greeting={greeting} onOpen={openItem} onShown={onHeroShown} />
       ) : (
         <div style={{ paddingTop: 'var(--iplex-content-top)' }}>
           <IplexText variant="page-title" className="iplex-page__title">
@@ -121,13 +148,10 @@ export default function MyIplexScreen() {
         />
       )}
       {personal && continueRow.length > 0 && (
-        <ContentCarousel title="Continuar assistindo" id="my-continue" shape="landscape" onSeeAll={() => navigate(PATHS.catalog('continue', ['movie', 'series', 'channel']))}>
+        <ContentCarousel title="Continuar assistindo" id="my-continue" shape="landscape" onSeeAll={() => navigate(PATHS.catalog('continue', ['movie', 'series']))}>
           {continueRow.map(({ entry, meta }) => {
             // Fonte IPTV fora do ar: o card abre os detalhes (sem reprodução direta).
             const select = () => navigate(session.unavailable ? contentPath(itemFromIndexed(meta)) : PATHS.watch({ sourceId: meta.sourceId, itemId: meta.itemId, kind: meta.kind, title: meta.title, episodeId: meta.episodeId, resume: true }))
-            if (meta.kind === 'channel') {
-              return <ChannelCard key={entry.contentId} item={itemFromIndexed(meta)} square progress={entry.duration > 0 ? entry.position / entry.duration : null} navId={`my-continue-${entry.contentId}`} navGroup="my-continue" onSelect={select} />
-            }
             return (
               <LandscapeCard
                 key={entry.contentId}
@@ -147,16 +171,15 @@ export default function MyIplexScreen() {
           })}
         </ContentCarousel>
       )}
-      {([
-        { id: 'favorites', title: 'Favoritos', items: favorites },
-        { id: 'wishlist', title: 'Lista de desejo', items: wishlist },
-        { id: 'releases', title: 'Lançamentos', items: launches },
-        { id: 'watched', title: 'Assistidos', items: watched },
-      ] as const).map(({ id, title, items }) => items.length > 0 && (id === 'releases' || personal) && (
-        <ContentCarousel key={id} title={title} id={`my-${id}`} onSeeAll={() => navigate(PATHS.catalog(id))}>
-          {items.map((item) => (
-            <PosterCard key={item.id} item={item} posterOnly navId={`my-${id}-${item.id}`} navGroup={`my-${id}`} onSelect={openItem} />
-          ))}
+      {visible.map((section) => (
+        <ContentCarousel key={section.id} title={section.title} id={`my-${section.id}`} onSeeAll={() => navigate(PATHS.catalog(section.scope, 'kind' in section ? [section.kind] : undefined))}>
+          {section.items.map((item) =>
+            item.kind === 'channel' ? (
+              <ChannelCard key={item.id} item={item} square navId={`my-${section.id}-${item.id}`} navGroup={`my-${section.id}`} onSelect={openItem} />
+            ) : (
+              <PosterCard key={item.id} item={item} posterOnly navId={`my-${section.id}-${item.id}`} navGroup={`my-${section.id}`} onSelect={openItem} />
+            ),
+          )}
         </ContentCarousel>
       ))}
     </main>
