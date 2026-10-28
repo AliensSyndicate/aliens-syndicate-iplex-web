@@ -8,7 +8,7 @@ import { ContentCarousel } from '../../components/catalog/ContentCarousel'
 import { LandscapeCard } from '../../components/catalog/LandscapeCard'
 import { PosterCard } from '../../components/catalog/PosterCard'
 import { EmptyState } from '../../components/feedback/EmptyState'
-import { SkeletonRow } from '../../components/feedback/LoadingState'
+import { MyIplexSkeleton } from '../../components/feedback/ScreenSkeletons'
 import { IplexButton } from '../../components/ui/IplexButton'
 import { IplexText } from '../../components/ui/IplexText'
 import { useCatalog } from '../../hooks/useCatalog'
@@ -108,7 +108,8 @@ export default function MyIplexScreen() {
   const onHeroShown = useCallback((id: string) => writeDailyPick(pickKey, id), [pickKey])
   const featured = heroCandidates.length > 0
 
-  const ready = loaded && (!!featured || !(movies.loading || series.loading))
+  // O esqueleto só sai com o conteúdo completo (biblioteca e os dois catálogos), sem trocar de tela no meio.
+  const ready = loaded && !(movies.loading || series.loading)
   useInitialFocus(`${location.pathname}${location.search}`, ready)
   useRowNavigation()
 
@@ -125,6 +126,8 @@ export default function MyIplexScreen() {
   const visible = sections.filter((section) => section.items.length > 0 && (section.id === 'releases' || personal))
   const empty = !loading && !(personal && continueRow.length > 0) && visible.length === 0
 
+  if (!ready) return <MyIplexSkeleton rowCount={ROW} />
+
   return (
     <main className="iplex-page iplex-home" aria-label="Meu iPlex" data-nav-managed-y="">
       {featured ? (
@@ -136,7 +139,6 @@ export default function MyIplexScreen() {
           </IplexText>
         </div>
       )}
-      {!loaded && <SkeletonRow shape="landscape" count={ROW} />}
       {empty && (
         <EmptyState
           title="Nada por aqui ainda"

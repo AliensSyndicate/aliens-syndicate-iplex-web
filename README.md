@@ -82,6 +82,34 @@ firebase deploy --only hosting --project iplex-2c8fc
 Nunca use `firebase deploy` sem `--only`. Nunca publique no projeto
 institucional `aliens-syndicate-docs`.
 
+### Publicar no Hosting e atualizar a TV
+
+Fluxo usado no dia a dia (build, publicação e reabertura do app na Samsung):
+
+```bash
+npm run build
+```
+
+```bash
+firebase deploy --only hosting --project iplex-2c8fc
+```
+
+```bash
+cd ../aliens-syndicate-iplex-app && npm run tv -- --env production --watch 20
+```
+
+A TV carrega o Web de `https://iplex-2c8fc.web.app/`; por isso a versão nova só
+chega a ela depois do deploy. O `npm run tv` (repositório do App) reinstala o
+shell de produção e reabre o iPlex. Para ver os tempos de inicialização nos logs
+da TV (`build/logs/tv-*.log` no repositório do App), abra com `?diag=1`:
+
+```bash
+cd ../aliens-syndicate-iplex-app && npm run tv -- --env production --target "https://iplex-2c8fc.web.app/?diag=1" --watch 30
+```
+
+Ao terminar um teste com `?diag=1` ou `?selftest=1`, rode de novo o
+`npm run tv -- --env production` sem `--target` para voltar ao shell normal.
+
 ## Documentação
 
 - [docs/ARQUITETURA.md](docs/ARQUITETURA.md): camadas, fluxos e contratos.

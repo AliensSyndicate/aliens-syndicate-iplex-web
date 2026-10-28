@@ -10,7 +10,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { TIMING } from '../../config/features'
-import { decideStartupProfile, requiresPin, sortProfiles } from '../../features/profiles/profileRules'
+import { decideStartupProfile, requiresPin, sortProfiles, startSection } from '../../features/profiles/profileRules'
 import type { HeartbeatResult } from '../../services/api/backend'
 import { AppError, isAmbiguousAuthFailure, toAppError } from '../../services/api/errors'
 import type { CatalogRecord, DeviceIdentity, Lease, Profile, Space } from '../../services/api/types'
@@ -74,6 +74,13 @@ export interface SessionApi {
   refreshAccess(): Promise<void>
   /** Passa a usar outra lista IPTV e recarrega tudo desde o início. */
   selectSource(sourceId: string): Promise<void>
+  /**
+   * Quem volta a um perfil cuja tela inicial é Meu iPlex pode ver o esqueleto dela durante a inicialização (em vez do
+   * texto de etapas). Vale até a inicialização cair no download completo, que volta ao texto de progresso.
+   */
+  earlySkeleton: boolean
+  /** Perfil em que a inicialização está entrando (para desenhar o menu junto do esqueleto). */
+  enteringProfile: Profile | null
   /** Respostas do heartbeat (pedido de reprodução pendente). Devolve o cancelamento. */
   onHeartbeat(listener: (result: HeartbeatResult) => void): () => void
 }
@@ -118,6 +125,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const onPermissions = useRef<(result: HeartbeatResult) => void>(() => undefined)
   const refreshing = useRef(false)
   const refreshAgain = useRef(false)
+  const returning = useRef(false)
+  const entering = useRef<Profile | null>(null)
   const beatListeners = useRef(new Set<(result: HeartbeatResult) => void>())
 
   const leases = useMemo(
@@ -274,6 +283,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (identity: DeviceIdentity, profiles: Profile[], profile: Profile, options: { pinVerified?: boolean; tryOnly?: boolean } = {}) => {
       const id = ++run.current
       const alive = () => id === run.current
+      entering.current = profile
       if (requiresPin(profile, profiles) && !options.pinVerified) {
         setState({ status: 'choosing', identity, profiles, notice: new AppError('profile-locked') })
         return
@@ -312,7 +322,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return
       }
       if (!alive()) return
-      writeJson(LAST_PROFILE_KEY, { familyId: identity.familyId, profileId: profile.id })
+      writeJson(LAST_PROFILE_KEY, { familyId: identity.familyId, profileId: profile.id, start: startSection(profile) })
       // Carregamento inicial completo e sem limite de tempo: a navegação só é liberada com tudo
       // pronto (fontes, biblioteca, catálogos de filmes/séries/canais). Imagens seguem sob demanda.
       // Qualquer falha vira erro claro com "Tentar novamente", que recomeça do zero.
@@ -396,6 +406,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             }
             prepared = true
           } else {
+            returning.current = false
             const results = await syncSources(syncDeps, scope, profile.id, sourceIds, (group) => {
               // O grupo adulto não tem texto próprio na inicialização.
               if (alive() && group !== 'adult' && !switching) setState({ status: 'starting', step: group })
@@ -409,6 +420,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         } catch (raw) {
           if (toAppError(raw).kind !== 'backend-outdated') throw raw
           diag('sync', 'backend sem seis conjuntos: formato paginado')
+          returning.current = false
         }
         if (!prepared) {
           setState({ status: 'starting', step: 'movies' })
@@ -451,7 +463,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return
     }
     if (!alive()) return
-    const hint = readJson<{ familyId: string; profileId: string }>(LAST_PROFILE_KEY)
+    const hint = readJson<{ familyId: string; profileId: string; start?: string }>(LAST_PROFILE_KEY)
+    returning.current = hint?.familyId === identity.familyId && hint.start === 'my-iplex'
     const decision = decideStartupProfile(profiles, hint?.familyId === identity.familyId ? hint.profileId : null)
     if (decision.type === 'none') {
       setState({ status: 'blocked', error: new AppError('profile-unavailable', 'no-profiles'), identity, profiles, retryProfile: null })
@@ -546,6 +559,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const api = useMemo<SessionApi>(
     () => ({
       state,
+      earlySkeleton: returning.current,
+      enteringProfile: entering.current,
       retry: () => {
         const current = stateRef.current
         if (current.status === 'blocked' && current.identity && current.retryProfile) {

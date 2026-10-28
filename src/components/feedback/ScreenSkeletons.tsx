@@ -69,12 +69,36 @@ export function SeasonsSkeleton() {
 
 /** Fallback enquanto o código de uma tela carrega: escolhe o placeholder pela rota. */
 export function RouteSkeleton({ pathname }: { pathname: string }) {
+  if (pathname === '/meu-iplex') return <MyIplexSkeleton />
   if (pathname.startsWith('/pessoa/')) return <PersonSkeleton />
   if (pathname.startsWith('/titulo/') && pathname.endsWith('/temporadas')) return <SeasonsSkeleton />
   if (pathname.startsWith('/titulo/')) return <DetailsSkeleton />
   return (
     <main className="iplex-page" aria-busy="true" aria-hidden="true">
       <SkeletonRow count={8} />
+    </main>
+  )
+}
+
+/** Meu iPlex: destaque (fundo à direita, título, texto e botão) e fileiras com as medidas dos cards reais. */
+export function MyIplexSkeleton({ rowCount = 10 }: { rowCount?: number }) {
+  return (
+    <main className="iplex-page iplex-home" aria-busy="true" aria-label="Meu iPlex">
+      <section className="iplex-home__hero" aria-hidden="true">
+        <div className="iplex-details__backdrop">
+          <div className="iplex-skeleton iplex-details__backdrop-skeleton" />
+          <div className="iplex-hero__scrim" />
+        </div>
+        <div className="iplex-home__hero-info">
+          <Line />
+          <Line className="iplex-skeleton--title" />
+          <Line className="iplex-skeleton--wide" />
+          <Line className="iplex-skeleton--wide" />
+          <div className="iplex-skeleton iplex-skeleton--button" />
+        </div>
+      </section>
+      <SkeletonRow shape="landscape" count={rowCount} />
+      <SkeletonRow shape="poster" count={rowCount} />
     </main>
   )
 }

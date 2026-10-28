@@ -1863,11 +1863,29 @@
   align-items: center;
   -webkit-justify-content: center;
   justify-content: center;
-  /* Mesma fonte do nome mostrado quando a imagem do card não carrega. */
-  font-size: calc(var(--iplex-type-meta) - 4px);
+  box-sizing: border-box;
+  padding: 0 var(--iplex-space-3);
+  text-align: center;
+  text-transform: uppercase;
+  /* Dobro da fonte do nome mostrado quando a imagem do card não carrega; no pôster estreito quebra em duas linhas. */
+  font-size: var(--iplex-type-meta);
   font-weight: var(--iplex-font-weight-medium);
   line-height: var(--iplex-line-height-tight);
   color: var(--iplex-text-primary);
+}
+/* "Ver tudo" (referência: cartão grafite com texto em gradiente prata→escuro e sombra suave). Só cores da paleta oficial:
+ * o grafite vem do tom do card empilhado e escurecido por um gradiente do fundo #0F0F0F. */
+.iplex-tile--see-all .iplex-tile__frame {
+  background-color: var(--iplex-bg);
+  background-image: -webkit-linear-gradient(315deg, rgba(15, 15, 15, 0) 0%, rgba(15, 15, 15, 0.9) 100%), -webkit-linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg)), -webkit-linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg)), -webkit-linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg));
+  background-image: linear-gradient(135deg, rgba(15, 15, 15, 0) 0%, rgba(15, 15, 15, 0.9) 100%), linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg)), linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg)), linear-gradient(var(--iplex-card-bg), var(--iplex-card-bg));
+  -webkit-box-shadow: 0 1.25rem 2.5rem rgba(15, 15, 15, 0.8);
+  box-shadow: 0 1.25rem 2.5rem rgba(15, 15, 15, 0.8);
+}
+.iplex-tile--see-all .iplex-tile__see-all-label {
+  /* Texto sólido e sempre visível (o recorte de gradiente no texto sumia com ele na TV). */
+  font-weight: var(--iplex-font-weight-bold);
+  color: var(--iplex-button-primary-bg);
 }
 .iplex-row__see-all {
   position: absolute;
@@ -1885,6 +1903,9 @@
 }
 .iplex-home__hero .iplex-details__backdrop {
   height: 100%;
+  /* Rente à borda direita da tela: ignora a margem lateral da página. */
+  right: calc(-1 * var(--iplex-safe-area-x));
+  width: calc(75% + var(--iplex-safe-area-x));
 }
 .iplex-home__hero-info {
   position: relative;

@@ -64,7 +64,7 @@ export function ChannelCard({
         {...(autoFocus ? { 'data-nav-autofocus': '' } : {})}
       >
         <span className="iplex-tile__frame">
-          <Artwork src={logoUrl(item.imageRef)} alt="" fallback={square ? '' : item.title} className="iplex-artwork--logo" />
+          <Artwork src={logoUrl(item.imageRef)} alt="" fallback={item.title} className="iplex-artwork--logo" />
           {typeof progress === 'number' && <ProgressBar value={progress} />}
           {favorite && (
             <span className="iplex-channel__favorite">

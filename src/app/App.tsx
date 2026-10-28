@@ -19,6 +19,8 @@ import { TypographyGate } from './TypographyGate'
 import { BackendProvider } from './providers/BackendProvider'
 import { PlatformProvider, usePlatform } from './providers/PlatformProvider'
 import { SessionProvider, useSession, type StartupStep } from './providers/SessionProvider'
+import { MyIplexSkeleton } from '../components/feedback/ScreenSkeletons'
+import { IplexHeader } from '../components/navigation/IplexHeader'
 import { ProfileRoute, StartRedirect } from './routes/guards'
 
 const MyIplexScreen = lazy(screenLoaders.myIplex)
@@ -45,10 +47,30 @@ const STEP_LABEL: Record<StartupStep, string> = {
   done: 'Tudo pronto!',
 }
 
+/**
+ * Quem volta a um perfil cuja tela inicial é Meu iPlex vê o esqueleto dela assim que o perfil é conhecido (a partir da
+ * etapa da conta), em vez do texto de carregamento até o fim da inicialização. Verificar o dispositivo e a conexão
+ * continuam na tela de carregamento. `session.earlySkeleton` sai da última tela inicial guardada no aparelho.
+ */
+const SKELETON_STEPS: StartupStep[] = ['account', 'profile', 'movies', 'series', 'channels', 'done']
+
 function SessionGate() {
   const session = useSession()
+  const location = useLocation()
   const { state } = session
-  if (state.status === 'starting') return <SplashScreen label={STEP_LABEL[state.step]} />
+  if (state.status === 'starting') {
+    const onHome = location.pathname === '/' || location.pathname === SECTION_PATHS['my-iplex']
+    if (onHome && SKELETON_STEPS.includes(state.step) && session.earlySkeleton && session.enteringProfile) {
+      // Mesma estrutura da tela pronta (menu + esqueleto): nada some nem pisca quando a sessão fica pronta.
+      return (
+        <div className="iplex-app">
+          <IplexHeader profile={session.enteringProfile} onAvatar={() => undefined} />
+          <MyIplexSkeleton />
+        </div>
+      )
+    }
+    return <SplashScreen label={STEP_LABEL[state.step]} />
+  }
   if (state.status === 'pairing') return <PairingScreen />
   if (state.status === 'choosing') return <ProfileSelectScreen profiles={state.profiles} notice={state.notice} />
   if (state.status === 'blocked') {
