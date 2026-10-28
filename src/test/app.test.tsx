@@ -120,6 +120,17 @@ describe('seis conjuntos', () => {
   }, 40000)
 })
 
+describe('catálogo', () => {
+  it('abre com várias linhas montadas, sem esperar tecla para baixo', async () => {
+    localStorage.setItem('iplex.lastProfile.v1', JSON.stringify({ familyId: 'demo-family', profileId: 'p-kids' }))
+    start('/filmes', 'many')
+    await screen.findByRole('main', { name: /Filmes/ }, { timeout: 15000 })
+    await waitFor(() => expect(document.querySelectorAll('[data-grid-index]').length).toBeGreaterThan(5), { timeout: 8000 })
+    const rows = new Set(Array.from(document.querySelectorAll('[data-grid-index]')).map((el) => Math.floor(Number(el.getAttribute('data-grid-index')) / 5)))
+    expect(rows.size).toBeGreaterThan(1)
+  }, 40000)
+})
+
 describe('troca de perfil', () => {
   it('avatar abre a mesma seleção sem reiniciar o app e, ao trocar, o avatar e o menu seguem o novo perfil', async () => {
     localStorage.setItem('iplex.lastProfile.v1', JSON.stringify({ familyId: 'demo-family', profileId: 'guest' }))

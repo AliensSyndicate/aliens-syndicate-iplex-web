@@ -1,5 +1,6 @@
 import { Search01Icon, Settings01Icon } from '@hugeicons/core-free-icons'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useBackend } from '../../app/providers/BackendProvider'
 import { PATHS } from '../../app/routes/paths'
 import { SECTION_PATHS, sectionForPath, visibleSections } from '../../features/profiles/profileRules'
 import type { Profile, SectionId } from '../../services/api/types'
@@ -25,6 +26,9 @@ const LABELS: Record<SectionId, string> = {
  */
 export function IplexHeader({ profile, onAvatar, adultEnabled = false }: { profile: Profile; onAvatar: () => void; adultEnabled?: boolean }) {
   const navigate = useNavigate()
+  const { backend } = useBackend()
+  // A foto do provedor é da conta, que pertence ao perfil administrador; os demais perfis usam as iniciais.
+  const account = backend.accountIdentity()
   const location = useLocation()
   const current = sectionForPath(location.pathname)
   const sections = visibleSections(profile, adultEnabled)
@@ -42,7 +46,7 @@ export function IplexHeader({ profile, onAvatar, adultEnabled = false }: { profi
           data-nav-id="tab-avatar"
           data-nav-group="header"
         >
-          <ProfileAvatar key={profile.id} profile={profile} />
+          <ProfileAvatar key={profile.id} profile={profile} photoUrl={profile.type === 'admin' ? account?.photoUrl : null} />
         </button>
         <div className="iplex-header__capsule">
           {sections.map((section) =>

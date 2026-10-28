@@ -19,6 +19,7 @@ import { IplexText } from '../../components/ui/IplexText'
 import { WEB_VERSION } from '../../config/env'
 import { FEATURES } from '../../config/features'
 import { useInitialFocus } from '../../navigation/FocusProvider'
+import { useRowNavigation } from '../../navigation/rowNavigation'
 
 const PROFILE_TYPE = { admin: 'Administrador', regular: 'Regular', kids: 'Infantil', guest: 'Visitante' } as const
 
@@ -40,6 +41,8 @@ export default function SettingsScreen() {
   const navigate = useNavigate()
   const [confirm, setConfirm] = useState(false)
   useInitialFocus('/configuracoes', true)
+  // Mesma navegação por fileiras das outras telas: cima/baixo vão à fileira vizinha (o menu só no topo).
+  useRowNavigation()
 
   const account = backend.accountIdentity()
   const masked = (id: string) => (id.length > 8 ? `${id.slice(0, 4)}••••${id.slice(-4)}` : id)
@@ -50,7 +53,7 @@ export default function SettingsScreen() {
       : 'Nenhuma fonte configurada'
 
   return (
-    <main className="iplex-page iplex-settings" aria-label="Configurações">
+    <main className="iplex-page iplex-settings" aria-label="Configurações" data-nav-managed-y="">
       <IplexText variant="page-title" className="iplex-page__title">
         Configurações
       </IplexText>
@@ -60,7 +63,7 @@ export default function SettingsScreen() {
           <dl>
             <Row label="Perfil atual" value={`${ready.profile.name} (${PROFILE_TYPE[ready.profile.type]})`} />
           </dl>
-          <div className="iplex-settings__actions">
+          <div className="iplex-settings__actions" data-nav-row="x">
             <IplexButton navId="set-switch" autoFocus onClick={openProfiles}>
               Trocar perfil
             </IplexButton>
@@ -100,7 +103,7 @@ export default function SettingsScreen() {
         </IplexCard>
       </div>
       {ready.profile.type === 'admin' && (
-        <div className="iplex-settings__danger">
+        <div className="iplex-settings__danger" data-nav-row="x">
           <IplexButton variant="secondary" navId="set-forget" onClick={() => setConfirm(true)}>
             Sair deste dispositivo
           </IplexButton>

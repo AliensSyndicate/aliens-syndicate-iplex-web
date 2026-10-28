@@ -261,7 +261,9 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   const panelRowRef = useRef(-1)
   const armedIndexRef = useRef(-1)
   const itemsLen = useRef(items.length)
-  useEffect(() => {
+  // Layout effect: a janela do grid (recompute, nos layout effects abaixo) precisa do total de linhas já atualizado,
+  // senão a primeira conta usa 0 linhas e só a primeira linha monta até alguém rolar.
+  useLayoutEffect(() => {
     geometry.current.totalRows = totalRows
     geometry.current.hasMore = hasMore
     geometry.current.panelRow = panelOpen ? panelRow : -1
