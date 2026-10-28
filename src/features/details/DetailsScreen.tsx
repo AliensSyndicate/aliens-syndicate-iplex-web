@@ -38,6 +38,10 @@ import { formatRuntime } from '../../utils/time'
 import type { PlayerNavState } from '../playback/PlayerScreen'
 import { episodeCode, orderedEpisodes } from '../playback/playerRules'
 import { hasPersonalLibrary } from '../profiles/profileRules'
+import { CATALOG } from '../../config/features'
+
+/** Listas horizontais: no máximo 10 conteúdos por seção, sem paginação. */
+const ROW_LIMIT = CATALOG.rowLimit
 import { formatDate } from './detailsFormat'
 
 type Load = { status: 'loading' } | { status: 'ready'; item: CatalogItem } | { status: 'error'; error: AppError }
@@ -179,7 +183,7 @@ export default function DetailsScreen() {
   }
 
   const people = (list: TmdbPerson[], group: string) =>
-    list.map((p, i) => (
+    list.slice(0, ROW_LIMIT).map((p, i) => (
       <MetadataTile
         key={`${p.id ?? p.name}-${p.role}-${i}`}
         image={p.photo}
@@ -279,7 +283,7 @@ export default function DetailsScreen() {
         {listError && <IplexText variant="meta" className="iplex-details__error">{listError}</IplexText>}
       </section>
 
-      {tmdbPending && <SkeletonRow count={8} />}
+      {tmdbPending && <SkeletonRow count={ROW_LIMIT} />}
 
       {details && details.cast.length > 0 && (
         <ContentCarousel title="Elenco" id="cast">
@@ -310,7 +314,7 @@ export default function DetailsScreen() {
 
       {details && details.recommendations.length > 0 && (
         <ContentCarousel title="Você também pode gostar" id="recommendations">
-          {details.recommendations.map((r) => (
+          {details.recommendations.slice(0, ROW_LIMIT).map((r) => (
             <MetadataTile
               key={`${r.kind}-${r.tmdbId}`}
               image={r.poster}

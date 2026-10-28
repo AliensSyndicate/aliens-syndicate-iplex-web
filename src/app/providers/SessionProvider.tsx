@@ -17,6 +17,7 @@ import type { CatalogRecord, DeviceIdentity, Lease, Profile, Space } from '../..
 import { CatalogStore } from '../../services/catalog/catalogStore'
 import { CATALOG } from '../../config/features'
 import { prefetchScreens } from '../screens'
+import { resetViewMemory } from '../../features/catalog/viewMemory'
 import { getCatalogCache } from '../../services/catalog/catalogCache'
 import { syncSources } from '../../services/catalog/catalogSync'
 import { LibraryStore } from '../../services/library/libraryStore'
@@ -28,7 +29,7 @@ import { useBackend } from './BackendProvider'
 import { usePlatform } from './PlatformProvider'
 
 /** Etapas reais da inicialização (cada uma só aparece quando de fato começa). */
-export type StartupStep = 'device' | 'connection' | 'account' | 'movies' | 'series' | 'channels' | 'done'
+export type StartupStep = 'device' | 'connection' | 'account' | 'profile' | 'movies' | 'series' | 'channels' | 'done'
 
 export interface ReadySession {
   status: 'ready'
@@ -38,7 +39,7 @@ export interface ReadySession {
   lease: Lease
   spaces: Space[]
   spacesError: AppError | null
-  /** Servidor/lista não respondeu: a TV navega normalmente, sem conteúdo (marca d'água e sem botões de reproduzir). */
+  /** Fonte IPTV do usuário com erro: a TV navega normalmente, sem conteúdo (marca d'água e sem botões de reproduzir). */
   unavailable: boolean
   catalog: CatalogStore
   library: LibraryStore
@@ -76,9 +77,11 @@ const UNAVAILABLE_RETRY_MS = 30_000
 
 /** Desvínculo de verdade (revogada/removida no Gestor). Falha ambígua de credencial NÃO desvincula. */
 const isUnpaired = (error: AppError) => error.kind === 'device-unpaired' && !isAmbiguousAuthFailure(error)
-/** Falhas em que o servidor/lista não respondeu: a TV entra mesmo assim, sem conteúdo. */
-const isUnavailable = (error: AppError) =>
-  error.kind === 'server-unavailable' || error.kind === 'offline' || error.kind === 'iptv-unavailable' || error.kind === 'backend-outdated' || error.kind === 'unknown' || isAmbiguousAuthFailure(error)
+/**
+ * Só a fonte IPTV do usuário com erro entra no app sem conteúdo (marca d'água). Falha do NOSSO servidor
+ * (verificação do dispositivo, perfis, conta) barra o app na tela inicial, com "Tentar novamente".
+ */
+const isUnavailable = (error: AppError) => error.kind === 'iptv-unavailable'
 const Ctx = createContext<SessionApi | null>(null)
 
 export function SessionProvider({ children }: { children: ReactNode }) {
@@ -201,14 +204,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshAccess])
 
-  /** Entra sem conteúdo: catálogo e biblioteca vazios, sem lease; tenta de novo em segundo plano. */
+  /**
+   * Fonte IPTV do usuário fora do ar: o iPlex (nosso servidor) responde, então o app entra e navega com o que já
+   * existe: catálogo do cache local (se a lista já foi usada) e biblioteca do perfil (favoritos, lista, histórico).
+   * Sem lease e sem reprodução; a marca d'água avisa e a sessão completa volta sozinha quando a fonte responder.
+   */
   const enterUnavailable = useCallback(
-    (identity: DeviceIdentity, profiles: Profile[], profile: Profile) => {
-      const catalog = new CatalogStore(backend, profile.id, [])
+    async (identity: DeviceIdentity, profiles: Profile[], profile: Profile, alive: () => boolean, known: Space[] | null = null) => {
+      const all = known ?? (await backend.listSpaces(profile.id).catch(() => [] as Space[]))
+      const scope = `${identity.familyId}:${profile.id}`
+      const cached: Array<{ space: Space; result: NonNullable<Awaited<ReturnType<ReturnType<typeof getCatalogCache>['load']>>> }> = []
+      for (const space of all) {
+        const result = await getCatalogCache().load(scope, space.sourceId).catch(() => null)
+        if (result) cached.push({ space, result })
+      }
+      if (!alive()) return
+      const spaces = cached.map((entry) => entry.space)
+      const catalog = new CatalogStore(backend, profile.id, spaces)
+      for (const { space, result } of cached) catalog.hydrate(space.sourceId, result.sets, result.meta.version, result.sets.adult.length > 0)
       const library = new LibraryStore(backend, identity, profile, (id) => catalog.findLoaded(id))
-      library.markLoaded()
-      diag('session', 'indisponível: entrando sem lista')
-      setState({ status: 'ready', identity, profiles, profile, lease: { id: 'unavailable', profileId: profile.id, expiresAt: 0 }, spaces: [], spacesError: null, unavailable: true, catalog, library })
+      await library.load().catch(() => library.markLoaded())
+      if (!alive()) return catalog.dispose()
+      diag('session', `indisponível: entrando com ${spaces.length} fonte(s) do cache`)
+      setState({ status: 'ready', identity, profiles, profile, lease: { id: 'unavailable', profileId: profile.id, expiresAt: 0 }, spaces, spacesError: null, unavailable: true, catalog, library })
     },
     [backend],
   )
@@ -222,11 +240,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return
       }
       const current = stateRef.current
+      // Troca de perfil com o app já aberto: só as configurações e os dados do novo perfil (o catálogo vem do cache local).
+      const switching = current.status === 'ready' && current.profile.id !== profile.id
       if (current.status === 'ready') {
         current.catalog.dispose()
         if (current.profile.id !== profile.id) await leases.release()
       }
-      setState({ status: 'starting', step: 'account' })
+      if (switching) resetViewMemory()
+      setState({ status: 'starting', step: switching ? 'profile' : 'account' })
       let lease: Lease
       try {
         lease = await step(leases.acquire(profile.id))
@@ -243,7 +264,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setState({ status: 'choosing', identity, profiles, notice: error })
           return
         }
-        if (isUnavailable(error)) return void enterUnavailable(identity, profiles, profile)
+        if (isUnavailable(error)) return void (await enterUnavailable(identity, profiles, profile, alive))
         setState({ status: 'blocked', error, identity, profiles, retryProfile: profile })
         return
       }
@@ -252,10 +273,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // Carregamento inicial completo e sem limite de tempo: a navegação só é liberada com tudo
       // pronto (fontes, biblioteca, catálogos de filmes/séries/canais). Imagens seguem sob demanda.
       // Qualquer falha vira erro claro com "Tentar novamente", que recomeça do zero.
-      const fail = (raw: unknown): void => {
+      const fail = (raw: unknown, known: Space[] | null = null): void => {
         const error = toAppError(raw)
         if (isUnpaired(error)) return void toPairing()
-        if (isUnavailable(error)) return void enterUnavailable(identity, profiles, profile)
+        if (isUnavailable(error)) return void enterUnavailable(identity, profiles, profile, alive, known)
         setState({ status: 'blocked', error, identity, profiles, retryProfile: profile })
       }
       let spaces: Space[]
@@ -266,13 +287,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return
       }
       if (!alive()) return
+      // Todas as fontes IPTV do usuário com erro: entra sem conteúdo (marca d'água), sem tocar no nosso servidor.
+      if (spaces.length > 0 && spaces.every((space) => space.unavailable)) return void (await enterUnavailable(identity, profiles, profile, alive, spaces))
       const catalog = new CatalogStore(backend, profile.id, spaces)
       const library = new LibraryStore(backend, identity, profile, (id) => catalog.findLoaded(id))
       try {
         await library.load()
       } catch (raw) {
         catalog.dispose()
-        if (alive()) fail(raw)
+        if (alive()) fail(raw, spaces)
         return
       }
       if (!alive()) return catalog.dispose()
@@ -296,7 +319,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             spaces.map((space) => space.sourceId),
             (group) => {
               // O grupo adulto não tem texto próprio na inicialização.
-              if (alive() && group !== 'adult') setState({ status: 'starting', step: group })
+              if (alive() && group !== 'adult' && !switching) setState({ status: 'starting', step: group })
             },
           )
           for (const result of results) {
@@ -316,13 +339,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setState({ status: 'starting', step: 'channels' })
           await loadKinds(['channel'])
         }
+        // Meu iPlex é preparado junto (telas já carregadas na troca de perfil; biblioteca e catálogo já estão prontos aqui).
         await prefetchScreens()
-        if (alive()) setState({ status: 'starting', step: 'done' })
-        // O texto final precisa ser legível antes de entrar na interface.
-        await new Promise((resolve) => setTimeout(resolve, 400))
+        if (!switching) {
+          if (alive()) setState({ status: 'starting', step: 'done' })
+          // O texto final precisa ser legível antes de entrar na interface.
+          await new Promise((resolve) => setTimeout(resolve, 400))
+        }
       } catch (raw) {
         catalog.dispose()
-        if (alive()) fail(raw)
+        if (alive()) fail(raw, spaces)
         return
       }
       if (!alive()) return catalog.dispose()
@@ -340,12 +366,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (!alive()) return
       const error = toAppError(raw)
       if (isUnpaired(error)) return void toPairing()
-      // Sem a lista de perfis: entra no último perfil usado (sem conteúdo) em vez de bloquear.
-      const hint = readJson<{ familyId: string; profileId: string }>(LAST_PROFILE_KEY)
-      if (isUnavailable(error) && hint && hint.familyId === identity.familyId) {
-        const fallback: Profile = { id: hint.profileId, name: 'iPlex', type: 'regular', generations: { favorites: 0, watched: 0, progress: 0 }, permissionsVersion: 0 }
-        return void enterUnavailable(identity, [fallback], fallback)
-      }
       setState({ status: 'blocked', error, identity, profiles: [], retryProfile: null })
       return
     }
@@ -362,7 +382,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return
     }
     setState({ status: 'choosing', identity, profiles, notice: null })
-  }, [backend, enter, toPairing, enterUnavailable])
+  }, [backend, enter, toPairing])
 
   const boot = useCallback(async () => {
     const id = ++run.current
@@ -403,15 +423,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [boot])
 
-  // Sem conteúdo (servidor não respondeu): confere a cada 30 s e, ao voltar, recarrega a sessão completa.
-  const unavailable = state.status === 'ready' && state.unavailable
+  // Fonte IPTV com erro: confere em silêncio a cada 30 s e, quando ela responder, recarrega a sessão completa.
+  const unavailableProfileId = state.status === 'ready' && state.unavailable ? state.profile.id : null
   useEffect(() => {
-    if (!unavailable) return
+    if (!unavailableProfileId) return
     const id = setInterval(() => {
-      backend.listProfiles().then(() => void boot(), () => undefined)
+      const probe = async () => {
+        const spaces = await backend.listSpaces(unavailableProfileId)
+        if (spaces.length === 0 || spaces.every((space) => space.unavailable)) throw new AppError('iptv-unavailable', 'still-down')
+      }
+      probe().then(() => void boot(), () => undefined)
     }, UNAVAILABLE_RETRY_MS)
     return () => clearInterval(id)
-  }, [unavailable, backend, boot])
+  }, [unavailableProfileId, backend, boot])
 
   // Multitarefa: oculto libera a vaga; ao voltar, retoma o lease do mesmo perfil.
   const visible = platform.visible

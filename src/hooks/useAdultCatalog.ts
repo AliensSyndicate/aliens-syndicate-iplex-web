@@ -14,7 +14,7 @@ const KINDS: Array<{ kind: CatalogItem['kind']; key: string; name: string }> = [
  * layout de Filmes/Séries. Já vem completo (sem páginas) e só existe para perfis habilitados no iPlex Control.
  */
 export function useAdultCatalog(enabled = true) {
-  const { catalog, spaces, spacesError } = useReadySession()
+  const { catalog, spaces, spacesError, unavailable } = useReadySession()
   const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot)
   const items = useMemo(() => (enabled ? catalog.adultItems() : []), [catalog, enabled, snapshot.revision]) // eslint-disable-line react-hooks/exhaustive-deps
   const categories = useMemo(
@@ -28,7 +28,7 @@ export function useAdultCatalog(enabled = true) {
       categories,
       spaces,
       spacesError,
-      noSources: !spacesError && spaces.length === 0,
+      noSources: !spacesError && !unavailable && spaces.length === 0,
       noKind: false,
       loading: false,
       error: null,
@@ -36,6 +36,6 @@ export function useAdultCatalog(enabled = true) {
       loadMore: () => undefined,
       reload: () => undefined,
     }),
-    [catalog, items, categories, spaces, spacesError],
+    [catalog, items, categories, spaces, spacesError, unavailable],
   )
 }

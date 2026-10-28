@@ -53,12 +53,11 @@ export function requiresPin(target: Profile, profiles: Profile[]): boolean {
 }
 
 /**
- * Abas do menu principal (ordem oficial). O visitante não tem Meu iPlex. "Adulto" só aparece para perfil habilitado
- * ao conteúdo adulto no iPlex Control (nunca no infantil).
+ * Abas do menu principal (ordem oficial). Meu iPlex existe para todos os perfis (o visitante só vê Destaques e
+ * Lançamentos). "Adulto" só aparece para perfil habilitado ao conteúdo adulto no iPlex Control (nunca no infantil).
  */
 export function visibleSections(profile: Pick<Profile, 'type'>, adultEnabled = false): SectionId[] {
-  const all: SectionId[] = ['my-iplex', 'search', 'live', 'movies', 'series', ...(adultEnabled && !isKids(profile) ? (['adult'] as SectionId[]) : [])]
-  return isGuest(profile) ? all.filter((s) => s !== 'my-iplex') : all
+  return ['my-iplex', 'search', 'live', 'movies', 'series', ...(adultEnabled && !isKids(profile) ? (['adult'] as SectionId[]) : [])]
 }
 
 export function startSection(profile: Pick<Profile, 'type'>): SectionId {
@@ -85,8 +84,6 @@ export function sectionForPath(pathname: string): SectionId | null {
 }
 
 /** Rota permitida para o perfil? (proteção de URL direta no cliente; o backend é a barreira real). */
-export function isPathAllowed(pathname: string, profile: Pick<Profile, 'type'>): boolean {
-  const section = sectionForPath(pathname)
-  if (section === 'my-iplex') return hasPersonalLibrary(profile)
+export function isPathAllowed(_pathname: string, _profile: Pick<Profile, 'type'>): boolean {
   return true
 }

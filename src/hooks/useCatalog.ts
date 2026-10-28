@@ -7,7 +7,7 @@ const EMPTY_CATEGORIES: ReturnType<ReturnType<typeof useReadySession>['catalog']
 
 /** Catálogo do perfil atual para um tipo de conteúdo (carregamento progressivo). */
 export function useCatalog(kind: ContentKind, enabled = true) {
-  const { catalog, spaces, spacesError } = useReadySession()
+  const { catalog, spaces, spacesError, unavailable } = useReadySession()
   const snapshot = useSyncExternalStore(catalog.subscribe, catalog.getSnapshot)
   const kindSpaces = useMemo(() => spaces.filter((s) => s.kinds.includes(kind)), [spaces, kind])
 
@@ -33,7 +33,7 @@ export function useCatalog(kind: ContentKind, enabled = true) {
       categories,
       spaces: kindSpaces,
       spacesError,
-      noSources: !spacesError && spaces.length === 0,
+      noSources: !spacesError && !unavailable && spaces.length === 0,
       noKind: !spacesError && spaces.length > 0 && kindSpaces.length === 0,
       loading: catalog.isLoading(kind),
       error: catalog.errorFor(kind),
@@ -42,6 +42,6 @@ export function useCatalog(kind: ContentKind, enabled = true) {
       reload,
     }),
     // snapshot.revision: loading/error/hasMore mudam junto com o store.
-    [catalog, kind, items, categories, kindSpaces, spacesError, spaces.length, snapshot.revision, loadMore, reload], // eslint-disable-line react-hooks/exhaustive-deps
+    [catalog, kind, items, categories, kindSpaces, spacesError, unavailable, spaces.length, snapshot.revision, loadMore, reload], // eslint-disable-line react-hooks/exhaustive-deps
   )
 }

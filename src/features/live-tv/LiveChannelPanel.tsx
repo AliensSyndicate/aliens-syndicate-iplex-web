@@ -19,6 +19,7 @@ export function LiveChannelPanel({
   open,
   favorite,
   canFavorite,
+  canWatch = true,
   busy,
   onWatch,
   onToggleFavorite,
@@ -29,6 +30,7 @@ export function LiveChannelPanel({
   open: boolean
   favorite: boolean
   canFavorite: boolean
+  canWatch?: boolean
   busy: boolean
   onWatch: () => void
   onToggleFavorite: () => void
@@ -78,9 +80,11 @@ export function LiveChannelPanel({
           </div>
         )}
         <div className="iplex-live-panel__actions" data-nav-group-root="live-panel">
-          <IplexButton navId="live-watch" navGroup="live-panel" onClick={onWatch}>
-            Assistir
-          </IplexButton>
+          {canWatch && (
+            <IplexButton navId="live-watch" navGroup="live-panel" onClick={onWatch}>
+              Assistir
+            </IplexButton>
+          )}
           {canFavorite && (
             <IplexButton variant="secondary" navId="live-favorite" navGroup="live-panel" disabled={busy} onClick={onToggleFavorite}>
               {favorite ? 'Desfavoritar' : 'Favoritar'}

@@ -18,7 +18,7 @@ import { useInitialFocus } from '../../navigation/FocusProvider'
 import { useRowNavigation } from '../../navigation/rowNavigation'
 import type { CatalogItem } from '../../services/api/types'
 import { continuing, latestReleases, libraryTitles, itemFromIndexed } from '../catalog/collections'
-import { SECTION_PATHS } from '../profiles/profileRules'
+import { hasPersonalLibrary, SECTION_PATHS } from '../profiles/profileRules'
 
 const ROW = 10
 const LAUNCHES_PER_KIND = 5
@@ -76,6 +76,8 @@ export default function MyIplexScreen() {
   const location = useLocation()
   const session = useReadySession()
   const { library, loaded, store } = useLibrary()
+  // Visitante: só Destaques e Lançamentos (sem biblioteca pessoal). Nenhuma seção vazia aparece, para ninguém.
+  const personal = hasPersonalLibrary(session.profile)
   const movies = useCatalog('movie')
   const series = useCatalog('series')
 
@@ -96,7 +98,8 @@ export default function MyIplexScreen() {
 
   const openItem = (i: CatalogItem) => navigate(contentPath(i))
   const greeting = `Olá, ${session.profile.name}`
-  const empty = loaded && !continueRow.length && !favorites.length && !wishlist.length && !watched.length
+  const loading = !loaded || movies.loading || series.loading
+  const empty = !loading && !launches.length && !continueRow.length && !favorites.length && !wishlist.length && !watched.length
 
   return (
     <main className="iplex-page iplex-home" aria-label="Meu iPlex" data-nav-managed-y="">
@@ -109,18 +112,19 @@ export default function MyIplexScreen() {
           </IplexText>
         </div>
       )}
-      {!loaded && <SkeletonRow shape="landscape" count={15} />}
+      {!loaded && <SkeletonRow shape="landscape" count={ROW} />}
       {empty && (
         <EmptyState
-          title="Sua área pessoal está vazia"
-          description="Comece a assistir ou adicione filmes e séries à sua lista para encontrá-los aqui."
+          title="Nada por aqui ainda"
+          description="Assim que houver lançamentos ou itens na sua lista, eles aparecem aqui."
           action={{ label: 'Explorar filmes', onClick: () => navigate(SECTION_PATHS.movies) }}
         />
       )}
-      {continueRow.length > 0 && (
+      {personal && continueRow.length > 0 && (
         <ContentCarousel title="Continuar assistindo" id="my-continue" shape="landscape" onSeeAll={() => navigate(PATHS.catalog('continue', ['movie', 'series', 'channel']))}>
           {continueRow.map(({ entry, meta }) => {
-            const select = () => navigate(PATHS.watch({ sourceId: meta.sourceId, itemId: meta.itemId, kind: meta.kind, title: meta.title, episodeId: meta.episodeId, resume: true }))
+            // Fonte IPTV fora do ar: o card abre os detalhes (sem reprodução direta).
+            const select = () => navigate(session.unavailable ? contentPath(itemFromIndexed(meta)) : PATHS.watch({ sourceId: meta.sourceId, itemId: meta.itemId, kind: meta.kind, title: meta.title, episodeId: meta.episodeId, resume: true }))
             if (meta.kind === 'channel') {
               return <ChannelCard key={entry.contentId} item={itemFromIndexed(meta)} square progress={entry.duration > 0 ? entry.position / entry.duration : null} navId={`my-continue-${entry.contentId}`} navGroup="my-continue" onSelect={select} />
             }
@@ -148,7 +152,7 @@ export default function MyIplexScreen() {
         { id: 'wishlist', title: 'Lista de desejo', items: wishlist },
         { id: 'releases', title: 'Lançamentos', items: launches },
         { id: 'watched', title: 'Assistidos', items: watched },
-      ] as const).map(({ id, title, items }) => items.length > 0 && (
+      ] as const).map(({ id, title, items }) => items.length > 0 && (id === 'releases' || personal) && (
         <ContentCarousel key={id} title={title} id={`my-${id}`} onSeeAll={() => navigate(PATHS.catalog(id))}>
           {items.map((item) => (
             <PosterCard key={item.id} item={item} posterOnly navId={`my-${id}-${item.id}`} navGroup={`my-${id}`} onSelect={openItem} />

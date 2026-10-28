@@ -3,7 +3,7 @@ import { fetchLocalWeather, readCachedWeather, WEATHER_TTL_MS, type LocalWeather
 import { formatClock } from '../../utils/time'
 
 /**
- * Coluna à esquerda do botão de Configurações: em cima a temperatura e, ao lado, o horário; embaixo a cidade, em fonte
+ * Coluna no extremo direito do menu principal: em cima a temperatura e, ao lado, o horário; embaixo a cidade, em fonte
  * menor. Sem rede, só o horário.
  */
 export function HeaderInfo() {

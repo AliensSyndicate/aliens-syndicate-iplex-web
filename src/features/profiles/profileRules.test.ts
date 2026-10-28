@@ -60,10 +60,10 @@ describe('proteção infantil', () => {
 })
 
 describe('visitante', () => {
-  it('não tem Meu iPlex e abre em Ao Vivo', () => {
-    expect(visibleSections(guest)).toEqual(['search', 'live', 'movies', 'series'])
+  it('tem Meu iPlex (só Destaques e Lançamentos) e abre em Ao Vivo', () => {
+    expect(visibleSections(guest)).toEqual(['my-iplex', 'search', 'live', 'movies', 'series'])
     expect(startSection(guest)).toBe('live')
-    expect(isPathAllowed('/meu-iplex', guest)).toBe(false)
+    expect(isPathAllowed('/meu-iplex', guest)).toBe(true)
   })
   it('perfil regular tem a ordem oficial completa', () => {
     expect(visibleSections(admin)).toEqual(['my-iplex', 'search', 'live', 'movies', 'series'])
@@ -80,7 +80,7 @@ describe('menu Adulto', () => {
   it('só aparece para perfil habilitado no Control e nunca para o infantil', () => {
     expect(visibleSections({ type: 'regular' })).not.toContain('adult')
     expect(visibleSections({ type: 'regular' }, true)).toEqual(['my-iplex', 'search', 'live', 'movies', 'series', 'adult'])
-    expect(visibleSections({ type: 'guest' }, true)).toEqual(['search', 'live', 'movies', 'series', 'adult'])
+    expect(visibleSections({ type: 'guest' }, true)).toEqual(['my-iplex', 'search', 'live', 'movies', 'series', 'adult'])
     expect(visibleSections({ type: 'kids' }, true)).not.toContain('adult')
   })
 })

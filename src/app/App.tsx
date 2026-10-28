@@ -38,6 +38,7 @@ const STEP_LABEL: Record<StartupStep, string> = {
   device: 'Verificando dispositivo...',
   connection: 'Verificando conexão com o Control...',
   account: 'Configurando conta...',
+  profile: 'Carregando perfil...',
   movies: 'Configurando filmes...',
   series: 'Configurando séries...',
   channels: 'Configurando canais...',

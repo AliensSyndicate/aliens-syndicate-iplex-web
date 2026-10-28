@@ -1,11 +1,17 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet, useLocation, useOutletContext } from 'react-router-dom'
 import { IplexHeader } from '../components/navigation/IplexHeader'
 import { RouteSkeleton } from '../components/feedback/ScreenSkeletons'
-import { ProfileMenu } from '../features/profiles/ProfileMenu'
+import { ProfileSelectScreen } from '../features/profiles/ProfileSelectScreen'
 import { checkForUpdate } from './appUpdate'
 import { usePlatform } from './providers/PlatformProvider'
 import { useReadySession } from './providers/SessionProvider'
+
+/** Contexto das telas internas: abre a seleção de perfis (a mesma da inicialização) sem reiniciar o app. */
+export interface AppLayoutContext {
+  openProfiles: () => void
+}
+export const useAppLayout = () => useOutletContext<AppLayoutContext>()
 
 /** Layout das seções: menu fixo no topo + conteúdo. O player usa tela cheia sem menu. */
 export function AppLayout() {
@@ -39,12 +45,12 @@ export function AppLayout() {
     <div className="iplex-app">
       {!immersive && <IplexHeader profile={session.profile} onAvatar={() => setMenu(true)} adultEnabled={session.catalog.adultEnabled()} />}
       <Suspense fallback={<RouteSkeleton pathname={location.pathname} />}>
-        <Outlet />
+        <Outlet context={{ openProfiles: () => setMenu(true) } satisfies AppLayoutContext} />
       </Suspense>
-      {session.unavailable && !immersive && (
+      {session.unavailable && (
         <p className="iplex-watermark" role="status">Conteúdo indisponível, favor contatar seu fornecedor de IPTV</p>
       )}
-      {menu && <ProfileMenu onClose={() => setMenu(false)} />}
+      {menu && <ProfileSelectScreen profiles={session.profiles} currentId={session.profile.id} onClose={() => setMenu(false)} />}
     </div>
   )
 }

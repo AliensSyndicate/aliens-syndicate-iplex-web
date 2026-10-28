@@ -118,6 +118,8 @@ export interface Space {
   sourceId: string
   name: string
   kinds: ContentKind[]
+  /** A fonte IPTV do usuário está com erro (credenciais inválidas ou última sincronização falhou). */
+  unavailable?: boolean
 }
 
 export interface CatalogCategory {

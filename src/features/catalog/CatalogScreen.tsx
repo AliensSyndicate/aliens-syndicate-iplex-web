@@ -32,6 +32,7 @@ import { isArrow } from '../../platform/keys'
 import type { CatalogItem, ContentKind } from '../../services/api/types'
 import type { IndexedItem } from '../../services/library/libraryStore'
 import { isAdultItem } from '../../services/catalog/adult'
+import { viewMemory } from './viewMemory'
 import { LiveChannelPanel } from '../live-tv/LiveChannelPanel'
 import { useLiveState } from '../live-tv/useLiveState'
 import { hasPersonalLibrary, isKids } from '../profiles/profileRules'
@@ -39,8 +40,10 @@ import { COLLECTION_TITLES, buildSidebar, isAdultCategory, itemFromIndexed, sort
 
 const GRID_COLS = 5
 const LIVE_COLS = 6
-const SKELETONS = 15
-const SKELETONS_LIVE = 24
+/** Primeiro lote e lotes seguintes do grid (também a quantidade de skeletons). */
+const BATCH = 30
+const SKELETONS = BATCH
+const SKELETONS_LIVE = BATCH
 const OVERSCAN = 3
 const DEFAULT_ROW_HEIGHT = 340
 const MIN_FILL = 24
@@ -48,8 +51,6 @@ const REVEAL_PAD = 24
 /** Ordem das categorias no "Ver tudo" (mesmas do Meu iPlex). */
 const SCOPE_ORDER: PersonalCollection[] = ['continue', 'favorites', 'wishlist', 'releases', 'watched']
 
-/** Estado de navegação por rota: ao voltar dos detalhes a tela reaparece como estava. */
-const viewMemory = new Map<string, { selected: CollectionId; sort: SortId; scrollTop: number }>()
 
 const GridCard = memo(function GridCard({ item, index, onOpen, selected }: { item: CatalogItem; index: number; onOpen: (item: CatalogItem) => void; selected: boolean }) {
   if (item.kind === 'channel') return <ChannelCard item={item} navId={`card-${item.id}`} navGroup="catalog-grid" onSelect={onOpen} gridIndex={index} selected={selected} />
@@ -213,7 +214,7 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
 
   // ---- Ao Vivo: player de fundo mudo, painel do canal e saída da interface ----
   const favoriteIds = useMemo(() => new Set(library.favorites.map((f) => f.contentId)), [library.favorites])
-  const liveState = useLiveState({ enabled: live, catalog: session.catalog, store, favoriteIds, personal })
+  const liveState = useLiveState({ enabled: live, catalog: session.catalog, store, favoriteIds, personal, canPlay: !session.unavailable })
 
   const base = useMemo<CatalogItem[]>(() => {
     if (scope) return scopeLists[selected as PersonalCollection] ?? []
@@ -241,11 +242,11 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   const open = useCallback(
     (item: CatalogItem) => {
       const meta = selected === 'continue' ? progressMeta.get(item.id) : undefined
-      if (meta) navigate(PATHS.watch({ sourceId: meta.sourceId, itemId: meta.itemId, kind: meta.kind, title: meta.title, episodeId: meta.episodeId, resume: true }))
+      if (meta && !session.unavailable) navigate(PATHS.watch({ sourceId: meta.sourceId, itemId: meta.itemId, kind: meta.kind, title: meta.title, episodeId: meta.episodeId, resume: true }))
       else if (live && item.kind === 'channel') liveActivate(item)
       else navigate(contentPath(item))
     },
-    [navigate, selected, progressMeta, live, liveActivate],
+    [navigate, selected, progressMeta, live, liveActivate, session.unavailable],
   )
 
   // ---- janelamento do grid ------------------------------------------------
@@ -691,6 +692,7 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
                     open={panelOpen}
                     favorite={liveState.favorite}
                     canFavorite={liveState.canFavorite}
+                    canWatch={liveState.canPlay}
                     busy={liveState.busy}
                     onWatch={liveState.watch}
                     onToggleFavorite={() => void liveState.toggleFavorite()}

@@ -22,12 +22,15 @@ export function useLiveState({
   store,
   favoriteIds,
   personal,
+  canPlay = true,
 }: {
   enabled: boolean
   catalog: CatalogStore
   store: LibraryStore
   favoriteIds: Set<string>
   personal: boolean
+  /** Fonte IPTV fora do ar: o painel informa, mas não reproduz. */
+  canPlay?: boolean
 }) {
   const navigate = useNavigate()
   const [armedId, setArmedId] = useState<string | null>(null)
@@ -48,14 +51,15 @@ export function useLiveState({
 
   const activate = useCallback(
     (item: CatalogItem) => {
-      if (armedId === item.id) navigate(contentPath(item))
-      else setArmedId(item.id)
+      if (armedId === item.id) {
+        if (canPlay) navigate(contentPath(item))
+      } else setArmedId(item.id)
     },
-    [armedId, navigate],
+    [armedId, navigate, canPlay],
   )
   const watch = useCallback(() => {
-    if (armed) navigate(contentPath(armed))
-  }, [armed, navigate])
+    if (armed && canPlay) navigate(contentPath(armed))
+  }, [armed, navigate, canPlay])
   const close = useCallback(() => setArmedId(null), [])
 
   const toggleFavorite = useCallback(async () => {
@@ -88,5 +92,6 @@ export function useLiveState({
     favorite: !!armed && favoriteIds.has(armed.id),
     canFavorite: personal && !!armed && !isAdultItem(armed),
     busy,
+    canPlay,
   }
 }

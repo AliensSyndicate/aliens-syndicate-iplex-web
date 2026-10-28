@@ -8,6 +8,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBackend } from '../../app/providers/BackendProvider'
 import { usePlatform } from '../../app/providers/PlatformProvider'
+import { useAppLayout } from '../../app/AppLayout'
 import { useReadySession, useSession } from '../../app/providers/SessionProvider'
 import { ConfirmDialog } from '../../components/dialogs/ConfirmDialog'
 import { ERROR_COPY } from '../../components/feedback/errorCopy'
@@ -35,6 +36,7 @@ export default function SettingsScreen() {
   const { backend } = useBackend()
   const session = useSession()
   const ready = useReadySession()
+  const { openProfiles } = useAppLayout()
   const navigate = useNavigate()
   const [confirm, setConfirm] = useState(false)
   useInitialFocus('/configuracoes', true)
@@ -59,7 +61,7 @@ export default function SettingsScreen() {
             <Row label="Perfil atual" value={`${ready.profile.name} (${PROFILE_TYPE[ready.profile.type]})`} />
           </dl>
           <div className="iplex-settings__actions">
-            <IplexButton navId="set-switch" autoFocus onClick={() => void session.switchProfile()}>
+            <IplexButton navId="set-switch" autoFocus onClick={openProfiles}>
               Trocar perfil
             </IplexButton>
           </div>

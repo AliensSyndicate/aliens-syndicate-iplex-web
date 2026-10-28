@@ -129,7 +129,7 @@ export default function SeasonsScreen() {
               <EpisodeList
                 episodes={season.episodes.map((episode) => ({ episode, progress: episodeProgress(episode) }))}
                 tmdbSeason={tmdbSeason}
-                onPlay={(ep) => {
+                onPlay={session.unavailable ? undefined : (ep) => {
                   const p = episodeProgress(ep)
                   // Progresso salvo e não concluído: o usuário escolhe entre continuar e recomeçar.
                   if (p !== null && p < DONE) setChoice(ep)

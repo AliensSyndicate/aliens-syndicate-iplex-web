@@ -90,6 +90,12 @@ describe('carregamento inicial', () => {
     expect(screen.getByText('Conteúdo indisponível, favor contatar seu fornecedor de IPTV')).toBeTruthy()
     expect(screen.queryByText(/Vincule esta TV/)).toBeNull()
   }, 30000)
+  it('IPTV fora do ar: entra com marca d\'água e sem botões de reproduzir', async () => {
+    const real = scenarioBackend('single')
+    start('/', 'single', { listSpaces: async (profileId: string) => (await real.listSpaces(profileId)).map((space) => ({ ...space, unavailable: true })) })
+    expect(await find('Conteúdo indisponível, favor contatar seu fornecedor de IPTV')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Assistir|Continuar/ })).toBeNull()
+  }, 30000)
 })
 
 describe('seis conjuntos', () => {
@@ -111,6 +117,22 @@ describe('seis conjuntos', () => {
     expect(readCatalog).not.toHaveBeenCalled()
     screen.getByRole('button', { name: 'Filmes' }).click()
     expect(await screen.findByRole('button', { name: 'Filme do bloco' }, { timeout: 8000 })).toBeTruthy()
+  }, 40000)
+})
+
+describe('troca de perfil', () => {
+  it('avatar abre a mesma seleção sem reiniciar o app e, ao trocar, o avatar e o menu seguem o novo perfil', async () => {
+    localStorage.setItem('iplex.lastProfile.v1', JSON.stringify({ familyId: 'demo-family', profileId: 'guest' }))
+    start('/', 'default')
+    const avatar = await screen.findByRole('button', { name: 'Perfil: Visitante. Trocar perfil' }, { timeout: 15000 })
+    avatar.click()
+    expect(await find('Quem está assistindo?')).toBeTruthy()
+    // O app segue montado por baixo (menu principal presente): nada foi reinicializado.
+    expect(screen.getByRole('navigation', { name: 'Menu principal' })).toBeTruthy()
+    screen.getByRole('button', { name: /^Infantil Demo/ }).click()
+    expect(await screen.findByRole('button', { name: 'Perfil: Infantil Demo. Trocar perfil' }, { timeout: 15000 })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Perfil: Visitante. Trocar perfil' })).toBeNull()
+    expect(screen.queryByText('Quem está assistindo?')).toBeNull()
   }, 40000)
 })
 
@@ -200,15 +222,17 @@ describe('perfis', () => {
 })
 
 describe('visitante', () => {
-  it('abre em Ao Vivo e não tem Meu iPlex', async () => {
+  it('abre em Ao Vivo e tem Meu iPlex no menu', async () => {
     start('/', 'guest-only')
     await waitFor(() => expect(window.location.pathname).toBe('/ao-vivo'), { timeout: 5000 })
     const nav = await screen.findByRole('navigation', { name: 'Menu principal' })
-    expect(within(nav).queryByText('Meu iPlex')).toBeNull()
+    expect(within(nav).queryByText('Meu iPlex')).toBeTruthy()
   })
-  it('URL direta para Meu iPlex redireciona para Ao Vivo', async () => {
+  it('Meu iPlex do visitante abre sem seções pessoais nem vazias', async () => {
     start('/meu-iplex', 'guest-only')
-    await waitFor(() => expect(window.location.pathname).toBe('/ao-vivo'), { timeout: 5000 })
+    expect(await screen.findByRole('main', { name: 'Meu iPlex' }, { timeout: 5000 })).toBeTruthy()
+    expect(window.location.pathname).toBe('/meu-iplex')
+    for (const title of ['Favoritos', 'Lista de desejo', 'Assistidos', 'Continuar assistindo']) expect(screen.queryByText(title)).toBeNull()
   })
 })
 
@@ -273,16 +297,17 @@ describe('conteúdo', () => {
     })
     expect(await find('Conteúdo indisponível')).toBeTruthy()
   })
-  it('Meu iPlex vazio: mensagem curta, sem cards fictícios', async () => {
+  it('Meu iPlex sem itens pessoais: nenhuma seção vazia, sem cards fictícios', async () => {
     start('/', 'single')
-    expect(await find('Sua área pessoal está vazia')).toBeTruthy()
+    expect(await screen.findByRole('main', { name: 'Meu iPlex' }, { timeout: 5000 })).toBeTruthy()
     // Nenhum card pessoal fictício: só as seções do catálogo real podem ter pôsteres.
     expect(screen.queryByText('Recentes')).toBeNull()
     expect(screen.queryByText('Favoritos')).toBeNull()
+    expect(screen.queryByText('Assistidos')).toBeNull()
   })
   it('Filmes lista somente itens do catálogo autorizado', async () => {
     start('/', 'single')
-    await find('Sua área pessoal está vazia')
+    await screen.findByRole('main', { name: 'Meu iPlex' }, { timeout: 5000 })
     screen.getByRole('button', { name: 'Filmes' }).click()
     expect(await screen.findByRole('button', { name: 'Big Buck Bunny (2008)' }, { timeout: 5000 })).toBeTruthy()
   })
@@ -297,8 +322,15 @@ describe('compatibilidade com backend anterior', () => {
     expect(screen.getByRole('img', { name: /QR Code de vinculação/ })).toBeTruthy()
     expect(screen.queryByText('123-456')).toBeNull()
   })
-  it('sem listagem de fontes no backend: entra sem lista, com marca d\'água', async () => {
-    start('/', 'single', { listSpaces: async () => { throw new AppError('backend-outdated', 'invalid-action') } })
+  it('fonte IPTV registrada com erro: entra no app com marca d\'água', async () => {
+    const real = scenarioBackend('single')
+    start('/', 'single', { listSpaces: async (profileId: string) => (await real.listSpaces(profileId)).map((space) => ({ ...space, unavailable: true })) })
     expect(await find('Conteúdo indisponível, favor contatar seu fornecedor de IPTV')).toBeTruthy()
+    expect(screen.queryByText(/Vincule esta TV/)).toBeNull()
+  })
+  it('sem listagem de fontes no backend: nosso servidor desatualizado barra o app', async () => {
+    start('/', 'single', { listSpaces: async () => { throw new AppError('backend-outdated', 'invalid-action') } })
+    expect(await find('Servidor do iPlex desatualizado')).toBeTruthy()
+    expect(screen.queryByText('Conteúdo indisponível, favor contatar seu fornecedor de IPTV')).toBeNull()
   })
 })

@@ -68,14 +68,14 @@ export const PLAYER = {
 } as const
 
 export const CATALOG = {
-  /** Páginas iniciais por espaço (a API devolve 30 itens por página). */
-  initialPages: 6,
-  /** Páginas extras carregadas ao chegar ao fim de uma fileira. */
-  morePages: 4,
+  /** Primeiro lote por espaço, buscado sozinho ao abrir a tela (a API devolve 30 itens por página). */
+  initialPages: 1,
+  /** Lote extra (30 itens) carregado ao chegar perto do fim do grid. */
+  morePages: 1,
   /** Limite de páginas por espaço mantidas em memória. */
   maxPages: 60,
-  /** Itens por fileira exibidos (o resto via "carregar mais"). */
-  rowLimit: 40,
+  /** Itens por lista horizontal (sem paginação nem rolagem infinita). */
+  rowLimit: 10,
   /** Requisições TMDB simultâneas a partir do cliente. */
   tmdbConcurrency: 4,
   /** Confiança mínima exibida como correspondência (o servidor já filtra). */
