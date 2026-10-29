@@ -341,7 +341,9 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
     },
 
     async readGenerations(_identity: DeviceIdentity, profileId: string): Promise<Generations | null> {
-      return call<Generations>('readPlayerGenerations', { profileId })
+      const g = await call<Partial<Generations> | null>('readPlayerGenerations', { profileId })
+      // Backends antigos: a lista de desejos segue a geração dos favoritos.
+      return g ? { favorites: g.favorites ?? 0, wishlist: g.wishlist ?? g.favorites ?? 0, watched: g.watched ?? 0, progress: g.progress ?? 0 } : null
     },
 
     async readLibrary(_identity: DeviceIdentity, profileId: string): Promise<Library> {

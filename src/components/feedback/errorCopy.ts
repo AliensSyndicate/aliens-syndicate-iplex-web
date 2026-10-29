@@ -24,7 +24,7 @@ export const ERROR_COPY: Record<AppErrorKind, ErrorCopy> = {
   'session-limit': { title: 'Limite de telas atingido', description: 'Sua família já está usando o iPlex no número máximo de telas. Encerre em outro dispositivo e tente novamente.', retry: 'Tentar novamente' },
   'profile-in-use': { title: 'Perfil em uso', description: 'Este perfil já está assistindo em outro dispositivo. Escolha outro perfil ou tente mais tarde.', retry: 'Tentar novamente' },
   'profile-unavailable': { title: 'Perfil indisponível', description: 'Este perfil não está disponível nesta TV. As configurações de perfis ficam no iPlex Gestor.', retry: 'Tentar novamente' },
-  'profile-locked': { title: 'Perfil protegido', description: 'A entrada neste perfil exige PIN porque há um perfil infantil na família.' },
+  'profile-locked': { title: 'Perfil protegido', description: 'A entrada neste perfil exige o PIN do perfil.' },
   'parental-pin-missing': { title: 'PIN parental não configurado', description: 'O PIN parental ainda não foi definido (ele protege perfis adultos e o conteúdo adulto). Defina-o no iPlex Gestor, em Família › Controle parental.' },
   'iptv-not-configured': { title: 'Nenhuma fonte configurada', description: 'Adicione uma fonte IPTV no iPlex Gestor para ver Ao Vivo, filmes e séries aqui.', retry: 'Verificar novamente' },
   'iptv-unavailable': { title: 'Fonte IPTV indisponível', description: 'A fonte configurada não respondeu agora. Sua assinatura do iPlex não foi afetada.', retry: 'Tentar novamente' },

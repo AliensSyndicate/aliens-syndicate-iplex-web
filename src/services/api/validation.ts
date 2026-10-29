@@ -23,7 +23,7 @@ export function parseProfiles(raw: unknown): Profile[] {
       id: p.id,
       name: p.name,
       type,
-      generations: { favorites: Number(g.favorites) || 0, watched: Number(g.watched) || 0, progress: Number(g.progress) || 0 },
+      generations: { favorites: Number(g.favorites) || 0, wishlist: Number(g.wishlist ?? g.favorites) || 0, watched: Number(g.watched) || 0, progress: Number(g.progress) || 0 },
       permissionsVersion: Number(p.permissionsVersion) || 0,
       ...(typeof p.pinRequired === 'boolean' ? { pinRequired: p.pinRequired } : {}),
     }]

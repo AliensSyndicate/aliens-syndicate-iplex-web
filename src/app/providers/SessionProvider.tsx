@@ -487,7 +487,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return
     }
     if (decision.type === 'enter') {
-      // Adulto com infantil na família: sem PIN no cliente, mas o backend valida (sessão por PIN ainda ativa ou não).
+      // Perfil com PIN pessoal: sem PIN no cliente, mas o backend valida (sessão por PIN ainda ativa ou não).
       await enter(identity, profiles, decision.profile, decision.tryOnly ? { pinVerified: true, tryOnly: true } : {})
       return
     }

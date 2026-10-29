@@ -43,13 +43,11 @@ export function decideStartupProfile(profiles: Profile[], lastProfileId: string 
 }
 
 /**
- * Com perfil infantil na família, perfis adultos exigem PIN para entrar.
- * O backend informa `pinRequired` e o aplica no acquireSession; a regra local
- * só vale para respostas antigas sem o campo (sempre conservadora).
+ * Perfis com PIN pessoal (definido no iPlex Gestor) exigem o PIN para entrar.
+ * O backend informa `pinRequired` e o aplica no acquireSession.
  */
-export function requiresPin(target: Profile, profiles: Profile[]): boolean {
-  if (typeof target.pinRequired === 'boolean') return target.pinRequired
-  return isAdult(target) && profiles.some(isKids)
+export function requiresPin(target: Profile, _profiles: Profile[]): boolean {
+  return target.pinRequired === true
 }
 
 /**

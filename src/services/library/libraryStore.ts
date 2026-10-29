@@ -109,7 +109,7 @@ export class LibraryStore {
     this.set(
       {
         favorites: library.favorites.filter((e) => e.generation === g.favorites),
-        wishlist: (library.wishlist ?? []).filter((e) => e.generation === g.favorites),
+        wishlist: (library.wishlist ?? []).filter((e) => e.generation === g.wishlist),
         watched: library.watched.filter((e) => e.generation === g.watched),
         progress: library.progress.filter((e) => e.generation === g.progress),
       },
@@ -172,10 +172,10 @@ export class LibraryStore {
     const previous = this.snapshot.library
     this.remember(indexFromItem(item))
     const wishlist = (previous.wishlist ?? []).filter((f) => f.contentId !== item.id)
-    if (wished) wishlist.unshift({ contentId: item.id, title: item.title, generation: this.generations.favorites, updatedAt: Date.now() })
+    if (wished) wishlist.unshift({ contentId: item.id, title: item.title, generation: this.generations.wishlist, updatedAt: Date.now() })
     this.set({ ...previous, wishlist }, true)
     try {
-      await this.backend.setWishlist({ profileId: this.profile.id, contentId: item.id, sourceId: item.sourceId, kind: item.kind, title: item.title, generation: this.generations.favorites, remove: !wished })
+      await this.backend.setWishlist({ profileId: this.profile.id, contentId: item.id, sourceId: item.sourceId, kind: item.kind, title: item.title, generation: this.generations.wishlist, remove: !wished })
     } catch (error) {
       this.set({ ...this.snapshot.library, wishlist: previous.wishlist }, true)
       const appError = toAppError(error)

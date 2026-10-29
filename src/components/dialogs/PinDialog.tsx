@@ -35,7 +35,7 @@ function writeLock(value: { until: number; attempts: number }) {
 }
 
 /**
- * PIN parental. O PIN nunca é guardado nem comparado no cliente: é enviado
+ * PIN pessoal do perfil. O PIN nunca é guardado nem comparado no cliente: é enviado
  * para validação (verify) e descartado. O backend limita as tentativas e
  * bloqueia; o limite local é só uma camada adicional.
  */
@@ -129,7 +129,7 @@ export function PinDialog({ profileName, verify, onSuccess, onCancel, descriptio
 
   const remaining = Math.max(0, Math.ceil((lock.until - now) / 1000))
   return (
-    <Dialog title="Digite o PIN" description={description ?? `O perfil ${profileName} é protegido porque há um perfil infantil na família.`} onClose={onCancel}>
+    <Dialog title="Digite o PIN" description={description ?? `O perfil ${profileName} é protegido por PIN.`} onClose={onCancel}>
       <div className="iplex-pin__dots" aria-label={`${pin.length} de 4 dígitos digitados`} role="status">
         {[0, 1, 2, 3].map((i) => (
           <span key={i} className={i < pin.length ? 'iplex-pin__dot is-filled' : 'iplex-pin__dot'} />

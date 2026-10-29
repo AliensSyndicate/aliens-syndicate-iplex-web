@@ -40,7 +40,7 @@ describe('conteúdo adulto', () => {
 
   it('a biblioteca não guarda favorito nem progresso de conteúdo adulto', async () => {
     const backend = { setFavorite: vi.fn(async () => ({})), saveProgress: vi.fn(async () => ({})) }
-    const store = new LibraryStore(backend as never, { familyId: 'f', deviceId: 'd' } as never, { id: 'p', name: 'P', type: 'admin', generations: { favorites: 0, watched: 0, progress: 0 }, permissionsVersion: 1 } as never)
+    const store = new LibraryStore(backend as never, { familyId: 'f', deviceId: 'd' } as never, { id: 'p', name: 'P', type: 'admin', generations: { favorites: 0, wishlist: 0, watched: 0, progress: 0 }, permissionsVersion: 1 } as never)
     const adult = mk('Filme XXX')
     await store.setFavorite(adult, true)
     await store.saveProgress(adult.id, 10, 100, indexFromItem(adult))

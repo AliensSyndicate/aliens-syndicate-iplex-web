@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import type { Profile } from '../../services/api/types'
 import { decideStartupProfile, isPathAllowed, requiresPin, sortProfiles, startSection, visibleSections } from './profileRules'
 
-const p = (id: string, type: Profile['type'], name = id): Profile => ({ id, name, type, generations: { favorites: 0, watched: 0, progress: 0 }, permissionsVersion: 0 })
+const p = (id: string, type: Profile['type'], name = id): Profile => ({ id, name, type, generations: { favorites: 0, wishlist: 0, watched: 0, progress: 0 }, permissionsVersion: 0 })
 const admin = p('admin', 'admin')
 const regular = p('r', 'regular')
 const kids = p('k', 'kids')
 const guest = p('guest', 'guest')
+/** Perfis com PIN pessoal (o backend informa `pinRequired`). */
+const locked = (profile: Profile): Profile => ({ ...profile, pinRequired: true })
 
 describe('abertura inteligente', () => {
   it('um único perfil autorizado entra direto', () => {
@@ -21,8 +23,9 @@ describe('abertura inteligente', () => {
     expect(decideStartupProfile([admin, regular], 'admin')).not.toHaveProperty('tryOnly')
     expect(decideStartupProfile([admin, guest], 'guest')).toMatchObject({ type: 'enter', profile: guest })
   })
-  it('último perfil adulto com infantil na família: tenta entrar e o servidor decide o PIN', () => {
-    expect(decideStartupProfile([admin, kids], 'admin')).toMatchObject({ type: 'enter', profile: admin, tryOnly: true })
+  it('último perfil com PIN pessoal: tenta entrar e o servidor decide o PIN', () => {
+    expect(decideStartupProfile([locked(admin), kids], 'admin')).toMatchObject({ type: 'enter', tryOnly: true })
+    expect(decideStartupProfile([admin, kids], 'admin')).not.toHaveProperty('tryOnly')
     expect(decideStartupProfile([admin, regular, kids, guest], 'guest')).toMatchObject({ type: 'enter', profile: guest })
     expect(decideStartupProfile([admin, regular, kids, guest], 'guest')).not.toHaveProperty('tryOnly')
   })
@@ -35,23 +38,24 @@ describe('abertura inteligente', () => {
   it('sem último perfil conhecido nunca entra sozinho quando há vários perfis', () => {
     expect(decideStartupProfile([admin, regular, kids], null)).toMatchObject({ type: 'choose' })
   })
-  it('adulto com infantil só entra por tentativa (o PIN é conferido pelo servidor, nunca pelo cliente)', () => {
+  it('perfil com PIN só entra por tentativa (o PIN é conferido pelo servidor, nunca pelo cliente)', () => {
     for (const last of ['admin', 'r']) {
-      const d = decideStartupProfile([admin, regular, kids], last)
+      const d = decideStartupProfile([locked(admin), locked(regular), kids], last)
       expect(d.type === 'enter' && d.tryOnly === true).toBe(true)
     }
   })
 })
 
-describe('proteção infantil', () => {
-  it('adulto exige PIN quando há perfil infantil', () => {
-    expect(requiresPin(admin, [admin, kids])).toBe(true)
-    expect(requiresPin(regular, [admin, regular, kids])).toBe(true)
-    expect(requiresPin(kids, [admin, kids])).toBe(false)
-    expect(requiresPin(guest, [admin, kids, guest])).toBe(false)
+describe('PIN do perfil', () => {
+  it('só perfis com PIN pessoal exigem PIN', () => {
+    expect(requiresPin(locked(admin), [admin, kids])).toBe(true)
+    expect(requiresPin(locked(regular), [admin, regular])).toBe(true)
+    expect(requiresPin(locked(kids), [admin, kids])).toBe(true)
   })
-  it('sem perfil infantil não exige PIN', () => {
-    expect(requiresPin(admin, [admin, regular])).toBe(false)
+  it('um perfil infantil na família não bloqueia mais os adultos', () => {
+    expect(requiresPin(admin, [admin, kids])).toBe(false)
+    expect(requiresPin(regular, [admin, regular, kids])).toBe(false)
+    expect(requiresPin(guest, [admin, kids, guest])).toBe(false)
   })
   it('o backend decide quando informa pinRequired (a regra local é só reserva)', () => {
     expect(requiresPin({ ...admin, pinRequired: false }, [admin, kids])).toBe(false)

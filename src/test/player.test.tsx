@@ -402,16 +402,27 @@ describe('conteúdo adulto no player', () => {
     for (const d of digits) fireEvent.click(screen.getByRole('button', { name: d }))
   }
   const ADULT = { id: 'adult-1', sourceId: 'demo-source', kind: 'movie' as const, title: 'Filme XXX', category: 'Adulto +18', providerRef: 'x', version: 'v' }
-  const withAdult = (backend: Backend) => {
+  /** O perfil com PIN pessoal pede o PIN para entrar; depois, o adulto pede de novo (uso único). */
+  const unlockProfile = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: /Demonstração, protegido por PIN/ }, { timeout: 8000 }))
+    await screen.findByText('A entrada neste perfil exige o PIN do perfil.', {}, { timeout: 8000 }).catch(() => null)
+    await screen.findByText('Digite o PIN', {}, { timeout: 8000 })
+    pin('1234')
+    await screen.findByText('Conteúdo adulto: digite o PIN do perfil para assistir.', {}, { timeout: 8000 })
+  }
+  /** Perfil com PIN pessoal: o adulto pede o PIN. Sem PIN pessoal, toca direto. */
+  const withAdult = (backend: Backend, pinRequired = true) => {
+    const list = backend.listProfiles.bind(backend)
+    vi.spyOn(backend, 'listProfiles').mockImplementation(async () => (await list()).map((p) => ({ ...p, pinRequired })))
     vi.spyOn(backend, 'readCatalog').mockResolvedValue({ version: 'v', items: [ADULT], categories: [], cursor: 1, hasMore: false })
     return vi.spyOn(backend, 'resolveStream').mockResolvedValue({ url: 'https://exemplo.invalid/adulto.m3u8', sourceId: 'demo-source', validatedAt: Date.now() })
   }
-  it('pede o PIN antes de resolver a mídia e só toca depois do PIN aceito', async () => {
+  it('pede o PIN antes de resolver a mídia e só toca depois do PIN aceito', { timeout: 20000 }, async () => {
     let resolve!: ReturnType<typeof withAdult>
     start('/assistir?s=demo-source&i=adult-1&k=movie&t=Filme+XXX', (backend) => {
       resolve = withAdult(backend)
     })
-    expect(await screen.findByText('Digite o PIN', {}, { timeout: 8000 })).toBeTruthy()
+    await unlockProfile()
     expect(resolve).not.toHaveBeenCalled()
     expect(created).toHaveLength(0)
     // PIN errado: continua sem mídia.
@@ -424,12 +435,21 @@ describe('conteúdo adulto no player', () => {
     await playing()
     expect(resolve).toHaveBeenCalledTimes(1)
   })
-  it('cancelar o PIN volta sem tocar nada', async () => {
+  it('perfil sem PIN pessoal: o adulto toca sem pedir PIN', async () => {
+    let resolve!: ReturnType<typeof withAdult>
+    start('/assistir?s=demo-source&i=adult-1&k=movie&t=Filme+XXX', (backend) => {
+      resolve = withAdult(backend, false)
+    })
+    await playing()
+    expect(resolve).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('Digite o PIN')).toBeNull()
+  })
+  it('cancelar o PIN volta sem tocar nada', { timeout: 20000 }, async () => {
     let resolve!: ReturnType<typeof withAdult>
     start('/assistir?s=demo-source&i=adult-1&k=movie&t=Filme+XXX', (backend) => {
       resolve = withAdult(backend)
     })
-    await screen.findByText('Digite o PIN', {}, { timeout: 8000 })
+    await unlockProfile()
     press('Escape', 27)
     await new Promise((r) => setTimeout(r, 500))
     expect(resolve).not.toHaveBeenCalled()

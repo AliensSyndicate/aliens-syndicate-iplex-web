@@ -284,7 +284,7 @@ describe('perfis', () => {
     expect(await find('Olá, Infantil Demo')).toBeTruthy()
   })
 
-  it('perfil adulto com perfil infantil na família exige PIN', async () => {
+  it('perfil com PIN pessoal exige PIN', async () => {
     start('/')
     ;(await screen.findByRole('button', { name: /Demonstração, protegido por PIN/ }, { timeout: 5000 })).click()
     expect(await find('Digite o PIN')).toBeTruthy()

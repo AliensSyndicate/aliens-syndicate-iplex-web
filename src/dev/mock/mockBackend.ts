@@ -110,14 +110,15 @@ export function createMockBackend(): Backend {
   let syncingUntil = 0
   let lastSync = 0
   const library: Library = { favorites: [], wishlist: [], watched: [], progress: [] }
-  const generations = { favorites: 0, watched: 0, progress: 0 }
+  const generations = { favorites: 0, wishlist: 0, watched: 0, progress: 0 }
   const profiles: Profile[] =
     mode === 'single'
       ? [{ id: 'admin', name: 'Demonstração', type: 'admin', generations, permissionsVersion: 0 }]
       : mode === 'guest-only'
         ? [{ id: 'guest', name: 'Visitante', type: 'guest', generations, permissionsVersion: 0 }]
         : [
-            { id: 'admin', name: 'Demonstração', type: 'admin', generations, permissionsVersion: 0 },
+            // Demonstração com PIN pessoal (definido no Gestor): a TV pede o PIN para entrar e para o adulto.
+            { id: 'admin', name: 'Demonstração', type: 'admin', generations, permissionsVersion: 0, pinRequired: true },
             { id: 'p-kids', name: 'Infantil Demo', type: 'kids', generations, permissionsVersion: 0 },
             { id: 'guest', name: 'Visitante', type: 'guest', generations, permissionsVersion: 0 },
           ]

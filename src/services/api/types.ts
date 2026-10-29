@@ -9,6 +9,8 @@ export type ProfileType = 'admin' | 'regular' | 'kids' | 'guest'
 
 export interface Generations {
   favorites: number
+  /** Lista de desejos: geração própria (backends antigos: a mesma dos favoritos). */
+  wishlist: number
   watched: number
   progress: number
 }
@@ -20,7 +22,7 @@ export interface Profile {
   type: ProfileType
   generations: Generations
   permissionsVersion: number
-  /** Informativo (backend ≥ contrato v1): o acquireSession exige PIN parental. Ausente = regra local. */
+  /** Informativo: o perfil tem PIN pessoal; o acquireSession e o conteúdo adulto exigem esse PIN. */
   pinRequired?: boolean
 }
 

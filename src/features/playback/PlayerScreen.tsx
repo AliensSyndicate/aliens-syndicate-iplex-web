@@ -237,8 +237,8 @@ export default function PlayerScreen() {
         if (!alive) return
         if (!found || found.kind !== kind) throw new AppError('content-unavailable')
         setItem(found)
-        // Adulto: o vídeo só é resolvido depois do PIN parental (o backend também exige, uso único).
-        if (isAdultItem(found)) {
+        // Adulto: com PIN pessoal no perfil, o vídeo só é resolvido depois do PIN (o backend também exige, uso único).
+        if (isAdultItem(found) && session.profile.pinRequired === true) {
           const accepted = await askAdultPin()
           if (!alive) return
           if (!accepted) {
@@ -694,7 +694,7 @@ export default function PlayerScreen() {
       {adultPin && (
         <PinDialog
           profileName={session.profile.name}
-          description="Conteúdo adulto: digite o PIN parental para assistir."
+          description="Conteúdo adulto: digite o PIN do perfil para assistir."
           verify={(pin) => backend.verifyAdultPin(session.profile.id, pin)}
           onCancel={() => adultPin(false)}
           onSuccess={() => adultPin(true)}
