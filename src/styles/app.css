@@ -835,15 +835,33 @@
 .iplex-details__overview {
   max-width: 820px;
 }
+/* Abaixo dos botões, na mesma largura da linha de botões; 3x a altura da barra dos cards. */
 .iplex-details__progress {
   position: relative;
-  max-width: 420px;
-  height: 8px;
+  width: calc(100vw - 2 * var(--iplex-safe-area-x));
+}
+.iplex-details__progress-bar {
+  position: relative;
+  display: block;
+  height: 12px;
+}
+/* Duração do filme à esquerda e tempo restante à direita, logo abaixo da barra. */
+.iplex-details__progress-times {
+  margin-top: var(--iplex-space-3);
+  display: -webkit-flex;
+  display: flex;
+  -webkit-justify-content: space-between;
+  justify-content: space-between;
+}
+/* Espaço entre botões e barra (especificidade maior que `info > * + *`). */
+.iplex-details__info > .iplex-details__progress {
+  margin-top: var(--iplex-space-6);
 }
 .iplex-details__progress .iplex-progress {
   left: 0;
   right: 0;
   bottom: 0;
+  height: 12px;
 }.iplex-details__series {
   position: relative;
   margin-top: var(--iplex-space-7);
@@ -911,6 +929,8 @@
 /* Espaço entre sinopse e botões (especificidade maior que `info > * + *`). */
 .iplex-details__info > .iplex-details__actions {
   margin-top: var(--iplex-space-6);
+  /* A linha de botões usa toda a largura útil da tela (não os 55% do texto): com 4 botões nenhum quebra de linha. */
+  width: calc(100vw - 2 * var(--iplex-safe-area-x));
 }
 /* Espaço entre os botões (antes 1rem, de `.iplex-button + .iplex-button`). */
 .iplex-details__info .iplex-details__actions .iplex-button + .iplex-button {

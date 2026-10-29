@@ -605,9 +605,52 @@ async function runSync() {
   report(`${t}:result`, { before, trail: seen.join(' > '), path: location.pathname, y: String(Math.round(window.scrollY)), focused: label(document.activeElement) })
 }
 
+/** Botões do detalhe (?selftest=actions): abre um filme de Continuar assistindo e mede botões e barra de progresso. */
+async function runActions() {
+  const t = 'actions'
+  if (!(await waitFor(() => !!$('main.iplex-home:not([aria-busy]) .iplex-row .iplex-tile'), 60000))) return report(`${t}:enter`, { fail: 'Meu iPlex não abriu' })
+  await sleep(2000)
+  // Com a fonte no ar, o card de Continuar toca direto: abre os detalhes pela rota, procurando um filme com progresso.
+  const syncKey = Object.keys(localStorage).find((k) => k.startsWith('iplex.sourceSync.v1.'))
+  const sourceId = Object.keys((syncKey && readJson<Record<string, number>>(syncKey)) || {})[0]
+  const ids = all('[data-nav-id^="my-continue-"]').map((el) => el.dataset.navId!.slice('my-continue-'.length))
+  for (const id of ids.slice(0, 6)) {
+    window.history.pushState({}, '', `/titulo/${encodeURIComponent(sourceId ?? '')}/${encodeURIComponent(id)}?t=teste`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    if (!(await waitFor(() => all('.iplex-details__actions .iplex-button').length > 0, 15000))) continue
+    await sleep(2500)
+    if ($('.iplex-details__progress')) break
+  }
+  if (!$('.iplex-details__actions')) return report(`${t}:open`, { fail: `detalhes não abriram (fonte=${sourceId ?? '-'} itens=${ids.length})` })
+  const row = $('.iplex-details__actions')!.getBoundingClientRect()
+  const buttons = all('.iplex-details__actions .iplex-button')
+  report(`${t}:layout`, {
+    title: ($('h1')?.textContent ?? '').trim().slice(0, 30),
+    vw: String(window.innerWidth),
+    row: `${Math.round(row.left)}..${Math.round(row.right)}`,
+    buttons: buttons.map((b) => { const r = b.getBoundingClientRect(); return `${(b.textContent ?? '').trim()}@${Math.round(r.left)}..${Math.round(r.right)},y${Math.round(r.top)}` }).join('|'),
+    lines: String(new Set(buttons.map((b) => Math.round(b.getBoundingClientRect().top))).size),
+    times: all('.iplex-details__progress-times .iplex-text').map((e) => `${(e.textContent ?? '').trim()}@${Math.round(e.getBoundingClientRect().left)}..${Math.round(e.getBoundingClientRect().right)},y${Math.round(e.getBoundingClientRect().top)}`).join('|'),
+    progress: (() => { const el = $('.iplex-details__progress .iplex-progress'); if (!el) return 'none'; const r = el.getBoundingClientRect(); return `${Math.round(r.left)}..${Math.round(r.right)},y${Math.round(r.top)},h${Math.round(r.height)}` })(),
+    focused: label(document.activeElement),
+  })
+  const trail: string[] = []
+  for (const key of ['ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowLeft', 'ArrowLeft', 'ArrowDown', 'ArrowUp']) {
+    press(key)
+    await sleep(400)
+    trail.push(`${key.replace('Arrow', '')}=${label(document.activeElement)}`)
+  }
+  report(`${t}:nav`, { trail: trail.join(' > ') })
+}
+
 export async function runTvSelfTest() {
   try {
     diag('st:start', `vp=${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio}`)
+    if (/selftest=actions/.test(window.location.search)) {
+      await runActions()
+      diag('st:done', 'ok')
+      return
+    }
     if (/selftest=sync/.test(window.location.search)) {
       await sleep(4000)
       await runSync()
@@ -666,4 +709,4 @@ export async function runTvSelfTest() {
   }
 }
 
-export const selfTestRequested = () => /(?:^|[?&])selftest=(?:1|home|settings|skeleton|sync)(?:&|$)/.test(window.location.search)
+export const selfTestRequested = () => /(?:^|[?&])selftest=(?:1|home|settings|skeleton|sync|actions)(?:&|$)/.test(window.location.search)

@@ -226,11 +226,6 @@ export default function DetailsScreen() {
         )}
         {genres.length > 0 && <IplexText variant="meta">{genres.slice(0, 4).join(' · ')}</IplexText>}
         {overview && <IplexText variant="description" clamp={3} className="iplex-details__overview">{overview}</IplexText>}
-        {movieProgress && movieResumable && (
-          <div className="iplex-details__progress">
-            <span className="iplex-details__progress-bar"><span className="iplex-progress"><span className="iplex-progress__fill" style={{ width: `${ratio(movieProgress)! * 100}%` }} /></span></span>
-          </div>
-        )}
         <div className="iplex-details__actions" data-nav-group-root="details-actions" data-nav-row="x">
           {!session.unavailable && item.kind === 'movie' &&
             (movieResumable ? (
@@ -280,6 +275,15 @@ export default function DetailsScreen() {
             </>
           )}
         </div>
+        {movieProgress && movieResumable && (
+          <div className="iplex-details__progress">
+            <span className="iplex-details__progress-bar"><span className="iplex-progress"><span className="iplex-progress__fill" style={{ width: `${ratio(movieProgress)! * 100}%` }} /></span></span>
+            <div className="iplex-details__progress-times">
+              <IplexText variant="meta">{formatRuntime(Math.round(movieProgress.duration / 60))}</IplexText>
+              <IplexText variant="meta">Faltam {formatRuntime(Math.max(1, Math.ceil((movieProgress.duration - movieProgress.position) / 60)))}</IplexText>
+            </div>
+          </div>
+        )}
         {listError && <IplexText variant="meta" className="iplex-details__error">{listError}</IplexText>}
       </section>
 

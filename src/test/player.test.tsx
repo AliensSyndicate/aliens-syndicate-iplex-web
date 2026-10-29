@@ -360,6 +360,9 @@ describe('player', () => {
     press('Escape', 27)
     await screen.findByRole('button', { name: 'Continuar' })
     expect(window.location.pathname).toBe('/titulo/demo-source/m-bbb')
+    // Barra de progresso com a duração e o tempo restante (200 s de 600 s).
+    expect(screen.getByText('10 min')).toBeTruthy()
+    expect(screen.getByText('Faltam 7 min')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Assistir do início' }))
     const b = await playing(2)
     time(599_500, 600_000, b)
