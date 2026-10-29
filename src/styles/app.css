@@ -43,13 +43,13 @@
 }
 .iplex-splash__title {
   margin: 0;
-  max-width: 1280px;
+  width: 100%;
   padding: 0 var(--iplex-safe-area-x);
   text-align: center;
 }
 .iplex-splash__status {
   margin: var(--iplex-space-4) 0 0;
-  max-width: 1280px;
+  width: 100%;
   padding: 0 var(--iplex-safe-area-x);
   text-align: center;
 }
@@ -134,7 +134,7 @@
   max-width: 80rem;
 }
 .iplex-state__description {
-  max-width: 20em;
+  max-width: 80rem;
   margin-top: 1.5rem;
 }
 .iplex-state__detail {
