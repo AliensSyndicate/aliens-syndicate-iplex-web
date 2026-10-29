@@ -263,6 +263,9 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
       const { spaces } = await call<{ spaces: Space[] }>('listProfileSpaces', { profileId })
       return spaces
     },
+    async syncSource(sourceId: string) {
+      await call('syncPlayerSource', { sourceId })
+    },
 
     async readCatalog(profileId: string, q: CatalogQuery): Promise<CatalogPage> {
       const raw = await call<{

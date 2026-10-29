@@ -160,12 +160,52 @@ describe('listas IPTV nas configurações', () => {
     expect(a.textContent).toBe('Lista AAtualizada em 28/10/2026 13:05')
     const b = screen.getByRole('button', { name: 'Lista B. Sem registro de atualização' })
     expect(b.getAttribute('aria-current')).toBeNull()
-    // A TV não oferece mais "Sair deste dispositivo".
-    expect(screen.queryByRole('button', { name: 'Sair deste dispositivo' })).toBeNull()
+    // "Sair deste dispositivo" continua, sem o texto explicativo embaixo.
+    expect(screen.getByRole('button', { name: 'Sair deste dispositivo' })).toBeTruthy()
+    expect(screen.queryByText(/Remove a credencial desta TV/)).toBeNull()
     b.click()
     // Volta ao início (Meu iPlex) com a lista nova guardada.
     await waitFor(() => expect(window.location.pathname).toBe('/meu-iplex'), { timeout: 15000 })
     expect(JSON.parse(localStorage.getItem('iplex.activeSource.v1.demo-family.admin') ?? 'null')).toBe('b')
+  }, 40000)
+})
+
+describe('sincronizar a lista atual nas configurações', () => {
+  it('OK na lista atual pede a sincronização, fica na tela mostrando o andamento e mostra a nova data ao terminar', async () => {
+    const kinds = ['movie', 'series'] as const
+    const done = new Date(2026, 9, 29, 9, 30).getTime()
+    let syncing = false
+    let synced = 0
+    const syncSource = vi.fn(async () => {
+      syncing = true
+    })
+    start('/configuracoes', 'single', {
+      listSpaces: async () => {
+        // O servidor termina depois do pedido: a primeira consulta ainda vem "sincronizando".
+        if (syncing && synced++ > 0) syncing = false
+        return [{ sourceId: 'a', name: 'Lista A', kinds: [...kinds], ...(syncing ? { syncing: true } : { lastSyncAt: synced ? done : undefined }) }]
+      },
+      syncSource,
+    })
+    await screen.findByRole('main', { name: 'Configurações' }, { timeout: 15000 })
+    const button = await screen.findByRole('button', { name: /^Lista A, lista atual/ })
+    button.click()
+    await waitFor(() => expect(syncSource).toHaveBeenCalledWith('a'))
+    expect(await find('Sincronizando…')).toBeTruthy()
+    // Continua nas Configurações (não recarrega o app).
+    expect(window.location.pathname).toBe('/configuracoes')
+    expect(await screen.findByText('Atualizada em 29/10/2026 09:30', {}, { timeout: 15000 })).toBeTruthy()
+  }, 40000)
+
+  it('pedido recusado (limite) avisa na própria lista', async () => {
+    start('/configuracoes', 'single', {
+      listSpaces: async () => [{ sourceId: 'a', name: 'Lista A', kinds: ['movie'] }],
+      syncSource: async () => {
+        throw new AppError('rate-limited', 'rate-limited')
+      },
+    })
+    ;(await screen.findByRole('button', { name: /^Lista A, lista atual/ }, { timeout: 15000 })).click()
+    expect(await find('Aguarde alguns segundos e tente de novo')).toBeTruthy()
   }, 40000)
 })
 

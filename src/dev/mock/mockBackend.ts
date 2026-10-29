@@ -107,6 +107,8 @@ export function createMockBackend(): Backend {
   let paired = mode !== 'unpaired' && sessionStorage.getItem('iplex.mock.unpaired') !== '1'
   let pairingStarted = 0
   let lease: Lease | null = null
+  let syncingUntil = 0
+  let lastSync = 0
   const library: Library = { favorites: [], wishlist: [], watched: [], progress: [] }
   const generations = { favorites: 0, watched: 0, progress: 0 }
   const profiles: Profile[] =
@@ -209,7 +211,14 @@ export function createMockBackend(): Backend {
       if (mode === 'no-iptv') return []
       if (mode === 'iptv-down') throw new AppError('iptv-unavailable', 'provider-unavailable')
       const kinds = (['channel', 'movie', 'series'] as const).filter((k) => visible().some((i) => i.kind === k))
-      return [{ sourceId: SOURCE, name: 'Fonte de demonstração', kinds: [...kinds] }]
+      const syncing = Date.now() < syncingUntil
+      return [{ sourceId: SOURCE, name: 'Fonte de demonstração', kinds: [...kinds], ...(lastSync ? { lastSyncAt: lastSync } : {}), ...(syncing ? { syncing } : {}) }]
+    },
+    async syncSource() {
+      await delay(200)
+      // Demonstração: "sincroniza" por alguns segundos e marca a data ao terminar.
+      syncingUntil = Date.now() + 4000
+      lastSync = syncingUntil
     },
     // Seis conjuntos: o demonstrativo não os tem (o app cai no formato paginado).
     async readCatalogManifest() {

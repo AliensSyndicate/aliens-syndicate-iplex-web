@@ -127,6 +127,8 @@ export interface Backend {
   updatePlayRequest(id: string, status: 'confirming' | 'started' | 'declined' | 'failed', errorCode?: PlayRequestErrorCode): Promise<void>
 
   listSpaces(profileId: string): Promise<Space[]>
+  /** Pede a mesma sincronização manual do iPlex Gestor para a lista (o servidor enfileira; o andamento vem em listSpaces). */
+  syncSource(sourceId: string): Promise<void>
   readCatalog(profileId: string, query: CatalogQuery): Promise<CatalogPage>
   /** Seis conjuntos do catálogo: manifesto, blocos e diferenças desde uma versão. */
   readCatalogManifest(profileId: string, sourceId: string): Promise<CatalogManifest>

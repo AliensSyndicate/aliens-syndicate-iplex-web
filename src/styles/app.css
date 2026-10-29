@@ -1511,6 +1511,9 @@
   font-weight: var(--iplex-font-weight-regular, 400);
   opacity: 0.75;
 }
+.iplex-settings__danger {
+  margin-top: var(--iplex-space-5);
+}
 
 /* ---- Player ---------------------------------------------------------- */
 .iplex-player {

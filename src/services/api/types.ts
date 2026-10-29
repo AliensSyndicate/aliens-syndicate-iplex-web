@@ -122,6 +122,8 @@ export interface Space {
   unavailable?: boolean
   /** Última atualização da lista no servidor (ms), quando o backend informa. */
   lastSyncAt?: number
+  /** Há uma sincronização pedida (Gestor, TV ou agenda) que ainda não terminou. */
+  syncing?: boolean
 }
 
 export interface CatalogCategory {

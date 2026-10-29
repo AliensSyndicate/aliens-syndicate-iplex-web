@@ -75,6 +75,11 @@ export interface SessionApi {
   /** Passa a usar outra lista IPTV e recarrega tudo desde o início. */
   selectSource(sourceId: string): Promise<void>
   /**
+   * Atualiza a lista em uso (mesma sincronização manual do Gestor), sem sair da tela: a lista aparece como
+   * sincronizando e, ao terminar, o catálogo novo entra em segundo plano.
+   */
+  syncSource(sourceId: string): Promise<void>
+  /**
    * Quem volta a um perfil cuja tela inicial é Meu iPlex pode ver o esqueleto dela durante a inicialização (em vez do
    * texto de etapas). Vale até a inicialização cair no download completo, que volta ao texto de progresso.
    */
@@ -96,6 +101,17 @@ function activeSpaces(all: Space[], identity: DeviceIdentity, profile: Profile):
   return [all.find((space) => space.sourceId === chosen) ?? all[0]!]
 }
 const UNAVAILABLE_RETRY_MS = 30_000
+/** Andamento de uma sincronização pedida pela TV: consulta a cada 5 s, por até 15 min. */
+const SYNC_POLL_MS = 5_000
+const SYNC_WATCH_MS = 15 * 60_000
+
+/** Junta o estado de sincronização vindo do servidor às listas da sessão (mesma ordem e seleção). */
+function mergeSpaces(spaces: Space[], fresh: Space[]): Space[] {
+  return spaces.map((space) => {
+    const next = fresh.find((f) => f.sourceId === space.sourceId)
+    return next ? { ...space, lastSyncAt: next.lastSyncAt ?? space.lastSyncAt, syncing: next.syncing, unavailable: next.unavailable } : space
+  })
+}
 
 /** Desvínculo de verdade (revogada/removida no Gestor). Falha ambígua de credencial NÃO desvincula. */
 const isUnpaired = (error: AppError) => error.kind === 'device-unpaired' && !isAmbiguousAuthFailure(error)
@@ -623,6 +639,37 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (current.status !== 'ready') return
         writeJson(activeSourceKey(current.identity, current.profile), sourceId)
         await enter(current.identity, current.profiles, current.profile, { pinVerified: true })
+      },
+      syncSource: async (sourceId) => {
+        const current = stateRef.current
+        if (current.status !== 'ready') return
+        await backend.syncSource(sourceId)
+        const mark = (spaces: Space[]) => spaces.map((space) => (space.sourceId === sourceId ? { ...space, syncing: true } : space))
+        setState({ ...current, spaces: mark(current.spaces), allSpaces: mark(current.allSpaces) })
+        diag('sync', `lista ${sourceId} pedida pela TV`)
+        const profileId = current.profile.id
+        void (async () => {
+          const until = Date.now() + SYNC_WATCH_MS
+          while (Date.now() < until) {
+            await new Promise((resolve) => setTimeout(resolve, SYNC_POLL_MS))
+            const now = stateRef.current
+            if (now.status !== 'ready' || now.profile.id !== profileId) return
+            let fresh: Space[]
+            try {
+              fresh = await backend.listSpaces(profileId)
+            } catch {
+              continue
+            }
+            const latest = stateRef.current
+            if (latest.status !== 'ready' || latest.profile.id !== profileId) return
+            setState({ ...latest, spaces: mergeSpaces(latest.spaces, fresh), allSpaces: mergeSpaces(latest.allSpaces, fresh) })
+            if (fresh.find((space) => space.sourceId === sourceId)?.syncing) continue
+            diag('sync', `lista ${sourceId} sincronizada; catálogo novo em segundo plano`)
+            // Mesmo caminho da mudança de permissões: baixa só o que mudou e atualiza as telas sozinho.
+            await refreshAccess(true)
+            return
+          }
+        })()
       },
       reloadSpaces: async () => {
         const current = stateRef.current

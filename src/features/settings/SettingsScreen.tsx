@@ -1,16 +1,19 @@
 /**
  * Configurações (acesso pelo menu do avatar; não é aba do menu principal).
  * Só informação e ações do dispositivo. Administração (perfis, fontes,
- * assinatura, controle parental, desvincular) é do iPlex Gestor; a TV não
- * oferece "sair deste dispositivo".
+ * assinatura, controle parental, desvincular) é do iPlex Gestor; a TV só
+ * oferece "sair deste dispositivo" (esquece a credencial local).
  * Conteúdo exato desta tela: PROPOSTA (seção 33).
  */
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBackend } from '../../app/providers/BackendProvider'
 import { usePlatform } from '../../app/providers/PlatformProvider'
 import { useAppLayout } from '../../app/AppLayout'
 import { useReadySession, useSession } from '../../app/providers/SessionProvider'
+import { ConfirmDialog } from '../../components/dialogs/ConfirmDialog'
 import { ERROR_COPY } from '../../components/feedback/errorCopy'
+import { toAppError } from '../../services/api/errors'
 import { AccountBadge } from '../../components/navigation/AccountBadge'
 import { IplexButton } from '../../components/ui/IplexButton'
 import { navAttrs } from '../../navigation/navAttrs'
@@ -55,6 +58,17 @@ export default function SettingsScreen() {
     navigate(SECTION_PATHS[startSection(ready.profile)], { replace: true })
     void session.selectSource(sourceId)
   }
+  /** A própria lista: pede a sincronização (como o Gestor) e fica nesta tela, no início, mostrando o andamento. */
+  const [confirm, setConfirm] = useState(false)
+  const [syncError, setSyncError] = useState<Record<string, string>>({})
+  const syncSource = (sourceId: string) => {
+    window.scrollTo(0, 0)
+    setSyncError((errors) => ({ ...errors, [sourceId]: '' }))
+    session.syncSource(sourceId).catch((raw) => {
+      const kind = toAppError(raw).kind
+      setSyncError((errors) => ({ ...errors, [sourceId]: kind === 'rate-limited' ? 'Aguarde alguns segundos e tente de novo' : 'Não foi possível atualizar agora' }))
+    })
+  }
   const masked = (id: string) => (id.length > 8 ? `${id.slice(0, 4)}••••${id.slice(-4)}` : id)
   const sourceState = ready.spacesError
     ? ERROR_COPY[ready.spacesError.kind].title
@@ -97,17 +111,20 @@ export default function SettingsScreen() {
                 const current = ready.spaces.some((s) => s.sourceId === space.sourceId)
                 const updated = space.lastSyncAt ?? localSync[space.sourceId]
                 const name = space.name || `Lista ${index + 1}`
-                const date = updated ? `Atualizada em ${formatDateTime(updated)}` : 'Sem registro de atualização'
+                const error = syncError[space.sourceId]
+                const date = space.syncing ? 'Sincronizando…' : error || (updated ? `Atualizada em ${formatDateTime(updated)}` : 'Sem registro de atualização')
                 return (
                   <li key={space.sourceId} className="iplex-settings__list">
-                    {/* Cada lista é um botão: nome e, embaixo, a última atualização. A atual é a destacada. */}
+                    {/* Cada lista é um botão: nome e, embaixo, a última atualização. A atual é a destacada: OK nela
+                        sincroniza; OK em outra troca de lista (recarrega desde o início). */}
                     <button
                       type="button"
                       className={classNames('iplex-button', current ? 'iplex-button-primary' : 'iplex-button-secondary', 'iplex-settings__source')}
                       {...navAttrs({ navId: `set-source-${space.sourceId}` })}
                       aria-current={current ? 'true' : undefined}
                       aria-label={`${name}${current ? ', lista atual' : ''}. ${date}`}
-                      onClick={() => !current && switchSource(space.sourceId)}
+                      aria-busy={space.syncing ? 'true' : undefined}
+                      onClick={() => (current ? !space.syncing && syncSource(space.sourceId) : switchSource(space.sourceId))}
                     >
                       <span className="iplex-settings__source-name">{name}</span>
                       <span className="iplex-settings__source-date">{date}</span>
@@ -144,6 +161,26 @@ export default function SettingsScreen() {
           <IplexText variant="caption">Suporte: perfis, fontes, assinatura e desvinculação são gerenciados no iPlex Gestor.</IplexText>
         </IplexCard>
       </div>
+      {ready.profile.type === 'admin' && (
+        <div className="iplex-settings__danger" data-nav-row="x">
+          <IplexButton variant="secondary" navId="set-forget" onClick={() => setConfirm(true)}>
+            Sair deste dispositivo
+          </IplexButton>
+        </div>
+      )}
+      {confirm && (
+        <ConfirmDialog
+          title="Sair deste dispositivo?"
+          description="A TV volta para a tela de vinculação. O vínculo no iPlex Gestor só é removido por lá."
+          confirmLabel="Sair"
+          onCancel={() => setConfirm(false)}
+          onConfirm={() => {
+            setConfirm(false)
+            navigate('/', { replace: true })
+            void session.forgetDevice()
+          }}
+        />
+      )}
     </main>
   )
 }

@@ -582,9 +582,38 @@ async function runSkeleton() {
   report(`${t}:real`, measureHome())
 }
 
+/** Sincronizar a lista atual (?selftest=sync): OK no botão da lista em uso e acompanha o texto até terminar. */
+async function runSync() {
+  const t = 'sync'
+  window.history.pushState({}, '', '/configuracoes')
+  window.dispatchEvent(new PopStateEvent('popstate'))
+  if (!(await waitFor(() => !!$('.iplex-settings__source[aria-current="true"]'), 20000))) return report(`${t}:enter`, { fail: 'lista atual não apareceu' })
+  await sleep(1500)
+  const button = $('.iplex-settings__source[aria-current="true"]')!
+  const text = () => ($('.iplex-settings__source[aria-current="true"] .iplex-settings__source-date')?.textContent ?? '').trim()
+  const before = text()
+  button.focus()
+  button.click()
+  const start = Date.now()
+  const seen: string[] = []
+  while (Date.now() - start < 240000) {
+    await sleep(2000)
+    const now = text()
+    if (seen[seen.length - 1]?.split('@')[0] !== now) seen.push(`${now}@${Math.round((Date.now() - start) / 1000)}s`)
+    if (now !== 'Sincronizando…' && seen.some((v) => v.startsWith('Sincronizando'))) break
+  }
+  report(`${t}:result`, { before, trail: seen.join(' > '), path: location.pathname, y: String(Math.round(window.scrollY)), focused: label(document.activeElement) })
+}
+
 export async function runTvSelfTest() {
   try {
     diag('st:start', `vp=${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio}`)
+    if (/selftest=sync/.test(window.location.search)) {
+      await sleep(4000)
+      await runSync()
+      diag('st:done', 'ok')
+      return
+    }
     if (/selftest=skeleton/.test(window.location.search)) {
       await runSkeleton()
       diag('st:done', 'ok')
@@ -637,4 +666,4 @@ export async function runTvSelfTest() {
   }
 }
 
-export const selfTestRequested = () => /(?:^|[?&])selftest=(?:1|home|settings|skeleton)(?:&|$)/.test(window.location.search)
+export const selfTestRequested = () => /(?:^|[?&])selftest=(?:1|home|settings|skeleton|sync)(?:&|$)/.test(window.location.search)
