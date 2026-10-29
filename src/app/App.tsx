@@ -3,7 +3,7 @@ import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-ro
 import { ConfirmDialog } from '../components/dialogs/ConfirmDialog'
 import { ErrorState } from '../components/feedback/ErrorState'
 import { PairingScreen } from '../features/pairing/PairingScreen'
-import { SECTION_PATHS, sectionForPath, startSection } from '../features/profiles/profileRules'
+import { hasPersonalLibrary, SECTION_PATHS, sectionForPath, startSection } from '../features/profiles/profileRules'
 import { ProfileSelectScreen } from '../features/profiles/ProfileSelectScreen'
 import { SplashScreen } from '../features/startup/SplashScreen'
 import { FocusProvider } from '../navigation/FocusProvider'
@@ -65,7 +65,7 @@ function SessionGate() {
       return (
         <div className="iplex-app">
           <IplexHeader profile={session.enteringProfile} onAvatar={() => undefined} />
-          <MyIplexSkeleton />
+          <MyIplexSkeleton personal={hasPersonalLibrary(session.enteringProfile)} />
         </div>
       )
     }

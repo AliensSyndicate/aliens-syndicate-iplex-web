@@ -663,8 +663,12 @@
   border-radius: var(--iplex-radius-small);
 }
 .iplex-skeleton--button {
-  width: 240px;
-  height: 64px;
+  /* Mesma fonte, altura de linha e padding do IplexButton (o conteúdo é um espaço): arredonda igual ao real. */
+  box-sizing: border-box;
+  width: 15rem;
+  padding: var(--iplex-button-padding-block) 0;
+  font-size: var(--iplex-type-button);
+  line-height: 1.2;
   margin-right: var(--iplex-space-4);
   border-radius: var(--iplex-radius-full);
 }
@@ -678,6 +682,46 @@
   left: 0;
   width: 100%;
   height: 100%;
+}
+/* Linha de texto: a caixa tem a altura da linha real; a barra visível ocupa o miolo (padding + content-box). */
+.iplex-skeleton-line {
+  box-sizing: border-box;
+  height: calc(1em * var(--iplex-line-height));
+  padding: 0.2em 0;
+  background-clip: content-box;
+  border-radius: var(--iplex-radius-small);
+}
+.iplex-skeleton-text {
+  position: relative;
+}
+.iplex-skeleton-text > .iplex-skeleton {
+  position: absolute;
+  top: 0.2em;
+  bottom: 0.2em;
+  left: 0;
+  right: 0;
+  border-radius: var(--iplex-radius-small);
+}
+.iplex-skeleton-text--meta {
+  font-size: var(--iplex-type-meta);
+}
+.iplex-skeleton-text--description {
+  font-size: var(--iplex-type-description);
+}
+.iplex-skeleton-text--hero {
+  font-size: var(--iplex-type-hero);
+  line-height: 1.08;
+}
+.iplex-skeleton-line--section {
+  width: 18rem;
+  height: calc(1em * 1.25);
+  font-size: var(--iplex-type-section-title);
+}
+/* Inline como o IplexButton: a margem de cima não colapsa no bloco pai. */
+.iplex-home__hero .iplex-skeleton--hero-button {
+  display: inline-block;
+  vertical-align: top;
+  margin-top: var(--iplex-space-4);
 }
 .iplex-skeleton--title {
   width: 420px;
@@ -1417,6 +1461,9 @@
 .iplex-settings__card dl {
   margin: var(--iplex-space-4) 0;
 }
+.iplex-settings__account {
+  margin: var(--iplex-space-4) 0;
+}
 .iplex-settings__row + .iplex-settings__row {
   margin-top: var(--iplex-space-3);
 }
@@ -1430,25 +1477,39 @@
   word-break: break-word;
 }
 .iplex-settings__lists {
-  margin: 0;
+  margin: var(--iplex-space-4) 0 0;
   padding: 0;
   list-style: none;
 }
 .iplex-settings__list + .iplex-settings__list {
   margin-top: var(--iplex-space-4);
 }
-.iplex-settings__list .iplex-button {
+/* Botão da lista: nome e, embaixo, a última atualização (duas linhas, alinhadas à esquerda). */
+.iplex-settings__source {
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  -webkit-align-items: flex-start;
+  align-items: flex-start;
   width: 100%;
+  padding: var(--iplex-space-4) var(--iplex-space-5);
+  border-radius: var(--iplex-radius-medium);
+  text-align: left;
+  white-space: normal;
 }
-.iplex-settings__list-date {
-  margin: var(--iplex-space-2) 0 0;
-  text-align: center;
+.iplex-settings__source.iplex-button-secondary {
+  padding: calc(var(--iplex-space-4) - var(--iplex-button-border-width)) calc(var(--iplex-space-5) - var(--iplex-button-border-width));
 }
-.iplex-settings__danger {
-  margin-top: var(--iplex-space-5);
+.iplex-settings__source-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.iplex-settings__danger .iplex-text {
+.iplex-settings__source-date {
   margin-top: var(--iplex-space-2);
+  font-size: var(--iplex-type-meta);
+  font-weight: var(--iplex-font-weight-regular, 400);
+  opacity: 0.75;
 }
 
 /* ---- Player ---------------------------------------------------------- */

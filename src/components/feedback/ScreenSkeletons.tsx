@@ -3,6 +3,16 @@ import { SkeletonRow } from './LoadingState'
 /** Placeholders de tela inteira (mesmo layout das telas reais): nunca um indicador de "carregando". */
 
 const Line = ({ className = '' }: { className?: string }) => <div className={`iplex-skeleton iplex-skeleton--text ${className}`.trim()} />
+/**
+ * Linha de texto com a mesma fonte e altura de linha da variante real: a caixa tem um espaço como conteúdo, então o
+ * navegador arredonda a altura igual ao texto de verdade. A barra visível é o miolo da linha.
+ */
+const TextLine = ({ variant, width }: { variant: 'meta' | 'hero' | 'description'; width: string }) => (
+  <div className={`iplex-skeleton-text iplex-skeleton-text--${variant}`} style={{ width }}>
+    <span className="iplex-skeleton" />
+    {'\u00a0'}
+  </div>
+)
 
 export function DetailsSkeleton() {
   return (
@@ -13,8 +23,8 @@ export function DetailsSkeleton() {
         <Line className="iplex-skeleton--wide" />
         <Line className="iplex-skeleton--wide" />
         <div className="iplex-details__skeleton-actions">
-          <div className="iplex-skeleton iplex-skeleton--button" />
-          <div className="iplex-skeleton iplex-skeleton--button" />
+          <div className="iplex-skeleton iplex-skeleton--button">{'\u00a0'}</div>
+          <div className="iplex-skeleton iplex-skeleton--button">{'\u00a0'}</div>
         </div>
       </section>
     </main>
@@ -58,8 +68,8 @@ export function SeasonsSkeleton() {
       <section className="iplex-details__series" aria-hidden="true">
         <Line className="iplex-skeleton--title" />
         <div className="iplex-details__skeleton-actions">
-          <div className="iplex-skeleton iplex-skeleton--button" />
-          <div className="iplex-skeleton iplex-skeleton--button" />
+          <div className="iplex-skeleton iplex-skeleton--button">{'\u00a0'}</div>
+          <div className="iplex-skeleton iplex-skeleton--button">{'\u00a0'}</div>
         </div>
         <EpisodeBlocks />
       </section>
@@ -80,8 +90,12 @@ export function RouteSkeleton({ pathname }: { pathname: string }) {
   )
 }
 
-/** Meu iPlex: destaque (fundo à direita, título, texto e botão) e fileiras com as medidas dos cards reais. */
-export function MyIplexSkeleton({ rowCount = 10 }: { rowCount?: number }) {
+/**
+ * Meu iPlex: mesma estrutura da tela real. Destaque com saudação, "Lançamento em destaque", título, sinopse de
+ * 3 linhas e botão; fileiras como as do perfil (Continuar e Favoritos em 16:9, depois pôsteres). Visitante: só
+ * Lançamentos (pôster).
+ */
+export function MyIplexSkeleton({ rowCount = 10, personal = true }: { rowCount?: number; personal?: boolean }) {
   return (
     <main className="iplex-page iplex-home" aria-busy="true" aria-label="Meu iPlex">
       <section className="iplex-home__hero" aria-hidden="true">
@@ -90,15 +104,23 @@ export function MyIplexSkeleton({ rowCount = 10 }: { rowCount?: number }) {
           <div className="iplex-hero__scrim" />
         </div>
         <div className="iplex-home__hero-info">
-          <Line />
-          <Line className="iplex-skeleton--title" />
-          <Line className="iplex-skeleton--wide" />
-          <Line className="iplex-skeleton--wide" />
-          <div className="iplex-skeleton iplex-skeleton--button" />
+          <TextLine variant="meta" width="16rem" />
+          <TextLine variant="meta" width="19rem" />
+          <TextLine variant="hero" width="60%" />
+          <div>
+            <TextLine variant="description" width="100%" />
+            <TextLine variant="description" width="100%" />
+            <TextLine variant="description" width="70%" />
+          </div>
+          <div>
+            <div className="iplex-skeleton iplex-skeleton--button iplex-skeleton--hero-button">{'\u00a0'}</div>
+          </div>
         </div>
       </section>
-      <SkeletonRow shape="landscape" count={rowCount} />
+      {personal && <SkeletonRow shape="landscape" count={rowCount} />}
+      {personal && <SkeletonRow shape="landscape" count={rowCount} />}
       <SkeletonRow shape="poster" count={rowCount} />
+      {personal && <SkeletonRow shape="poster" count={rowCount} />}
     </main>
   )
 }

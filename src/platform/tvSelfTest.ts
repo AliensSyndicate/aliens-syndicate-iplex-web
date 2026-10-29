@@ -525,9 +525,77 @@ async function runHome() {
   }
 }
 
+/** Configurações (?selftest=settings): espaçamentos dos cards, botões das listas e navegação pelas setas. */
+async function runSettings() {
+  const t = 'settings'
+  window.history.pushState({}, '', '/configuracoes')
+  window.dispatchEvent(new PopStateEvent('popstate'))
+  if (!(await waitFor(() => !!$('.iplex-settings'), 20000))) return report(`${t}:enter`, { fail: 'tela não abriu' })
+  await sleep(2500)
+  const gap = (card: Element | undefined, below: string) => {
+    const title = card?.querySelector('.iplex-text')?.getBoundingClientRect()
+    const next = card?.querySelector(below)?.getBoundingClientRect()
+    return title && next ? String(Math.round(next.top - title.bottom)) : '-'
+  }
+  const cards = all('.iplex-settings__card')
+  const byTitle = (name: string) => cards.find((c) => (c.querySelector('.iplex-text')?.textContent ?? '').trim() === name)
+  const sources = all('.iplex-settings__source')
+  report(`${t}:layout`, {
+    gapPerfil: gap(byTitle('Perfil'), 'dl'),
+    gapConta: gap(byTitle('Conta'), '.iplex-account-badge'),
+    gapListas: gap(byTitle('Listas IPTV'), '.iplex-settings__lists'),
+    sources: sources.map((b) => `${(b.querySelector('.iplex-settings__source-name')?.textContent ?? '').trim()}/${(b.querySelector('.iplex-settings__source-date')?.textContent ?? '').trim()}@${Math.round(b.getBoundingClientRect().height)}px`).join('|'),
+    forget: String(!!$('[data-nav-id="set-forget"]')),
+    focused: label(document.activeElement),
+  })
+  const trail: string[] = []
+  for (const key of ['ArrowRight', 'ArrowDown', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'ArrowUp']) {
+    press(key)
+    await sleep(450)
+    trail.push(`${key.replace('Arrow', '')}=${label(document.activeElement)}`)
+  }
+  report(`${t}:nav`, { trail: trail.join(' > '), y: String(Math.round(window.scrollY)) })
+}
+
+/** Esqueleto x tela real do Meu iPlex (?selftest=skeleton): posição e tamanho de cada bloco nas duas versões. */
+function measureHome() {
+  const box = (el: Element | null | undefined) => {
+    if (!el) return '-'
+    const r = el.getBoundingClientRect()
+    return `${Math.round(r.top)}+${Math.round(r.height)}`
+  }
+  const info = $('.iplex-home__hero-info')
+  return {
+    hero: box($('.iplex-home__hero')),
+    lines: info ? Array.from(info.children).map((c) => box(c)).join(' ') : '-',
+    button: box(info?.lastElementChild?.firstElementChild),
+    rows: all('.iplex-home .iplex-row').slice(0, 4).map((r) => `${r.className.replace(/iplex-row--skeleton|iplex-row /g, '').trim()}:${box(r.querySelector('.iplex-row__head'))}/${box(r.querySelector('.iplex-tile'))}`).join(' '),
+  }
+}
+
+async function runSkeleton() {
+  const t = 'skeleton'
+  if (await waitFor(() => !!$('main.iplex-home[aria-busy="true"]'), 30000)) report(`${t}:sk`, measureHome())
+  else report(`${t}:sk`, { note: 'esqueleto não apareceu' })
+  if (!(await waitFor(() => !!$('main.iplex-home:not([aria-busy])'), 60000))) return report(`${t}:real`, { fail: 'tela não abriu' })
+  await sleep(6000)
+  report(`${t}:real`, measureHome())
+}
+
 export async function runTvSelfTest() {
   try {
     diag('st:start', `vp=${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio}`)
+    if (/selftest=skeleton/.test(window.location.search)) {
+      await runSkeleton()
+      diag('st:done', 'ok')
+      return
+    }
+    if (/selftest=settings/.test(window.location.search)) {
+      await sleep(4000)
+      await runSettings()
+      diag('st:done', 'ok')
+      return
+    }
     if (/selftest=home/.test(window.location.search)) {
       await sleep(4000)
       await runHome()
@@ -569,4 +637,4 @@ export async function runTvSelfTest() {
   }
 }
 
-export const selfTestRequested = () => /(?:^|[?&])selftest=(?:1|home)(?:&|$)/.test(window.location.search)
+export const selfTestRequested = () => /(?:^|[?&])selftest=(?:1|home|settings|skeleton)(?:&|$)/.test(window.location.search)

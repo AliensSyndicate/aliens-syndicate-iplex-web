@@ -20,11 +20,13 @@ export function LoadingState({ label }: { label?: string }) {
   )
 }
 
-/** Fileira de placeholders com o mesmo tamanho dos cards (evita saltos de layout). */
+/** Fileira de placeholders com a mesma estrutura e medidas da ContentCarousel (título de seção e cards). */
 export function SkeletonRow({ shape = 'poster', count = 15 }: { shape?: 'poster' | 'landscape' | 'channel'; count?: number }) {
   return (
-    <div className="iplex-row iplex-row--skeleton" aria-hidden="true">
-      <div className="iplex-row__title iplex-skeleton iplex-skeleton--text" />
+    <div className={`iplex-row iplex-row--${shape} iplex-row--skeleton`} aria-hidden="true">
+      <div className="iplex-row__head">
+        <div className="iplex-row__title iplex-skeleton iplex-skeleton-line iplex-skeleton-line--section" />
+      </div>
       <div className="iplex-row__track">
         {Array.from({ length: count }, (_, i) => (
           <div key={i} className={`iplex-tile iplex-tile--${shape}`}>

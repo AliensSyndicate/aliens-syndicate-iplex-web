@@ -101,8 +101,13 @@ export function handleRowKey(key: string, last: WeakMap<HTMLElement, string>): b
   const list = isList(row)
   const horizontal = key === 'ArrowLeft' || key === 'ArrowRight'
 
-  if (horizontal && !list) return goto(items[index + (key === 'ArrowRight' ? 1 : -1)] ?? null) && true
-  if (horizontal && list) return true
+  if (horizontal) {
+    const next = list ? undefined : items[index + (key === 'ArrowRight' ? 1 : -1)]
+    if (next) return goto(next)
+    // [data-nav-spill-x] (telas em cartões lado a lado, como Configurações): sem vizinho na fileira, a
+    // navegação espacial leva ao cartão ao lado. Nas demais telas a tecla para na ponta da fileira.
+    return !main.hasAttribute('data-nav-spill-x')
+  }
   if (list) {
     const step = key === 'ArrowDown' ? 1 : -1
     if (items[index + step]) return goto(items[index + step]!)

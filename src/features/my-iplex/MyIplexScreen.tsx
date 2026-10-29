@@ -126,7 +126,7 @@ export default function MyIplexScreen() {
   const visible = sections.filter((section) => section.items.length > 0 && (section.id === 'releases' || personal))
   const empty = !loading && !(personal && continueRow.length > 0) && visible.length === 0
 
-  if (!ready) return <MyIplexSkeleton rowCount={ROW} />
+  if (!ready) return <MyIplexSkeleton rowCount={ROW} personal={personal} />
 
   return (
     <main className="iplex-page iplex-home" aria-label="Meu iPlex" data-nav-managed-y="">

@@ -1,19 +1,20 @@
 /**
  * Configurações (acesso pelo menu do avatar; não é aba do menu principal).
  * Só informação e ações do dispositivo. Administração (perfis, fontes,
- * assinatura, controle parental, desvincular) é do iPlex Gestor.
+ * assinatura, controle parental, desvincular) é do iPlex Gestor; a TV não
+ * oferece "sair deste dispositivo".
  * Conteúdo exato desta tela: PROPOSTA (seção 33).
  */
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useBackend } from '../../app/providers/BackendProvider'
 import { usePlatform } from '../../app/providers/PlatformProvider'
 import { useAppLayout } from '../../app/AppLayout'
 import { useReadySession, useSession } from '../../app/providers/SessionProvider'
-import { ConfirmDialog } from '../../components/dialogs/ConfirmDialog'
 import { ERROR_COPY } from '../../components/feedback/errorCopy'
 import { AccountBadge } from '../../components/navigation/AccountBadge'
 import { IplexButton } from '../../components/ui/IplexButton'
+import { navAttrs } from '../../navigation/navAttrs'
+import { classNames } from '../../utils/classNames'
 import { IplexCard } from '../../components/ui/IplexCard'
 import { IplexText } from '../../components/ui/IplexText'
 import { WEB_VERSION } from '../../config/env'
@@ -42,7 +43,6 @@ export default function SettingsScreen() {
   const ready = useReadySession()
   const { openProfiles } = useAppLayout()
   const navigate = useNavigate()
-  const [confirm, setConfirm] = useState(false)
   useInitialFocus('/configuracoes', true)
   // Mesma navegação por fileiras das outras telas: cima/baixo vão à fileira vizinha (o menu só no topo).
   useRowNavigation()
@@ -63,7 +63,7 @@ export default function SettingsScreen() {
       : 'Nenhuma fonte configurada'
 
   return (
-    <main className="iplex-page iplex-settings" aria-label="Configurações" data-nav-managed-y="">
+    <main className="iplex-page iplex-settings" aria-label="Configurações" data-nav-managed-y="" data-nav-spill-x="">
       <IplexText variant="page-title" className="iplex-page__title">
         Configurações
       </IplexText>
@@ -83,7 +83,7 @@ export default function SettingsScreen() {
         {account && account.name && (
           <IplexCard compact className="iplex-settings__card">
             <IplexText variant="section-title">Conta</IplexText>
-            <AccountBadge account={account} />
+            <AccountBadge account={account} className="iplex-settings__account" />
           </IplexCard>
         )}
 
@@ -92,25 +92,26 @@ export default function SettingsScreen() {
           {ready.allSpaces.length === 0 ? (
             <IplexText variant="meta">Nenhuma lista cadastrada. Adicione uma no iPlex Gestor.</IplexText>
           ) : (
-            <ul className="iplex-settings__lists">
+            <ul className="iplex-settings__lists" data-nav-row="list">
               {ready.allSpaces.map((space, index) => {
                 const current = ready.spaces.some((s) => s.sourceId === space.sourceId)
                 const updated = space.lastSyncAt ?? localSync[space.sourceId]
+                const name = space.name || `Lista ${index + 1}`
+                const date = updated ? `Atualizada em ${formatDateTime(updated)}` : 'Sem registro de atualização'
                 return (
-                  <li key={space.sourceId} className="iplex-settings__list" data-nav-row="x">
-                    {/* Cada lista é um botão com o nome; o atual é o destacado. A data fica embaixo. */}
-                    <IplexButton
-                      variant={current ? 'primary' : 'secondary'}
-                      navId={`set-source-${space.sourceId}`}
+                  <li key={space.sourceId} className="iplex-settings__list">
+                    {/* Cada lista é um botão: nome e, embaixo, a última atualização. A atual é a destacada. */}
+                    <button
+                      type="button"
+                      className={classNames('iplex-button', current ? 'iplex-button-primary' : 'iplex-button-secondary', 'iplex-settings__source')}
+                      {...navAttrs({ navId: `set-source-${space.sourceId}` })}
                       aria-current={current ? 'true' : undefined}
-                      aria-label={`${space.name || `Lista ${index + 1}`}${current ? ', lista atual' : ''}`}
+                      aria-label={`${name}${current ? ', lista atual' : ''}. ${date}`}
                       onClick={() => !current && switchSource(space.sourceId)}
                     >
-                      {space.name || `Lista ${index + 1}`}
-                    </IplexButton>
-                    <IplexText variant="meta" secondary as="p" className="iplex-settings__list-date">
-                      {updated ? formatDateTime(updated) : 'sem registro'}
-                    </IplexText>
+                      <span className="iplex-settings__source-name">{name}</span>
+                      <span className="iplex-settings__source-date">{date}</span>
+                    </button>
                   </li>
                 )
               })}
@@ -143,27 +144,6 @@ export default function SettingsScreen() {
           <IplexText variant="caption">Suporte: perfis, fontes, assinatura e desvinculação são gerenciados no iPlex Gestor.</IplexText>
         </IplexCard>
       </div>
-      {ready.profile.type === 'admin' && (
-        <div className="iplex-settings__danger" data-nav-row="x">
-          <IplexButton variant="secondary" navId="set-forget" onClick={() => setConfirm(true)}>
-            Sair deste dispositivo
-          </IplexButton>
-          <IplexText variant="caption">Remove a credencial desta TV. Para desvincular de vez, use o iPlex Gestor.</IplexText>
-        </div>
-      )}
-      {confirm && (
-        <ConfirmDialog
-          title="Sair deste dispositivo?"
-          description="A TV volta para a tela de vinculação. O vínculo no iPlex Gestor só é removido por lá."
-          confirmLabel="Sair"
-          onCancel={() => setConfirm(false)}
-          onConfirm={() => {
-            setConfirm(false)
-            navigate('/', { replace: true })
-            void session.forgetDevice()
-          }}
-        />
-      )}
     </main>
   )
 }

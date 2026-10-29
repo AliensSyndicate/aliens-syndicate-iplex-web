@@ -154,10 +154,15 @@ describe('listas IPTV nas configurações', () => {
     })
     await screen.findByRole('main', { name: 'Configurações' }, { timeout: 15000 })
     expect(await find('Listas IPTV')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Lista A, lista atual' }).getAttribute('aria-current')).toBe('true')
-    expect(screen.getByText('28/10/2026 13:05')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Lista B' }).getAttribute('aria-current')).toBeNull()
-    screen.getByRole('button', { name: 'Lista B' }).click()
+    // A data fica dentro do botão, embaixo do nome.
+    const a = screen.getByRole('button', { name: 'Lista A, lista atual. Atualizada em 28/10/2026 13:05' })
+    expect(a.getAttribute('aria-current')).toBe('true')
+    expect(a.textContent).toBe('Lista AAtualizada em 28/10/2026 13:05')
+    const b = screen.getByRole('button', { name: 'Lista B. Sem registro de atualização' })
+    expect(b.getAttribute('aria-current')).toBeNull()
+    // A TV não oferece mais "Sair deste dispositivo".
+    expect(screen.queryByRole('button', { name: 'Sair deste dispositivo' })).toBeNull()
+    b.click()
     // Volta ao início (Meu iPlex) com a lista nova guardada.
     await waitFor(() => expect(window.location.pathname).toBe('/meu-iplex'), { timeout: 15000 })
     expect(JSON.parse(localStorage.getItem('iplex.activeSource.v1.demo-family.admin') ?? 'null')).toBe('b')
