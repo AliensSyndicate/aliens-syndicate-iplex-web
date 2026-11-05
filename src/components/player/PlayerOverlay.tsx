@@ -1,6 +1,8 @@
 import { GoBackward10SecIcon, GoForward10SecIcon, PauseIcon, PlayIcon } from '@hugeicons/core-free-icons'
 import { useState } from 'react'
+import { SeasonSelector } from '../../features/details/SeasonSelector'
 import type { PlaybackTrack } from '../../platform/playback/types'
+import type { SeriesSeason } from '../../services/api/types'
 import { classNames } from '../../utils/classNames'
 import { IplexButton } from '../ui/IplexButton'
 import { IplexIcon } from '../ui/IplexIcon'
@@ -14,8 +16,9 @@ export type OverlayMode = 'hidden' | 'info' | 'interactive'
  * Overlay 1 do player.
  *  - info: identificação, linha do tempo e selos técnicos (aparece ao iniciar);
  *  - interactive (OK/Enter): o mesmo painel + três controles centralizados
- *    (‑10 s, reproduzir/pausar, +10 s) e a barra navegável; em séries, a
- *    fileira com os episódios da temporada embaixo de tudo.
+ *    (‑10 s, reproduzir/pausar, +10 s) e a barra navegável. Em séries,
+ *    temporadas e episódios ficam logo abaixo; na TV (collapsible), fora da
+ *    tela até o foco descer até eles, e aí o painel sobe.
  * Ao ocultar, o conteúdo anterior continua desenhado durante o fade-out.
  * Ao vivo: sem linha do tempo, saltos ou selos de duração.
  */
@@ -33,6 +36,10 @@ export function PlayerOverlay({
   pendingMs,
   badges,
   tracks,
+  seasons,
+  selectedSeason,
+  onSelectSeason,
+  collapsible,
   episodes,
   currentEpisodeId,
   onPlayEpisode,
@@ -54,6 +61,10 @@ export function PlayerOverlay({
   pendingMs: number | null
   badges: string[]
   tracks: PlaybackTrack[]
+  seasons: SeriesSeason[]
+  selectedSeason: number | null
+  onSelectSeason: (season: number) => void
+  collapsible: boolean
   episodes: PlayerEpisode[]
   currentEpisodeId: string | null
   onPlayEpisode: (episode: PlayerEpisode['episode']) => void
@@ -66,6 +77,9 @@ export function PlayerOverlay({
   if (mode !== 'hidden' && mode !== lastShown) setLastShown(mode)
   const shown = mode === 'hidden' ? lastShown : mode
   const interactive = shown === 'interactive'
+  const [browsing, setBrowsing] = useState(false)
+  if (browsing && !interactive) setBrowsing(false)
+  const hasBrowser = interactive && (episodes.length > 1 || seasons.length > 1)
   const hint = live ? null : seekHint(positionMs, durationMs, previewMs, pendingMs)
   const audio = tracks.filter((t) => t.kind === 'audio')
   const text = tracks.filter((t) => t.kind === 'text')
@@ -85,7 +99,7 @@ export function PlayerOverlay({
   )
   return (
     <div
-      className={classNames('iplex-player__overlay', mode !== 'hidden' && 'is-visible', interactive && 'is-interactive')}
+      className={classNames('iplex-player__overlay', mode !== 'hidden' && 'is-visible', interactive && 'is-interactive', collapsible && browsing && 'is-browsing')}
       aria-hidden={mode === 'hidden'}
       data-overlay-mode={mode}
     >
@@ -156,7 +170,19 @@ export function PlayerOverlay({
             )}
           </div>
         )}
-        {interactive && episodes.length > 1 && <PlayerEpisodes episodes={episodes} currentId={currentEpisodeId} onPlay={onPlayEpisode} />}
+        {hasBrowser && (
+          <div
+            className={classNames('iplex-player__browser', collapsible && 'is-collapsible')}
+            data-nav-managed-y=""
+            onFocus={() => setBrowsing(true)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) setBrowsing(false)
+            }}
+          >
+            {seasons.length > 1 && selectedSeason !== null && <SeasonSelector seasons={seasons} selected={selectedSeason} onSelect={onSelectSeason} />}
+            <PlayerEpisodes key={selectedSeason} episodes={episodes} currentId={currentEpisodeId} onPlay={onPlayEpisode} />
+          </div>
+        )}
       </div>
     </div>
   )

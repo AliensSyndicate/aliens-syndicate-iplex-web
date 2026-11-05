@@ -12,7 +12,7 @@
  * - Janelamento por linhas: só as linhas próximas da área visível existem no DOM.
  */
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { useReadySession } from '../../app/providers/SessionProvider'
 import { contentPath, PATHS } from '../../app/routes/paths'
 import { ChannelCard } from '../../components/catalog/ChannelCard'
@@ -89,6 +89,11 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   const inScope = (meta: { isAdult?: boolean; title?: string; category?: string }) => !isAdultItem(meta)
   // A habilitação real vem do backend (perfil no Control): sem ela, nenhum item/categoria adulta chega aqui.
   const allowAdult = !isKids(session.profile)
+  // Só o Voltar restaura a tela como estava; entrar pela aba sempre começa no item do topo.
+  const navigationType = useNavigationType()
+  useState(() => {
+    if (navigationType !== 'POP') viewMemory.delete(routeKey)
+  })
   const remembered = viewMemory.get(routeKey)
 
   // Coleção confirmada (OK/Enter) ou lembrada; enquanto nula vale a primeira com conteúdo.
@@ -206,17 +211,19 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   // Primeira coleção do menu com conteúdo real (nunca prende o foco em categoria vazia).
   const firstWithContent = useMemo<CollectionId>(() => {
     if (scope) return sidebar.some((s) => s.id === initial) ? initial : (sidebar[0]?.id ?? initial)
-    if (initial && sidebar.some((s) => s.id === initial)) return initial
+    // "all" é o padrão das telas, não uma escolha: elas abrem no item do topo que tiver conteúdo.
+    if (initial !== 'all' && sidebar.some((s) => s.id === initial)) return initial
     for (const entry of sidebar) {
       if (entry.id === 'continue' && progressMeta.size > 0) return entry.id
       if (entry.id === 'favorites' && libraryLists.favorites.length > 0) return entry.id
       if (entry.id === 'wishlist' && libraryLists.wishlist.length > 0) return entry.id
       if (entry.id === 'watched' && libraryLists.watched.length > 0) return entry.id
+      if (entry.id === 'releases' && releasesItems.length > 0) return entry.id
       if (entry.id === 'all' && allItems.length > 0) return entry.id
       if (entry.id.startsWith('cat:') && (groups.get(entry.id.slice(4))?.items.length ?? 0) > 0) return entry.id
     }
     return sidebar.some((s) => s.id === 'all') ? 'all' : (sidebar[0]?.id ?? initial)
-  }, [sidebar, progressMeta, libraryLists.favorites, libraryLists.wishlist, libraryLists.watched, allItems.length, groups, initial, scope])
+  }, [sidebar, progressMeta, libraryLists.favorites, libraryLists.wishlist, libraryLists.watched, releasesItems.length, allItems.length, groups, initial, scope])
 
   const ready = (!personal || libraryLoaded) && (!loading || allItems.length > 0 || !!(spacesError || noSources || noKind || error))
   useEffect(() => {

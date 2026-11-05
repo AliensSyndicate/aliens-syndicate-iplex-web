@@ -742,23 +742,73 @@ async function runMovieFinish() {
 
 /** Série: sem "Assistir do início" nos detalhes e fileira de episódios nos controles. */
 async function runSeriesRow() {
-  if (!(await openCard('Séries', 0))) return report('series', { fail: 'detalhes não abriram' })
+  // Listas: cada tela abre no item do topo.
+  for (const tab of ['Filmes', 'Séries']) {
+    await goTo(tab)
+    await sleep(800)
+    const side = all('[data-side-item]')
+    report(`catalog:top:${tab}`, { top: (side[0]?.textContent ?? '').trim(), selected: (side.find((i) => i.dataset.sideSelected === 'true')?.textContent ?? '').trim(), focus: focusLabel() })
+  }
+  // Continuar assistindo toca direto: a busca abaixo precisa de uma lista que abra os detalhes.
+  await waitFor(() => all('[data-side-item]').length > 2, 5000)
+  const allSeries = all('[data-side-item]').find((i) => (i.textContent ?? '').trim().startsWith('Todos'))
+  allSeries?.focus()
+  allSeries?.click()
+  await sleep(1500)
+  // Procura uma série com mais de uma temporada (a meta só traz o total depois de ler a fonte).
+  let found = false
+  for (let row = 0; row < 12 && !found; row += 1) {
+    if (row === 0) {
+      press('ArrowRight')
+      await sleep(500)
+      ;(document.activeElement as HTMLElement | null)?.click()
+      await waitFor(() => !!$('[data-nav-id="d-play"]') || !!$('[data-nav-id="d-continue"]'), 12000)
+    } else if (!(await openCard('Séries', row))) return report('series', { fail: 'detalhes não abriram', row: String(row) })
+    await waitFor(() => /\d+ temporadas?/.test($('.iplex-details__meta')?.textContent ?? ''), 3500)
+    found = /(?:[2-9]|\d{2,}) temporadas/.test($('.iplex-details__meta')?.textContent ?? '')
+    if (!found) {
+      press('Escape')
+      await sleep(900)
+    }
+  }
+  report('series:picked', { found: String(found), meta: ($('.iplex-details__meta')?.textContent ?? '').slice(0, 50) })
   report('series:details', { restart: String(!!$('[data-nav-id="d-restart"]')), actions: all('.iplex-details__actions .iplex-button').map((b) => (b.textContent ?? '').trim()).join('|') })
   const play = $('[data-nav-id="d-continue"]') ?? $('[data-nav-id="d-play"]')
   play?.click()
   if (!(await waitFor(() => !!$('.iplex-player') && !!$('.iplex-player__overlay.is-visible'), 40000))) return report('series', { fail: 'player sem iniciar', err: ($('.iplex-state')?.textContent ?? '').slice(0, 80) })
   await sleep(1500)
+  const browsing = () => !!$('.iplex-player__overlay.is-browsing')
+  report('series:info', { browser: String(!!$('.iplex-player__browser')) })
   press('Enter')
-  const opened = await waitFor(() => !!$('.iplex-player__episodes'), 8000)
-  const row = $('.iplex-player__episodes')
-  const cards = all('.iplex-player__episode-card')
-  const current = $('.iplex-player__episode-card.is-current')
-  report('series:row', { opened: String(opened), cards: String(cards.length), row: rectText(row), current: rectText(current), panel: rectText($('.iplex-player__panel')), transport: rectText($('.iplex-player__transport')), view: `${window.innerWidth}x${window.innerHeight}`, stills: String(all('.iplex-player__episode-still img').length) })
-  await keys('ArrowDown', 4, 250)
-  report('series:row-focus', { a: focusLabel() })
-  await keys('ArrowRight', 3, 250)
-  const focused = document.activeElement as HTMLElement | null
-  report('series:row-right', { a: focusLabel(), rect: rectText(focused), scrollLeft: String(Math.round(row?.scrollLeft ?? 0)), focusStyle: styles($('.iplex-player__episode-card:focus .iplex-player__episode-still')) })
+  const opened = await waitFor(() => !!$('.iplex-player__browser'), 8000)
+  await sleep(600)
+  const closed = $('.iplex-player__browser')
+  report('series:opened', { opened: String(opened), browsing: String(browsing()), browser: rectText(closed), panel: rectText($('.iplex-player__panel')), view: `${window.innerWidth}x${window.innerHeight}`, a: focusLabel() })
+  for (let i = 0; i < 4 && !browsing(); i += 1) {
+    press('ArrowDown')
+    await sleep(350)
+  }
+  await sleep(600)
+  report('series:down', { browsing: String(browsing()), a: focusLabel(), browser: rectText($('.iplex-player__browser')), chips: rectText($('.iplex-player__browser .iplex-chips')), row: rectText($('.iplex-player__episodes')), current: rectText($('.iplex-player__episode-card.is-current')), transport: $('.iplex-player__transport') ? getComputedStyle($('.iplex-player__transport') as HTMLElement).opacity : '-', seasons: String(all('.iplex-player__browser .iplex-chip').length), cards: String(all('.iplex-player__episode-card').length) })
+  const landed = focusLabel()
+  press('ArrowUp')
+  await sleep(350)
+  const firstChip = focusLabel()
+  press('ArrowRight')
+  await sleep(350)
+  const chip = focusLabel()
+  ;(document.activeElement as HTMLElement | null)?.click()
+  await sleep(1800)
+  report('series:season', { landed, firstChip, chip, a: focusLabel(), selected: ($('.iplex-player__browser .iplex-chip.is-active')?.textContent ?? '').trim(), cards: String(all('.iplex-player__episode-card').length), stills: String(all('.iplex-player__episode-still img').length), first: (($('.iplex-player__episode-name')?.textContent) ?? '').trim().slice(0, 30), browsing: String(browsing()) })
+  press('ArrowDown')
+  await sleep(350)
+  report('series:into-row', { a: focusLabel(), rect: rectText(document.activeElement), browser: rectText($('.iplex-player__browser')), mode: String($('.iplex-player__overlay')?.getAttribute('data-overlay-mode')) })
+  press('ArrowUp')
+  await sleep(350)
+  report('series:back-chips', { a: focusLabel() })
+  press('ArrowUp')
+  await sleep(800)
+  report('series:up', { browsing: String(browsing()), a: focusLabel() })
   press('Escape')
   await sleep(1500)
   press('Escape')
@@ -771,11 +821,9 @@ export async function runTvSelfTest() {
     if (/selftest=play/.test(window.location.search)) {
       await sleep(4000)
       diag('st:session', `unavailable=${!!$('.iplex-watermark')}`)
-      if (/trailer=1/.test(window.location.search)) await runTrailer('Filmes', 7)
-      else {
-        await runSeriesRow()
-        await runMovieFinish()
-      }
+      if (/finish=1/.test(window.location.search)) await runMovieFinish()
+      else if (/trailer=1/.test(window.location.search)) await runTrailer('Filmes', 7)
+      else await runSeriesRow()
       diag('st:done', 'ok')
       return
     }

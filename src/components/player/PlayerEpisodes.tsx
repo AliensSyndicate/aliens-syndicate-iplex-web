@@ -34,6 +34,7 @@ export function PlayerEpisodes({ episodes, currentId, onPlay }: { episodes: Play
             data-nav=""
             data-nav-id={`pe-${episode.id}`}
             data-nav-group="player-episodes"
+            {...(current ? { 'data-nav-preferred': '' } : {})}
           >
             <span className="iplex-player__episode-still">
               <Artwork src={still} alt="" fallback={episode.episodeNum ? `E${episode.episodeNum}` : ''} />

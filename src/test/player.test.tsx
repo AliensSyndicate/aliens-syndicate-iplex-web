@@ -493,6 +493,19 @@ describe('detalhes', () => {
   })
 })
 
+describe('listas do catálogo', () => {
+  it('abrem no item do topo: com progresso, Continuar assistindo em vez de Todos', async () => {
+    start('/series', (b) => b.saveProgress({ profileId: 'admin', contentId: 's-demo_e102', positionSec: 120, durationSec: 600, generation: 0 }))
+    const top = await waitFor(() => {
+      const side = document.querySelector<HTMLElement>('[data-side-item]')
+      expect(side).toBeTruthy()
+      return side!
+    }, { timeout: 8000 })
+    expect(top.textContent).toContain('Continuar assistindo')
+    await waitFor(() => expect(top.getAttribute('data-side-selected')).toBe('true'), { timeout: 8000 })
+  }, 15_000)
+})
+
 describe('marcar filme como finalizado', () => {
   const button = () => screen.queryByRole('button', { name: 'Marcar como finalizado' })
 
@@ -546,6 +559,25 @@ describe('episódios da temporada nos controles', () => {
     expect(window.location.search).not.toContain('r=1')
     await playing(2)
     expect(overlayMode()).not.toBe('interactive')
+  })
+
+  it('troca de temporada na fileira e continua na mesma tela', async () => {
+    start(EPISODE('102'))
+    const a = await playing()
+    time(100_000, 600_000, a)
+    enter()
+    const row = await screen.findByRole('group', { name: 'Episódios da temporada' })
+    expect(row).toBeTruthy()
+    const before = within(row).getAllByRole('button').map((b) => b.getAttribute('data-nav-id'))
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs).toHaveLength(2)
+    fireEvent.click(tabs[1]!)
+    await waitFor(() => expect(screen.getAllByRole('tab')[1]!.getAttribute('aria-selected')).toBe('true'))
+    const after = within(screen.getByRole('group', { name: 'Episódios da temporada' })).getAllByRole('button')
+    expect(after.map((b) => b.getAttribute('data-nav-id'))).toEqual(['pe-201', 'pe-202', 'pe-203'])
+    expect(before).toEqual(['pe-101', 'pe-102', 'pe-103'])
+    expect(after.some((b) => b.getAttribute('aria-current') === 'true')).toBe(false)
+    expect(window.location.search).toContain('e=102')
   })
 
   it('filme não tem a fileira', async () => {

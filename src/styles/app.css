@@ -1907,7 +1907,38 @@
   border-radius: var(--iplex-radius-full);
   pointer-events: none;
 }
-/* Episódios da temporada: abaixo de tudo, de borda a borda, sem barra de rolagem. */
+/* Temporadas e episódios. Na TV ficam logo abaixo da tela (fora do fluxo do painel) e o painel
+ * sobe a altura deles quando o foco desce até lá; os controles centrais saem para dar lugar. */
+.iplex-player__panel {
+  -webkit-transition: -webkit-transform 400ms ease-in-out;
+  transition: transform 400ms ease-in-out;
+}
+.iplex-player__browser.is-collapsible {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: var(--iplex-player-browser-height);
+  padding: 0 var(--iplex-safe-area-x);
+  overflow: hidden;
+}
+.iplex-player__overlay {
+  --iplex-player-browser-height: 24rem;
+}
+.iplex-player__overlay.is-browsing {
+  background-color: rgba(15, 15, 15, 0.75);
+}
+.iplex-player__overlay.is-browsing .iplex-player__panel {
+  -webkit-transform: translateY(calc(-1 * var(--iplex-player-browser-height)));
+  transform: translateY(calc(-1 * var(--iplex-player-browser-height)));
+}
+.iplex-player__transport {
+  -webkit-transition: opacity 300ms ease-out;
+  transition: opacity 300ms ease-out;
+}
+.iplex-player__overlay.is-browsing .iplex-player__transport {
+  opacity: 0;
+}
 .iplex-player__episodes {
   display: -webkit-flex;
   display: flex;

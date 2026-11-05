@@ -13,7 +13,7 @@
  * 6. Séries: "Próximo episódio" nos últimos 30 s, contados pelo tempo real da mídia.
  * 7. Saída: Voltar → detalhes do conteúdo; término natural → tela de origem.
  * 8. Filmes: "Marcar como finalizado" depois de 4/5 da duração, no lugar do "Próximo episódio".
- * 9. Séries: fileira com os episódios da temporada nos controles abertos.
+ * 9. Séries: temporadas e episódios logo abaixo dos controles abertos; na TV, Baixo os traz à tela.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -106,7 +106,9 @@ export default function PlayerScreen() {
   const [item, setItem] = useState<CatalogItem | null>(null)
   const [series, setSeries] = useState<SeriesDetails | null>(null)
   const [episode, setEpisode] = useState<SeriesEpisode | null>(null)
-  const [seasonMeta, setSeasonMeta] = useState<TmdbSeason | null>(null)
+  const [seasonMetas, setSeasonMetas] = useState<Record<number, TmdbSeason>>({})
+  /** Temporada escolhida na fileira; sem escolha, a do episódio que está tocando. */
+  const [browseSeason, setBrowseSeason] = useState<number | null>(null)
   const [videoSize, setVideoSize] = useState<{ width: number; height: number } | null>(null)
   const [previewMs, setPreviewMs] = useState<number | null>(null)
   const [pendingMs, setPendingMs] = useState<number | null>(null)
@@ -353,17 +355,25 @@ export default function PlayerScreen() {
   const match = useMatch(kind === 'series' ? item : null)
   const tmdbId = match.status === 'ready' ? match.summary.tmdbId : null
   const season = episode?.season
+  const shownSeason = browseSeason ?? season
   useEffect(() => {
-    if (!item || season === undefined || !tmdbId) return
+    if (!item || !tmdbId) return
     let alive = true
-    tmdb.season(tmdbId, season, item).then(
-      (s) => alive && setSeasonMeta(s),
-      () => undefined,
-    )
+    for (const number of [season, shownSeason]) {
+      if (number === undefined) continue
+      tmdb.season(tmdbId, number, item).then(
+        (s) => alive && setSeasonMetas((all) => ({ ...all, [number]: s })),
+        () => undefined,
+      )
+    }
     return () => {
       alive = false
     }
-  }, [tmdb, tmdbId, item, season])
+  }, [tmdb, tmdbId, item, season, shownSeason])
+  // Controles fechados: a próxima abertura volta à temporada do que está tocando.
+  useEffect(() => {
+    if (overlay.mode === 'hidden') setBrowseSeason(null)
+  }, [overlay.mode])
 
   // Só há "reprodução em andamento" com mídia carregada (nunca em erro ou preparando).
   useEffect(() => {
@@ -405,13 +415,13 @@ export default function PlayerScreen() {
   // ---- Episódios da temporada (só a lista da fonte IPTV é reproduzível) ----
   const episodes = useMemo<PlayerEpisode[]>(
     () =>
-      seasonEpisodes(series, season).map((ep) => {
-        const meta = seasonMeta?.seasonNumber === ep.season ? seasonMeta.episodes.find((m) => m.episodeNumber === ep.episodeNum) : undefined
+      seasonEpisodes(series, shownSeason).map((ep) => {
+        const meta = seasonMetas[ep.season]?.episodes.find((m) => m.episodeNumber === ep.episodeNum)
         const saved = personal ? session.library.progressFor(episodeContentId(itemId, ep.id)) : null
         return { episode: ep, name: meta?.name || ep.title || `Episódio ${ep.episodeNum ?? ''}`, still: meta?.still ?? null, progress: saved && saved.duration > 0 ? saved.position / saved.duration : null }
       }),
     // overlay.mode: o progresso dos episódios é relido cada vez que os controles abrem.
-    [series, season, seasonMeta, personal, session.library, itemId, overlay.mode],
+    [series, shownSeason, seasonMetas, personal, session.library, itemId, overlay.mode],
   )
   const playEpisode = (target: SeriesEpisode) => {
     overlay.hide()
@@ -642,7 +652,7 @@ export default function PlayerScreen() {
 
   const quality = videoSize ? qualityLabel(videoSize.width, videoSize.height) : null
   const badges = [quality, subtitledFromSource(item?.title ?? title, item?.category) ? 'Legendado' : null].filter((b): b is string => !!b)
-  const episodeTitle = episodes.find((e) => e.episode.id === episode?.id)?.name || episode?.title || undefined
+  const episodeTitle = (episode && season !== undefined ? seasonMetas[season]?.episodes.find((m) => m.episodeNumber === episode.episodeNum)?.name : '') || episode?.title || undefined
 
   // DIAGNÓSTICO TEMPORÁRIO (ponto no centro): `?diag=1&bare=1` desenha só o plano de vídeo, sem nenhuma camada do Web.
   if (diagnosticsEnabled() && /(?:^|[?&])bare=1(?:&|$)/.test(window.location.search)) {
@@ -696,6 +706,10 @@ export default function PlayerScreen() {
             pendingMs={pendingMs}
             badges={badges}
             tracks={tracks}
+            seasons={[...(series?.seasons ?? [])].sort((a, b) => a.seasonNumber - b.seasonNumber)}
+            selectedSeason={shownSeason ?? null}
+            onSelectSeason={setBrowseSeason}
+            collapsible={platform.isTv}
             episodes={episodes}
             currentEpisodeId={episodeId}
             onPlayEpisode={playEpisode}
