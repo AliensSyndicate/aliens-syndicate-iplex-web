@@ -91,6 +91,16 @@ export function nextEpisodeCountdown(positionMs: number, durationMs: number, win
   return Math.max(0, Math.ceil(remaining / 1000))
 }
 
+/** Filme passou de 4/5 da duração real da mídia: já pode ser marcado como finalizado. */
+export function canMarkFinished(positionMs: number, durationMs: number, fraction = PLAYER.finishFraction): boolean {
+  return durationMs > 0 && positionMs / durationMs >= fraction
+}
+
+/** Episódios da temporada em reprodução, na ordem do catálogo IPTV. */
+export function seasonEpisodes(series: SeriesDetails | null, season: number | undefined): SeriesEpisode[] {
+  return season === undefined ? [] : orderedEpisodes(series).filter((e) => e.season === season)
+}
+
 /** Término inesperado: o player diz "fim" longe do fim real da mídia. */
 export function endedEarly(positionMs: number, durationMs: number): boolean {
   return durationMs > 0 && positionMs / durationMs < 0.9 && durationMs - positionMs > 60_000

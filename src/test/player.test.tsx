@@ -390,6 +390,17 @@ describe('player', () => {
     expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeTruthy()
   })
 
+  it('Tentar novamente mostra o spinner antes de refazer o pedido', { timeout: 15_000 }, async () => {
+    start(MOVIE)
+    await playing()
+    act(() => adapter().emit('error', { code: 'x', message: 'falha' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Tentar novamente' }))
+    expect(screen.getByRole('status', { name: 'Tentando novamente' })).toBeTruthy()
+    expect(screen.queryByText('Não foi possível reproduzir')).toBeNull()
+    expect(created).toHaveLength(1)
+    await playing(2)
+  })
+
   it('conteúdo sem fonte reproduzível: erro claro, nada é tocado', async () => {
     start('/assistir?s=demo-source&i=m-cosmos&k=movie&t=Cosmos')
     expect(await screen.findByText('Fonte IPTV indisponível', {}, { timeout: 5000 })).toBeTruthy()
@@ -469,6 +480,8 @@ describe('detalhes', () => {
   it('episódio com progresso: escolher entre Continuar e Assistir do início', async () => {
     start('/titulo/demo-source/s-demo?t=Demo', (b) => b.saveProgress({ profileId: 'admin', contentId: 's-demo_e102', positionSec: 120, durationSec: 600, generation: 0 }))
     expect(await screen.findByRole('button', { name: 'Continuar T1:E2' }, { timeout: 5000 })).toBeTruthy()
+    // Em série, recomeçar fica só na escolha do episódio.
+    expect(screen.queryByRole('button', { name: 'Assistir do início' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Temporadas' }))
     fireEvent.click(await screen.findByRole('button', { name: /Episódio 2:/ }, { timeout: 5000 }))
     expect(await screen.findByRole('dialog')).toBeTruthy()
@@ -477,6 +490,71 @@ describe('detalhes', () => {
     expect(window.location.search).toContain('e=102')
     expect(window.location.search).not.toContain('r=1')
     expect(a.load.mock.calls[0]![0]).not.toHaveProperty('startPositionMs')
+  })
+})
+
+describe('marcar filme como finalizado', () => {
+  const button = () => screen.queryByRole('button', { name: 'Marcar como finalizado' })
+
+  it('aparece depois de 4/5 da duração, sem foco, e grava a conclusão', async () => {
+    const { saveProgress } = start(MOVIE)
+    const a = await playing()
+    time(479_000, 600_000, a)
+    expect(button()).toBeNull()
+    time(480_000, 600_000, a)
+    const finish = await screen.findByRole('button', { name: 'Marcar como finalizado' })
+    expect(document.activeElement).not.toBe(finish)
+    // OK sem o botão focado continua abrindo os controles.
+    enter()
+    await waitFor(() => expect(overlayMode()).toBe('interactive'))
+    fireEvent.click(finish)
+    await waitFor(() => expect(saveProgress.mock.calls.some(([w]) => w.positionSec === 600 && w.durationSec === 600)).toBe(true))
+    await waitFor(() => expect(window.location.pathname).toBe('/titulo/demo-source/m-bbb'))
+  })
+
+  it('Baixo foca o botão e o foco sai quando a informação some', async () => {
+    start(MOVIE)
+    const a = await playing()
+    time(500_000, 600_000, a)
+    const finish = await screen.findByRole('button', { name: 'Marcar como finalizado' })
+    press('ArrowDown', 40)
+    expect(document.activeElement).toBe(finish)
+    await waitFor(() => expect(overlayMode()).toBe('hidden'), { timeout: 7000 })
+    await waitFor(() => expect(document.activeElement).not.toBe(finish))
+  }, 10_000)
+
+  it('não aparece em séries', async () => {
+    start(EPISODE('102'))
+    const a = await playing()
+    time(500_000, 600_000, a)
+    await waitFor(() => expect(a.load).toHaveBeenCalled())
+    expect(button()).toBeNull()
+  })
+})
+
+describe('episódios da temporada nos controles', () => {
+  it('aparecem só com os controles abertos e OK troca de episódio do início', async () => {
+    start(EPISODE('102'))
+    const a = await playing()
+    time(100_000, 600_000, a)
+    expect(screen.queryByRole('group', { name: 'Episódios da temporada' })).toBeNull()
+    enter()
+    const row = await screen.findByRole('group', { name: 'Episódios da temporada' })
+    expect(within(row).getByRole('button', { name: /Episódio 2:/ }).getAttribute('aria-current')).toBe('true')
+    fireEvent.click(within(row).getByRole('button', { name: /Episódio 1:/ }))
+    await waitFor(() => expect(window.location.search).toContain('e=101'))
+    expect(window.location.search).not.toContain('r=1')
+    await playing(2)
+    expect(overlayMode()).not.toBe('interactive')
+  })
+
+  it('filme não tem a fileira', async () => {
+    start(MOVIE)
+    const a = await playing()
+    time(100_000, 600_000, a)
+    enter()
+    await screen.findByRole('button', { name: 'Pausar' })
+    expect(screen.queryByRole('group', { name: 'Episódios da temporada' })).toBeNull()
   })
 })
 

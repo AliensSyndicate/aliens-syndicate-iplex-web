@@ -53,6 +53,8 @@ export interface TmdbDetails extends TmdbSummary {
   seasons: { seasonNumber: number; name: string; episodeCount: number; poster: string | null }[]
   /** "Você também pode gostar": TMDB recommendations (adult excluded). */
   recommendations: TmdbRecommendation[]
+  /** Chave do vídeo no YouTube; null quando o TMDB não tem trailer. */
+  trailerKey: string | null
 }
 
 export interface TmdbRecommendation {
@@ -145,6 +147,20 @@ export interface TmdbMatchResult {
   query: string
   year: number | null
   summary: TmdbSummary | null
+}
+
+/** Idiomas pedidos ao TMDB para os vídeos, sem isso só viriam os de pt-BR. */
+const VIDEO_LANGUAGES = 'pt,en,null'
+
+/**
+ * Melhor trailer do YouTube (o TMDB não hospeda vídeos): trailer antes de
+ * teaser, oficial antes de não oficial, português antes de outros idiomas.
+ */
+export function pickTrailer(videos: unknown): string | null {
+  if (!Array.isArray(videos)) return null
+  const score = (v: Json) => (v.type === 'Trailer' ? 4 : 0) + (v.official === true ? 2 : 0) + (v.iso_639_1 === 'pt' ? 1 : 0)
+  const playable = (videos as Json[]).filter((v) => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser') && /^[A-Za-z0-9_-]{6,20}$/.test(str(v.key)))
+  return playable.reduce<Json | null>((best, v) => (!best || score(v) > score(best) ? v : best), null)?.key ?? null
 }
 
 export class TmdbError extends Error {
@@ -300,7 +316,7 @@ export function createTmdbService({ readAccessToken, fetchImpl, cache = new TtlC
   }
 
   async function movie(id: number, editorial = false): Promise<TmdbDetails> {
-    const row = await withFallback(`/movie/${id}`, { append_to_response: 'credits,release_dates,recommendations' })
+    const row = await withFallback(`/movie/${id}`, { append_to_response: 'credits,release_dates,recommendations,videos', include_video_language: VIDEO_LANGUAGES })
     // Descoberta editorial nunca devolve conteúdo adulto.
     if (editorial && row.adult === true) throw new TmdbError(404, 'not_found')
     const br = (row.release_dates?.results ?? []).find((r: Json) => r.iso_3166_1 === 'BR')
@@ -322,11 +338,12 @@ export function createTmdbService({ readAccessToken, fetchImpl, cache = new TtlC
         .map((p: Json) => ({ id: num(p.id), name: str(p.name), role: 'Direção', photo: image(p.profile_path, 'w185') })),
       seasons: [],
       recommendations: recommendations(row.recommendations, 'movie'),
+      trailerKey: pickTrailer(row.videos?.results),
     }
   }
 
   async function tv(id: number, editorial = false): Promise<TmdbDetails> {
-    const row = await withFallback(`/tv/${id}`, { append_to_response: 'credits,content_ratings,recommendations' })
+    const row = await withFallback(`/tv/${id}`, { append_to_response: 'credits,content_ratings,recommendations,videos', include_video_language: VIDEO_LANGUAGES })
     if (editorial && row.adult === true) throw new TmdbError(404, 'not_found')
     const br = (row.content_ratings?.results ?? []).find((r: Json) => r.iso_3166_1 === 'BR')
     return {
@@ -343,6 +360,7 @@ export function createTmdbService({ readAccessToken, fetchImpl, cache = new TtlC
         .filter((s: Json) => typeof s.season_number === 'number')
         .map((s: Json) => ({ seasonNumber: s.season_number, name: str(s.name), episodeCount: num(s.episode_count) ?? 0, poster: image(s.poster_path, 'w342') })),
       recommendations: recommendations(row.recommendations, 'series'),
+      trailerKey: pickTrailer(row.videos?.results),
     }
   }
 

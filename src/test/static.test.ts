@@ -105,7 +105,7 @@ describe('TV sem reCAPTCHA', () => {
   it('CSP sem origens do reCAPTCHA', () => {
     const csp = buildCsp(['x'])
     expect(csp).not.toMatch(/google\.com|gstatic/)
-    expect(csp).toMatch(/frame-src 'none'/)
+    expect(csp).toMatch(/frame-src https:\/\/www\.youtube-nocookie\.com(;|$)/)
   })
 })
 

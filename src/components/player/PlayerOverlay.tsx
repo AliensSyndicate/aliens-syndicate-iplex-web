@@ -5,6 +5,7 @@ import { classNames } from '../../utils/classNames'
 import { IplexButton } from '../ui/IplexButton'
 import { IplexIcon } from '../ui/IplexIcon'
 import { IplexText } from '../ui/IplexText'
+import { PlayerEpisodes, type PlayerEpisode } from './PlayerEpisodes'
 import { PlayerTimeline, seekHint } from './PlayerTimeline'
 
 export type OverlayMode = 'hidden' | 'info' | 'interactive'
@@ -13,7 +14,8 @@ export type OverlayMode = 'hidden' | 'info' | 'interactive'
  * Overlay 1 do player.
  *  - info: identificação, linha do tempo e selos técnicos (aparece ao iniciar);
  *  - interactive (OK/Enter): o mesmo painel + três controles centralizados
- *    (‑10 s, reproduzir/pausar, +10 s) e a barra navegável.
+ *    (‑10 s, reproduzir/pausar, +10 s) e a barra navegável; em séries, a
+ *    fileira com os episódios da temporada embaixo de tudo.
  * Ao ocultar, o conteúdo anterior continua desenhado durante o fade-out.
  * Ao vivo: sem linha do tempo, saltos ou selos de duração.
  */
@@ -31,6 +33,9 @@ export function PlayerOverlay({
   pendingMs,
   badges,
   tracks,
+  episodes,
+  currentEpisodeId,
+  onPlayEpisode,
   onToggle,
   onSkip,
   onOpenTracks,
@@ -49,6 +54,9 @@ export function PlayerOverlay({
   pendingMs: number | null
   badges: string[]
   tracks: PlaybackTrack[]
+  episodes: PlayerEpisode[]
+  currentEpisodeId: string | null
+  onPlayEpisode: (episode: PlayerEpisode['episode']) => void
   onToggle: () => void
   onSkip: (direction: 1 | -1) => void
   onOpenTracks: (kind: 'audio' | 'text') => void
@@ -148,6 +156,7 @@ export function PlayerOverlay({
             )}
           </div>
         )}
+        {interactive && episodes.length > 1 && <PlayerEpisodes episodes={episodes} currentId={currentEpisodeId} onPlay={onPlayEpisode} />}
       </div>
     </div>
   )

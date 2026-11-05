@@ -13,6 +13,7 @@ import { categoryLabel } from '../../services/catalog/categoryLabels'
 import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useBackend } from '../../app/providers/BackendProvider'
+import { usePlatform } from '../../app/providers/PlatformProvider'
 import { useReadySession } from '../../app/providers/SessionProvider'
 import { contentPath, PATHS } from '../../app/routes/paths'
 import { isAdultItem } from '../../services/catalog/adult'
@@ -42,6 +43,7 @@ import { CATALOG } from '../../config/features'
 
 /** Listas horizontais: no máximo 10 conteúdos por seção, sem paginação. */
 const ROW_LIMIT = CATALOG.rowLimit
+import { DetailsTrailer } from './DetailsTrailer'
 import { formatDate } from './detailsFormat'
 
 type Load = { status: 'loading' } | { status: 'ready'; item: CatalogItem } | { status: 'error'; error: AppError }
@@ -64,6 +66,7 @@ export default function DetailsScreen() {
   const title = new URLSearchParams(location.search).get('t') ?? ''
   const navigate = useNavigate()
   const { backend } = useBackend()
+  const platform = usePlatform()
   const session = useReadySession()
   const { store, library } = useLibrary()
   const personal = hasPersonalLibrary(session.profile)
@@ -213,6 +216,7 @@ export default function DetailsScreen() {
     <main className="iplex-page iplex-details" aria-label={name} data-nav-managed-y="">
       <div className="iplex-details__backdrop" aria-hidden="true">
         {tmdbPending && !summary?.backdrop ? <div className="iplex-skeleton iplex-details__backdrop-skeleton" /> : <Artwork src={summary?.backdrop} alt="" fallback="" />}
+        {details?.trailerKey && platform.visible && platform.capabilities.externalVideo && <DetailsTrailer key={details.trailerKey} videoKey={details.trailerKey} />}
         <div className="iplex-hero__scrim" />
       </div>
       <section className="iplex-details__info">
@@ -244,16 +248,9 @@ export default function DetailsScreen() {
             ))}
           {!session.unavailable && item.kind === 'series' &&
             (resume ? (
-              <>
-                <IplexButton navId="d-continue" navGroup="details-actions" autoFocus onClick={() => playEpisode(resume.episode, !resume.fresh)}>
-                  {resume.fresh ? `Assistir ${episodeCode(resume.episode)}` : `Continuar ${episodeCode(resume.episode)}`}
-                </IplexButton>
-                {!resume.fresh && (
-                  <IplexButton variant="secondary" navId="d-restart" navGroup="details-actions" onClick={() => playEpisode(resume.episode, false)}>
-                    Assistir do início
-                  </IplexButton>
-                )}
-              </>
+              <IplexButton navId="d-continue" navGroup="details-actions" autoFocus onClick={() => playEpisode(resume.episode, !resume.fresh)}>
+                {resume.fresh ? `Assistir ${episodeCode(resume.episode)}` : `Continuar ${episodeCode(resume.episode)}`}
+              </IplexButton>
             ) : first ? (
               <IplexButton navId="d-play" navGroup="details-actions" autoFocus onClick={() => playEpisode(first, false)}>
                 Assistir agora

@@ -12,6 +12,8 @@
  *    OK abre o modo interativo. Setas só agem com o overlay interativo aberto.
  * 6. Séries: "Próximo episódio" nos últimos 30 s, contados pelo tempo real da mídia.
  * 7. Saída: Voltar → detalhes do conteúdo; término natural → tela de origem.
+ * 8. Filmes: "Marcar como finalizado" depois de 4/5 da duração, no lugar do "Próximo episódio".
+ * 9. Séries: fileira com os episódios da temporada nos controles abertos.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -23,8 +25,11 @@ import { diagnosticsEnabled } from '../../platform/diagnostics'
 import { Dialog } from '../../components/dialogs/Dialog'
 import { PinDialog } from '../../components/dialogs/PinDialog'
 import { ErrorState } from '../../components/feedback/ErrorState'
+import { Spinner } from '../../components/feedback/LoadingState'
+import { MarkFinishedCard } from '../../components/player/MarkFinishedCard'
 import { NextEpisodeCard } from '../../components/player/NextEpisodeCard'
 import { PlayerOverlay } from '../../components/player/PlayerOverlay'
+import type { PlayerEpisode } from '../../components/player/PlayerEpisodes'
 import { PLAYER, TIMING } from '../../config/features'
 import { useMatch } from '../../hooks/useMetadata'
 import { useBackHandler, useKeyHandler } from '../../navigation/FocusProvider'
@@ -36,11 +41,12 @@ import type { CatalogItem, ContentKind, SeriesDetails, SeriesEpisode } from '../
 import { isAdultItem } from '../../services/catalog/adult'
 import { episodeContentId } from '../../services/catalog/normalize'
 import { indexFromItem } from '../../services/library/libraryStore'
+import type { TmdbSeason } from '../../services/tmdb/tmdbClient'
 import { hasPersonalLibrary } from '../profiles/profileRules'
 import { createProgressTracker } from './progressTracker'
 import { createStatusReporter, type PlaybackStatusPayload } from './playbackStatus'
 import { createProgressSession, resolveResumeMs, type ProgressSession } from './progressSession'
-import { SEEK_CONFIRM_TIMEOUT_MS, clampSeek, createSeekGate, endedEarly, episodeCode, findNextEpisode, nextEpisodeCountdown, qualityLabel, scrubStepMs, subtitledFromSource } from './playerRules'
+import { SEEK_CONFIRM_TIMEOUT_MS, canMarkFinished, clampSeek, createSeekGate, endedEarly, episodeCode, findNextEpisode, nextEpisodeCountdown, qualityLabel, scrubStepMs, seasonEpisodes, subtitledFromSource } from './playerRules'
 import { neighbourChannel, zapList } from '../live-tv/zapList'
 import { useOverlayTimer } from './useOverlayTimer'
 import { playRequestErrorCode, reportPlayRequest, setPlaybackActive } from '../remote/playRequestReport'
@@ -100,7 +106,7 @@ export default function PlayerScreen() {
   const [item, setItem] = useState<CatalogItem | null>(null)
   const [series, setSeries] = useState<SeriesDetails | null>(null)
   const [episode, setEpisode] = useState<SeriesEpisode | null>(null)
-  const [episodeMeta, setEpisodeMeta] = useState<{ id: string; name: string } | null>(null)
+  const [seasonMeta, setSeasonMeta] = useState<TmdbSeason | null>(null)
   const [videoSize, setVideoSize] = useState<{ width: number; height: number } | null>(null)
   const [previewMs, setPreviewMs] = useState<number | null>(null)
   const [pendingMs, setPendingMs] = useState<number | null>(null)
@@ -343,20 +349,21 @@ export default function PlayerScreen() {
     // A reprodução reinicia ao mudar o conteúdo ou ao tentar novamente.
   }, [sourceId, itemId, episodeId, kind, attempt]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Nome do episódio (TMDB, só metadados); sem correspondência, o nome da fonte.
+  // Nomes e imagens dos episódios (TMDB, só metadados); sem correspondência, o nome da fonte.
   const match = useMatch(kind === 'series' ? item : null)
   const tmdbId = match.status === 'ready' ? match.summary.tmdbId : null
+  const season = episode?.season
   useEffect(() => {
-    if (!item || !episode || !tmdbId) return
+    if (!item || season === undefined || !tmdbId) return
     let alive = true
-    tmdb.season(tmdbId, episode.season, item).then(
-      (s) => alive && setEpisodeMeta({ id: episode.id, name: s.episodes.find((e) => e.episodeNumber === episode.episodeNum)?.name ?? '' }),
+    tmdb.season(tmdbId, season, item).then(
+      (s) => alive && setSeasonMeta(s),
       () => undefined,
     )
     return () => {
       alive = false
     }
-  }, [tmdb, tmdbId, item, episode])
+  }, [tmdb, tmdbId, item, season])
 
   // Só há "reprodução em andamento" com mídia carregada (nunca em erro ou preparando).
   useEffect(() => {
@@ -387,6 +394,31 @@ export default function PlayerScreen() {
   const nextEpisode = useMemo(() => (kind === 'series' ? findNextEpisode(series, episodeId) : null), [kind, series, episodeId])
   const countdown = nextEpisode && phase.status === 'playing' && time.key === contentKey ? nextEpisodeCountdown(time.positionMs, time.durationMs) : null
   const nextVisible = countdown !== null
+
+  // ---- Filme quase no fim: pode ser dado como visto sem esperar os créditos ----
+  const finishVisible = kind === 'movie' && personal && !adult && phase.status === 'playing' && time.key === contentKey && canMarkFinished(time.positionMs, time.durationMs)
+  const markFinished = () => {
+    completeProgress()
+    exit('details')
+  }
+
+  // ---- Episódios da temporada (só a lista da fonte IPTV é reproduzível) ----
+  const episodes = useMemo<PlayerEpisode[]>(
+    () =>
+      seasonEpisodes(series, season).map((ep) => {
+        const meta = seasonMeta?.seasonNumber === ep.season ? seasonMeta.episodes.find((m) => m.episodeNumber === ep.episodeNum) : undefined
+        const saved = personal ? session.library.progressFor(episodeContentId(itemId, ep.id)) : null
+        return { episode: ep, name: meta?.name || ep.title || `Episódio ${ep.episodeNum ?? ''}`, still: meta?.still ?? null, progress: saved && saved.duration > 0 ? saved.position / saved.duration : null }
+      }),
+    // overlay.mode: o progresso dos episódios é relido cada vez que os controles abrem.
+    [series, season, seasonMeta, personal, session.library, itemId, overlay.mode],
+  )
+  const playEpisode = (target: SeriesEpisode) => {
+    overlay.hide()
+    if (target.id === episodeId) return
+    saveRef.current(true)
+    navigate(PATHS.watch({ sourceId, itemId, kind: 'series', title, episodeId: target.id }), { replace: true, state: navState })
+  }
 
   const playNext = useCallback(() => {
     if (!nextEpisode || finished.current) return
@@ -473,9 +505,10 @@ export default function PlayerScreen() {
         const target = document.querySelector<HTMLElement>('[data-nav-id="pc-toggle"]')
         if (target) focusElement(target)
       }
-    } else if (inOverlay) {
+    } else if (inOverlay || (mode === 'hidden' && active instanceof HTMLElement && active.dataset.navId === 'pc-finish')) {
       // Controles ocultos nunca guardam o foco: OK não pode acionar um botão invisível
-      // (o blur da barra também descarta uma prévia de posição não confirmada).
+      // (o blur da barra também descarta uma prévia de posição não confirmada). "Marcar como
+      // finalizado" também solta o foco: OK depois disso não pode encerrar o filme sem querer.
       rootRef.current?.focus()
     }
   }, [mode, phase.status])
@@ -535,8 +568,8 @@ export default function PlayerScreen() {
           return true
         }
         if (!interactive) {
-          // Cartão do próximo episódio focado: OK o aciona (clique nativo).
-          if (focusedId === 'pc-next' && nextVisible) return false
+          // Cartão do canto focado: OK o aciona (clique nativo).
+          if ((focusedId === 'pc-next' && nextVisible) || (focusedId === 'pc-finish' && finishVisible)) return false
           overlay.reveal('interactive')
           return true
         }
@@ -560,7 +593,13 @@ export default function PlayerScreen() {
         if (!interactive) {
           // Overlay fechado: setas nunca fazem seek. Canais mantêm o comportamento anterior (revelam os controles);
           // com o cartão do próximo episódio focado (OK o aciona), Cima abre os controles.
-          if (live || (key === 'ArrowUp' && focusedId === 'pc-next')) overlay.reveal('interactive')
+          if (live || (key === 'ArrowUp' && (focusedId === 'pc-next' || focusedId === 'pc-finish'))) overlay.reveal('interactive')
+          // "Marcar como finalizado" nunca nasce focado (OK pausaria e encerraria o filme): Baixo ou Direita chegam nele.
+          else if (finishVisible && (key === 'ArrowDown' || key === 'ArrowRight')) {
+            const target = document.querySelector<HTMLElement>('[data-nav-id="pc-finish"]')
+            if (target) focusElement(target)
+            overlay.reveal('info')
+          }
           return true
         }
         overlay.touch()
@@ -603,7 +642,7 @@ export default function PlayerScreen() {
 
   const quality = videoSize ? qualityLabel(videoSize.width, videoSize.height) : null
   const badges = [quality, subtitledFromSource(item?.title ?? title, item?.category) ? 'Legendado' : null].filter((b): b is string => !!b)
-  const episodeTitle = (episodeMeta && episodeMeta.id === episode?.id ? episodeMeta.name : '') || episode?.title || undefined
+  const episodeTitle = episodes.find((e) => e.episode.id === episode?.id)?.name || episode?.title || undefined
 
   // DIAGNÓSTICO TEMPORÁRIO (ponto no centro): `?diag=1&bare=1` desenha só o plano de vídeo, sem nenhuma camada do Web.
   if (diagnosticsEnabled() && /(?:^|[?&])bare=1(?:&|$)/.test(window.location.search)) {
@@ -618,6 +657,13 @@ export default function PlayerScreen() {
     <main ref={rootRef} className="iplex-player" aria-label={`Reproduzindo ${title}`} tabIndex={-1} onMouseMove={() => overlay.reveal(live ? 'info' : 'interactive')}>
       <div ref={containerRef} className="iplex-player__surface" />
       {cue && <div className="iplex-player__cue">{cue}</div>}
+      {phase.status === 'preparing' && attempt > 0 && (
+        <div className="iplex-player__error">
+          <section className="iplex-state iplex-state--screen">
+            <Spinner label="Tentando novamente" />
+          </section>
+        </div>
+      )}
       {phase.status === 'error' ? (
         <div className="iplex-player__error">
           <ErrorState
@@ -650,6 +696,9 @@ export default function PlayerScreen() {
             pendingMs={pendingMs}
             badges={badges}
             tracks={tracks}
+            episodes={episodes}
+            currentEpisodeId={episodeId}
+            onPlayEpisode={playEpisode}
             onToggle={() => {
               toggle()
               overlay.touch()
@@ -662,6 +711,7 @@ export default function PlayerScreen() {
             onTimelineBlur={() => setPreviewMs(null)}
           />
           {nextVisible && <NextEpisodeCard seconds={countdown} onPlay={playNext} />}
+          {finishVisible && <MarkFinishedCard onFinish={markFinished} />}
         </>
       )}
       {trackMenu && (

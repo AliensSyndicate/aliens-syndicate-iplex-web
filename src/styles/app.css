@@ -814,6 +814,85 @@
   height: 80vh;
   overflow: hidden;
 }
+/* Trailer em tela cheia, por cima de tudo menos o player. O tamanho do quadro vem de coverSize.
+ * Sem foco e sem clique: só aparece quando já está tocando. */
+.iplex-trailer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 58;
+  overflow: hidden;
+  background-color: var(--iplex-bg);
+  opacity: 0;
+  pointer-events: none;
+  /* Saída (a mesma de TRAILER.fadeOutMs); a entrada é mais lenta, para a tela dissolver no vídeo. */
+  -webkit-transition: opacity 700ms ease-in-out;
+  transition: opacity 700ms ease-in-out;
+}
+.iplex-trailer.is-playing {
+  opacity: 1;
+  -webkit-transition: opacity 1200ms ease-in-out;
+  transition: opacity 1200ms ease-in-out;
+}
+.iplex-trailer__frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border: 0;
+  -webkit-transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%);
+}
+/* Tratamento de legibilidade LOCAL (só sobre a imagem) {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: linear-gradient(90deg, rgba(15, 15, 15, 1) 0%, rgba(15, 15, 15, 0.6) 35%, rgba(15, 15, 15, 0) 70%),
+    linear-gradient(0deg, rgba(15, 15, 15, 1) 0%, rgba(15, 15, 15, 0) 45%);
+}.iplex-details__actions {
+  margin-top: var(--iplex-space-5);
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
+  -webkit-align-items: center;
+  align-items: center;
+}.iplex-details__actions .iplex-button {
+  margin: 0 var(--iplex-space-4) var(--iplex-space-3) 0;
+}
+
+/* ---- Detalhes -------------------------------------------------------- */
+.iplex-details {
+  padding-top: 0;
+}
+.iplex-details__backdrop {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 75%;
+  height: 80vh;
+  overflow: hidden;
+}
+/* Trailer no lugar da imagem: o tamanho vem de coverSize e cobre a área toda, sem mudar o resto da tela. O YouTube só
+ * aparece quando já está tocando; fica sem foco e sem clique (só o controle da tela age). */
+.iplex-details__trailer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+  -webkit-transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%);
+  -webkit-transition: opacity 600ms ease-out;
+  transition: opacity 600ms ease-out;
+}
+.iplex-details__trailer.is-playing {
+  opacity: 1;
+}
 /* Tratamento de legibilidade LOCAL (só sobre a imagem), na cor do fundo. */
 .iplex-hero__scrim {
   position: absolute;
@@ -1827,6 +1906,54 @@
   border: var(--iplex-focus-width) solid var(--iplex-text-primary);
   border-radius: var(--iplex-radius-full);
   pointer-events: none;
+}
+/* Episódios da temporada: abaixo de tudo, de borda a borda, sem barra de rolagem. */
+.iplex-player__episodes {
+  display: -webkit-flex;
+  display: flex;
+  margin: var(--iplex-space-4) calc(-1 * var(--iplex-safe-area-x)) 0;
+  padding: var(--iplex-space-3) var(--iplex-safe-area-x);
+  overflow: hidden;
+}
+.iplex-player__episode-card {
+  -webkit-flex: none;
+  flex: none;
+  width: calc(var(--iplex-landscape-width) * 0.7);
+  margin: 0 var(--iplex-space-4) 0 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--iplex-radius-small);
+  background: transparent;
+  color: var(--iplex-text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+.iplex-player__episode-card.is-current {
+  color: var(--iplex-text-primary);
+}
+.iplex-player__episode-still {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: calc(var(--iplex-landscape-width) * 0.7 * 0.5625);
+  overflow: hidden;
+  border-radius: var(--iplex-radius-small);
+  background-color: var(--iplex-card-bg);
+}
+.iplex-player__episode-card.iplex-focusable:focus {
+  box-shadow: none;
+  color: var(--iplex-text-primary);
+}
+.iplex-player__episode-card:focus .iplex-player__episode-still {
+  box-shadow: 0 0 0 var(--iplex-state-border-width) var(--iplex-button-primary-bg);
+}
+.iplex-player__episode-name {
+  display: block;
+  margin-top: var(--iplex-space-2);
+  overflow: hidden;
+  font-size: var(--iplex-type-meta);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 /* Próximo episódio: só um botão sem fundo, no canto superior direito (fora do painel e da barra). */
 .iplex-player__next {

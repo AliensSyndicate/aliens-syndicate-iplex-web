@@ -51,6 +51,8 @@ export const TIMING = {
   searchMinLength: 3,
   /** Ocultar controles do player sem interação. */
   playerControlsHideMs: 5_000,
+  /** "Tentar novamente" em falhas da fonte IPTV: tempo do spinner antes de refazer o pedido. */
+  retryFeedbackMs: 2_500,
   /** Startup: limite para cada etapa remota. */
   startupStepTimeoutMs: 20_000,
 } as const
@@ -65,6 +67,21 @@ export const PLAYER = {
   scrubStep: { fraction: 0.01, minMs: 5_000, maxMs: 60_000 },
   /** APROVADO: o botão "Próximo episódio" aparece nos últimos 30 s do episódio. */
   nextEpisodeWindowMs: 30_000,
+  /** Filmes: "Marcar como finalizado" aparece depois de 4/5 da duração. */
+  finishFraction: 0.8,
+} as const
+
+export const TRAILER = {
+  /** Tempo sem interação na tela de detalhes antes de o trailer cobrir a tela. */
+  delayMs: 5_000,
+  /** Duração do fade de saída (a mesma do CSS de .iplex-trailer). */
+  fadeOutMs: 700,
+  /** Volume do trailer (0 a 100): som de fundo, baixo. */
+  volume: 15,
+  /** Player pronto e sem tocar nesse prazo: tenta sem som (autoplay bloqueado pelo navegador). */
+  mutedFallbackMs: 6_000,
+  /** Sem tocar nesse prazo: desiste e a imagem fica. */
+  giveUpMs: 25_000,
 } as const
 
 export const CATALOG = {

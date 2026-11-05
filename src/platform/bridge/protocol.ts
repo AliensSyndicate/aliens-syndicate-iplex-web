@@ -71,6 +71,11 @@ export interface PlatformInfo {
     exit: boolean
     /** Teclas de mídia/canal registradas pelo shell (chegam ao Web como keydown). */
     mediaKeys: boolean
+    /**
+     * O pacote libera vídeos incorporados de fora (YouTube, para os trailers). Sem isso o Tizen
+     * tira o app da frente ao carregar o iframe. Ausente nos shells anteriores: tratar como falso.
+     */
+    externalVideo?: boolean
   }
 }
 

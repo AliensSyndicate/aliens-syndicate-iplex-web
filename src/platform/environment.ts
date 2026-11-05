@@ -19,6 +19,8 @@ export interface Capabilities {
   subtitles: boolean
   playerEvents: boolean
   lifecycle: boolean
+  /** Pode carregar vídeos incorporados de fora (trailers). */
+  externalVideo: boolean
 }
 
 export interface PlatformContext {
@@ -39,6 +41,7 @@ export const BROWSER_CAPABILITIES: Capabilities = {
   subtitles: true,
   playerEvents: true,
   lifecycle: true,
+  externalVideo: true,
 }
 
 export function capabilitiesFrom(info: PlatformInfo): Capabilities {
@@ -51,6 +54,8 @@ export function capabilitiesFrom(info: PlatformInfo): Capabilities {
     subtitles: has('player.getTracks') && has('player.setSubtitlesVisible'),
     playerEvents: has('player.open'),
     lifecycle: true,
+    // Shells anteriores não enviam o campo: o pacote deles não libera o YouTube.
+    externalVideo: info.capabilities.externalVideo === true,
   }
 }
 

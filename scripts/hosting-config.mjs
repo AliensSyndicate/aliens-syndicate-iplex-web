@@ -43,7 +43,8 @@ export function buildCsp(hashes) {
     "media-src 'self' https: blob:",
     "connect-src 'self' https:",
     "worker-src 'self'",
-    "frame-src 'none'",
+    // Trailers dos detalhes: o TMDB só entrega vídeos do YouTube.
+    "frame-src https://www.youtube-nocookie.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
