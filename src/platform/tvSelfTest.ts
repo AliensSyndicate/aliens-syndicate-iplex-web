@@ -63,6 +63,8 @@ function snapshot() {
 }
 
 const fmt = (o: Record<string, string>) => Object.keys(o).map((k) => `${k}=${o[k]}`).join(' ')
+/** Lido ao carregar: as telas trocam a query da URL. */
+const SWAP = /(?:^|[?&])swap=1(?:&|$)/.test(window.location.search)
 const report = (name: string, detail: Record<string, string>) => diag(`st:${name}`, fmt(detail))
 
 function inView(rect: string, box: string) {
@@ -730,9 +732,9 @@ async function runMovieFinish() {
   await waitFor(() => $('.iplex-player__overlay')?.getAttribute('data-overlay-mode') === 'hidden', 9000)
   await sleep(300)
   report('finish:hidden', { mode: String($('.iplex-player__overlay')?.getAttribute('data-overlay-mode')), a: focusLabel() })
-  press('ArrowDown')
-  await sleep(300)
-  report('finish:focus', { a: focusLabel() })
+  press('Enter')
+  await sleep(500)
+  report('finish:reopened', { shown: String(!!$('[data-nav-id="pc-finish"]')), a: focusLabel() })
   await waitFor(() => $('.iplex-player__overlay')?.getAttribute('data-overlay-mode') === 'hidden', 9000)
   await sleep(300)
   report('finish:released', { a: focusLabel() })
@@ -779,6 +781,8 @@ async function runSeriesRow() {
   await sleep(1500)
   const browsing = () => !!$('.iplex-player__overlay.is-browsing')
   report('series:info', { browser: String(!!$('.iplex-player__browser')) })
+  // Troca com o vídeo já tocando há um tempo, como no uso real.
+  if (SWAP) await sleep(30000)
   press('Enter')
   const opened = await waitFor(() => !!$('.iplex-player__browser'), 8000)
   await sleep(600)
@@ -803,6 +807,23 @@ async function runSeriesRow() {
   press('ArrowDown')
   await sleep(350)
   report('series:into-row', { a: focusLabel(), rect: rectText(document.activeElement), browser: rectText($('.iplex-player__browser')), mode: String($('.iplex-player__overlay')?.getAttribute('data-overlay-mode')) })
+  // `swap=1`: clique (o OK nativo) no episódio de outra temporada e acompanha se o player continua tocando.
+  if (SWAP) {
+    report('swap:pick', { before: String(new URLSearchParams(window.location.search).get('e')), a: focusLabel() })
+    const card = all('.iplex-player__episode-card').find((c) => !c.classList.contains('is-current'))
+    report('swap:card', { card: label(card ?? null) })
+    card?.focus()
+    card?.click()
+    for (let i = 0; i < 25; i += 1) {
+      await sleep(1000)
+      report('swap:t', { i: String(i), path: window.location.pathname, e: String(new URLSearchParams(window.location.search).get('e')), player: String(!!$('.iplex-player')), time: ($('.iplex-player__time:last-child')?.textContent ?? '').trim(), err: ($('.iplex-state')?.textContent ?? '').slice(0, 60) })
+    }
+    press('Escape')
+    await sleep(1500)
+    press('Escape')
+    await sleep(1500)
+    return
+  }
   press('ArrowUp')
   await sleep(350)
   report('series:back-chips', { a: focusLabel() })

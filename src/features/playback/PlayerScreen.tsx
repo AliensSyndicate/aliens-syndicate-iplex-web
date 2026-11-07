@@ -12,7 +12,7 @@
  *    OK abre o modo interativo. Setas só agem com o overlay interativo aberto.
  * 6. Séries: "Próximo episódio" nos últimos 30 s, contados pelo tempo real da mídia.
  * 7. Saída: Voltar → detalhes do conteúdo; término natural → tela de origem.
- * 8. Filmes: "Marcar como finalizado" depois de 4/5 da duração, no lugar do "Próximo episódio".
+ * 8. Filmes: "Marcar como finalizado" depois de 4/5 da duração, só nos controles abertos (OK/Enter).
  * 9. Séries: temporadas e episódios logo abaixo dos controles abertos; na TV, Baixo os traz à tela.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -21,12 +21,11 @@ import { useBackend } from '../../app/providers/BackendProvider'
 import { usePlatform } from '../../app/providers/PlatformProvider'
 import { useReadySession, useSession } from '../../app/providers/SessionProvider'
 import { PATHS } from '../../app/routes/paths'
-import { diagnosticsEnabled } from '../../platform/diagnostics'
+import { diag, diagnosticsEnabled } from '../../platform/diagnostics'
 import { Dialog } from '../../components/dialogs/Dialog'
 import { PinDialog } from '../../components/dialogs/PinDialog'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { Spinner } from '../../components/feedback/LoadingState'
-import { MarkFinishedCard } from '../../components/player/MarkFinishedCard'
 import { NextEpisodeCard } from '../../components/player/NextEpisodeCard'
 import { PlayerOverlay } from '../../components/player/PlayerOverlay'
 import type { PlayerEpisode } from '../../components/player/PlayerEpisodes'
@@ -46,7 +45,7 @@ import { hasPersonalLibrary } from '../profiles/profileRules'
 import { createProgressTracker } from './progressTracker'
 import { createStatusReporter, type PlaybackStatusPayload } from './playbackStatus'
 import { createProgressSession, resolveResumeMs, type ProgressSession } from './progressSession'
-import { SEEK_CONFIRM_TIMEOUT_MS, canMarkFinished, clampSeek, createSeekGate, endedEarly, episodeCode, findNextEpisode, nextEpisodeCountdown, qualityLabel, scrubStepMs, seasonEpisodes, subtitledFromSource } from './playerRules'
+import { SEEK_CONFIRM_TIMEOUT_MS, canMarkFinished, clampSeek, createSeekGate, endedBeforeStart, endedEarly, episodeCode, findNextEpisode, nextEpisodeCountdown, qualityLabel, scrubStepMs, seasonEpisodes, subtitledFromSource } from './playerRules'
 import { neighbourChannel, zapList } from '../live-tv/zapList'
 import { useOverlayTimer } from './useOverlayTimer'
 import { playRequestErrorCode, reportPlayRequest, setPlaybackActive } from '../remote/playRequestReport'
@@ -446,6 +445,12 @@ export default function PlayerScreen() {
     endedRef.current = () => {
       if (live || finished.current) return
       const { positionMs, durationMs } = timeRef.current
+      diag('player', `ended ${Math.round(positionMs)}/${Math.round(durationMs)}`)
+      // Fim sem nenhum tempo desta mídia não é término: nunca sai do player. Com a mídia já aberta, é falha (fonte recusou o stream).
+      if (endedBeforeStart(positionMs)) {
+        setPhase((p) => (p.status === 'playing' ? { status: 'error', error: new AppError('playback-error', 'ended-before-start') } : p))
+        return
+      }
       // Fim muito antes da duração: conexão/stream interrompidos, não conclusão.
       if (endedEarly(positionMs, durationMs)) {
         saveRef.current(true)
@@ -515,10 +520,9 @@ export default function PlayerScreen() {
         const target = document.querySelector<HTMLElement>('[data-nav-id="pc-toggle"]')
         if (target) focusElement(target)
       }
-    } else if (inOverlay || (mode === 'hidden' && active instanceof HTMLElement && active.dataset.navId === 'pc-finish')) {
+    } else if (inOverlay) {
       // Controles ocultos nunca guardam o foco: OK não pode acionar um botão invisível
-      // (o blur da barra também descarta uma prévia de posição não confirmada). "Marcar como
-      // finalizado" também solta o foco: OK depois disso não pode encerrar o filme sem querer.
+      // (o blur da barra também descarta uma prévia de posição não confirmada).
       rootRef.current?.focus()
     }
   }, [mode, phase.status])
@@ -579,7 +583,7 @@ export default function PlayerScreen() {
         }
         if (!interactive) {
           // Cartão do canto focado: OK o aciona (clique nativo).
-          if ((focusedId === 'pc-next' && nextVisible) || (focusedId === 'pc-finish' && finishVisible)) return false
+          if (focusedId === 'pc-next' && nextVisible) return false
           overlay.reveal('interactive')
           return true
         }
@@ -603,13 +607,7 @@ export default function PlayerScreen() {
         if (!interactive) {
           // Overlay fechado: setas nunca fazem seek. Canais mantêm o comportamento anterior (revelam os controles);
           // com o cartão do próximo episódio focado (OK o aciona), Cima abre os controles.
-          if (live || (key === 'ArrowUp' && (focusedId === 'pc-next' || focusedId === 'pc-finish'))) overlay.reveal('interactive')
-          // "Marcar como finalizado" nunca nasce focado (OK pausaria e encerraria o filme): Baixo ou Direita chegam nele.
-          else if (finishVisible && (key === 'ArrowDown' || key === 'ArrowRight')) {
-            const target = document.querySelector<HTMLElement>('[data-nav-id="pc-finish"]')
-            if (target) focusElement(target)
-            overlay.reveal('info')
-          }
+          if (live || (key === 'ArrowUp' && focusedId === 'pc-next')) overlay.reveal('interactive')
           return true
         }
         overlay.touch()
@@ -722,10 +720,10 @@ export default function PlayerScreen() {
               overlay.touch()
             }}
             onOpenTracks={setTrackMenu}
+            onFinish={finishVisible ? markFinished : undefined}
             onTimelineBlur={() => setPreviewMs(null)}
           />
           {nextVisible && <NextEpisodeCard seconds={countdown} onPlay={playNext} />}
-          {finishVisible && <MarkFinishedCard onFinish={markFinished} />}
         </>
       )}
       {trackMenu && (

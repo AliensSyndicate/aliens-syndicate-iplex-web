@@ -263,6 +263,15 @@ describe('player', () => {
     expect(overlayMode()).toBe('hidden')
   })
 
+  it('"fim" sem nenhum tempo da mídia atual não sai do player: mostra o erro com nova tentativa', async () => {
+    start(EPISODE('203'))
+    const a = await playing()
+    act(() => a.emit('ended', {}))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(window.location.pathname).toBe('/assistir')
+    expect(new URLSearchParams(window.location.search).get('e')).toBe('203')
+  })
+
   it('11. série: nome, T1:E2 e título do episódio; selos só com dados confiáveis', async () => {
     start(EPISODE('102'))
     const a = await playing()
@@ -509,31 +518,37 @@ describe('listas do catálogo', () => {
 describe('marcar filme como finalizado', () => {
   const button = () => screen.queryByRole('button', { name: 'Marcar como finalizado' })
 
-  it('aparece depois de 4/5 da duração, sem foco, e grava a conclusão', async () => {
+  it('depois de 4/5 da duração só aparece com os controles abertos e grava a conclusão', async () => {
     const { saveProgress } = start(MOVIE)
     const a = await playing()
-    time(479_000, 600_000, a)
+    time(500_000, 600_000, a)
+    await waitFor(() => expect(overlayMode()).toBe('info'))
     expect(button()).toBeNull()
-    time(480_000, 600_000, a)
-    const finish = await screen.findByRole('button', { name: 'Marcar como finalizado' })
-    expect(document.activeElement).not.toBe(finish)
-    // OK sem o botão focado continua abrindo os controles.
     enter()
     await waitFor(() => expect(overlayMode()).toBe('interactive'))
-    fireEvent.click(finish)
+    fireEvent.click(await screen.findByRole('button', { name: 'Marcar como finalizado' }))
     await waitFor(() => expect(saveProgress.mock.calls.some(([w]) => w.positionSec === 600 && w.durationSec === 600)).toBe(true))
     await waitFor(() => expect(window.location.pathname).toBe('/titulo/demo-source/m-bbb'))
   })
 
-  it('Baixo foca o botão e o foco sai quando a informação some', async () => {
+  it('antes de 4/5 não aparece nem com os controles abertos', async () => {
+    start(MOVIE)
+    const a = await playing()
+    time(479_000, 600_000, a)
+    enter()
+    await waitFor(() => expect(overlayMode()).toBe('interactive'))
+    expect(button()).toBeNull()
+  })
+
+  it('some quando os controles fecham e o foco não fica nele', async () => {
     start(MOVIE)
     const a = await playing()
     time(500_000, 600_000, a)
-    const finish = await screen.findByRole('button', { name: 'Marcar como finalizado' })
-    press('ArrowDown', 40)
-    expect(document.activeElement).toBe(finish)
+    enter()
+    await waitFor(() => expect(overlayMode()).toBe('interactive'))
+    await screen.findByRole('button', { name: 'Marcar como finalizado' })
     await waitFor(() => expect(overlayMode()).toBe('hidden'), { timeout: 7000 })
-    await waitFor(() => expect(document.activeElement).not.toBe(finish))
+    expect((document.activeElement as HTMLElement | null)?.dataset.navId).not.toBe('pc-finish')
   }, 10_000)
 
   it('não aparece em séries', async () => {

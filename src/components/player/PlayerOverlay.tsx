@@ -16,7 +16,8 @@ export type OverlayMode = 'hidden' | 'info' | 'interactive'
  * Overlay 1 do player.
  *  - info: identificação, linha do tempo e selos técnicos (aparece ao iniciar);
  *  - interactive (OK/Enter): o mesmo painel + três controles centralizados
- *    (‑10 s, reproduzir/pausar, +10 s) e a barra navegável. Em séries,
+ *    (‑10 s, reproduzir/pausar, +10 s) e a barra navegável. Filme perto do fim:
+ *    "Marcar como finalizado" fica aqui, nunca sobre o vídeo. Em séries,
  *    temporadas e episódios ficam logo abaixo; na TV (collapsible), fora da
  *    tela até o foco descer até eles, e aí o painel sobe.
  * Ao ocultar, o conteúdo anterior continua desenhado durante o fade-out.
@@ -46,6 +47,7 @@ export function PlayerOverlay({
   onToggle,
   onSkip,
   onOpenTracks,
+  onFinish,
   onTimelineBlur,
 }: {
   mode: OverlayMode
@@ -71,6 +73,7 @@ export function PlayerOverlay({
   onToggle: () => void
   onSkip: (direction: 1 | -1) => void
   onOpenTracks: (kind: 'audio' | 'text') => void
+  onFinish?: () => void
   onTimelineBlur: () => void
 }) {
   const [lastShown, setLastShown] = useState<Exclude<OverlayMode, 'hidden'>>('info')
@@ -149,7 +152,7 @@ export function PlayerOverlay({
             onBlur={onTimelineBlur}
           />
         )}
-        {((!live && badges.length > 0) || (interactive && (audio.length > 1 || text.length > 0))) && (
+        {((!live && badges.length > 0) || (interactive && (audio.length > 1 || text.length > 0 || !!onFinish))) && (
           <div className="iplex-player__footer">
             {!live && badges.length > 0 && (
               <ul className="iplex-player__badges" aria-label="Informações técnicas">
@@ -166,6 +169,11 @@ export function PlayerOverlay({
             {interactive && text.length > 0 && (
               <IplexButton variant="secondary" navId="pc-text" navGroup="player-tracks" onClick={() => onOpenTracks('text')}>
                 Legendas
+              </IplexButton>
+            )}
+            {interactive && onFinish && (
+              <IplexButton variant="secondary" navId="pc-finish" navGroup="player-tracks" onClick={onFinish}>
+                Marcar como finalizado
               </IplexButton>
             )}
           </div>

@@ -102,6 +102,11 @@ export function seasonEpisodes(series: SeriesDetails | null, season: number | un
 }
 
 /** Término inesperado: o player diz "fim" longe do fim real da mídia. */
+/** "Fim" sem nenhuma posição confirmada: a mídia atual nem começou, logo o aviso não é dela. */
+export function endedBeforeStart(positionMs: number): boolean {
+  return !(positionMs > 0)
+}
+
 export function endedEarly(positionMs: number, durationMs: number): boolean {
   return durationMs > 0 && positionMs / durationMs < 0.9 && durationMs - positionMs > 60_000
 }

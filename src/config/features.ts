@@ -76,8 +76,8 @@ export const TRAILER = {
   delayMs: 5_000,
   /** Duração do fade de saída (a mesma do CSS de .iplex-trailer). */
   fadeOutMs: 700,
-  /** Volume do trailer (0 a 100): som de fundo, baixo. */
-  volume: 15,
+  /** Volume do trailer (0 a 100): o padrão do player, sem redução. Sempre enviado porque o YouTube lembra o último valor. */
+  volume: 100,
   /** Player pronto e sem tocar nesse prazo: tenta sem som (autoplay bloqueado pelo navegador). */
   mutedFallbackMs: 6_000,
   /** Sem tocar nesse prazo: desiste e a imagem fica. */

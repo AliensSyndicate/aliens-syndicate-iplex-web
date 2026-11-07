@@ -42,13 +42,20 @@ body {
   background-color: var(--iplex-bg);
 }
 
-/* TV: sem barra de rolagem e sem cursor. */
-:root[data-iplex-platform='tv'] body {
+/* Nenhuma barra de rolagem em nenhuma plataforma: a navegação é por foco. */
+body {
   overflow-x: hidden;
-  cursor: none;
 }
-:root[data-iplex-platform='tv'] ::-webkit-scrollbar {
+* {
+  scrollbar-width: none;
+}
+::-webkit-scrollbar {
   display: none;
+}
+
+/* TV: sem cursor. */
+:root[data-iplex-platform='tv'] body {
+  cursor: none;
 }
 
 button {
