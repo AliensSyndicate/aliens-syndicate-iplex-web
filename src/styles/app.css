@@ -285,6 +285,11 @@
 .iplex-header__temp {
   margin-right: var(--iplex-space-4);
 }
+.iplex-header__date {
+  margin-right: var(--iplex-space-3);
+  color: var(--iplex-text-secondary);
+  white-space: nowrap;
+}
 .iplex-header__time {
   font-weight: var(--iplex-font-weight-bold);
 }
@@ -2259,6 +2264,21 @@
 }
 .iplex-side__item:last-child {
   margin-bottom: 0;
+}
+/* Esqueleto do menu lateral: mesma caixa de um item (altura e espaçamento), com uma barra no lugar do texto. */
+.iplex-side__item--skeleton {
+  -webkit-align-items: center;
+  align-items: center;
+  pointer-events: none;
+}
+.iplex-side__item--skeleton::after {
+  /* Caractere invisível: a linha mantém a altura do texto dos itens reais. */
+  content: '\200b';
+}
+.iplex-side__skeleton-bar {
+  display: block;
+  height: 0.9em;
+  border-radius: var(--iplex-radius-full);
 }
 .iplex-catalog__content {
   -webkit-flex: 1 1 0;

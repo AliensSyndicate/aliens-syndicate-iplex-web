@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { fetchLocalWeather, readCachedWeather, WEATHER_TTL_MS, type LocalWeather } from '../../services/weather/localWeather'
-import { formatClock } from '../../utils/time'
+import { formatClock, formatShortDate } from '../../utils/time'
 
 /**
- * Coluna no extremo direito do menu principal: em cima a temperatura e, ao lado, o horário; embaixo a cidade, em fonte
- * menor. Sem rede, só o horário.
+ * Coluna no extremo direito do menu principal: em cima a temperatura, a data e o horário; embaixo a cidade, em fonte
+ * menor. Sem rede, só a data e o horário.
  */
 export function HeaderInfo() {
   const [now, setNow] = useState(() => Date.now())
@@ -29,10 +29,12 @@ export function HeaderInfo() {
   }, [])
 
   const time = formatClock(now)
+  const date = formatShortDate(now)
   return (
-    <div className="iplex-header__info" aria-label={weather ? `${weather.temperature} graus, ${time}, ${weather.city}` : `Horário: ${time}`} role="status">
+    <div className="iplex-header__info" aria-label={weather ? `${weather.temperature} graus, ${date}, ${time}, ${weather.city}` : `${date}, ${time}`} role="status">
       <div className="iplex-header__info-top">
         {weather && <span className="iplex-header__temp">{weather.temperature}°</span>}
+        <span className="iplex-header__date">{date}</span>
         <span className="iplex-header__time">{time}</span>
       </div>
       {weather && <span className="iplex-header__city">{weather.city}</span>}

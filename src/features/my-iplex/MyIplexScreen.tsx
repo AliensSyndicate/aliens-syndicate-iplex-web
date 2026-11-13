@@ -118,9 +118,10 @@ export default function MyIplexScreen() {
   const loading = !loaded || movies.loading || series.loading
   // Seções pessoais (visitante só tem Lançamentos). Nenhuma seção vazia entra.
   const sections = [
+    // Lançamentos logo depois de Continuar assistindo.
+    { id: 'releases', title: 'Lançamentos', items: launches, scope: 'releases' },
     { id: 'favorites', title: 'Favoritos', items: favoriteTitles.slice(0, ROW), scope: 'favorites' },
     { id: 'wishlist', title: 'Lista de desejo', items: wishlist, scope: 'wishlist' },
-    { id: 'releases', title: 'Lançamentos', items: launches, scope: 'releases' },
     { id: 'watched', title: 'Assistidos', items: watched, scope: 'watched' },
   ] as const
   const visible = sections.filter((section) => section.items.length > 0 && (section.id === 'releases' || personal))

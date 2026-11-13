@@ -83,6 +83,13 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   const series = useCatalog('series', wantSeries && !adult)
   const channels = useCatalog('channel', wantChannels && !adult)
   const adultCatalog = useAdultCatalog(adult)
+  // Lista desta tela primeiro no carregamento progressivo (Filmes não espera os canais).
+  const preferredKind = adult ? 'adult' : kinds.length === 1 ? kinds[0]! : null
+  useEffect(() => {
+    if (!preferredKind || scope) return
+    session.catalog.prefer(preferredKind)
+    return () => session.catalog.prefer(null)
+  }, [session.catalog, preferredKind, scope])
   const { library, store, loaded: libraryLoaded } = useLibrary()
   // Adulto: nada é guardado (sem Continuar, Favoritos nem lista); nas outras telas o adulto nunca aparece neles.
   const personal = !adult && hasPersonalLibrary(session.profile)
@@ -643,6 +650,8 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
     }
   }
   const selectedSideId = sidebar.some((s) => s.id === selected) ? selected : null
+  /** Categorias da fonte ainda chegando: 3 itens de esqueleto no fim do menu lateral (fora da navegação). */
+  const sideSkeleton = !scope && !blocked && loading && groups.size === 0
 
   const mainClass = 'iplex-page iplex-page--catalog'
   return (
@@ -669,6 +678,12 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
             </button>
           )
         })}
+        {sideSkeleton &&
+          [62, 48, 74].map((width) => (
+            <div key={width} className="iplex-tab iplex-side__item iplex-side__item--skeleton" aria-hidden="true">
+              <span className="iplex-skeleton iplex-side__skeleton-bar" style={{ width: `${width}%` }} />
+            </div>
+          ))}
       </nav>
       <div className="iplex-catalog__content" ref={scrollerRef} onScroll={onScroll} onFocus={onContentFocus}>
         <div className="iplex-catalog__head">

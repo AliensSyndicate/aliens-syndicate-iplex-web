@@ -116,13 +116,28 @@ export class CatalogStore {
   }
 
   /** Recebe um grupo (categorias + itens) em fatias, cedendo a thread entre elas. Um `bump` ao final. */
+  private preferred: ContentKind | null = null
+  /** Tela aberta (Filmes, Séries, Ao Vivo, Adulto): o carregamento progressivo entrega esse grupo primeiro. */
+  prefer(kind: ContentKind | 'adult' | null) {
+    this.preferred = kind as ContentKind | null
+  }
+  preferredGroup(): 'channel' | 'movie' | 'series' | 'adult' | null {
+    return (this.preferred as 'channel' | 'movie' | 'series' | 'adult' | null) ?? null
+  }
+
   async fillGroup(sourceId: string, group: 'channel' | 'movie' | 'series' | 'adult', categories: SetRecords, records: SetRecords) {
     const state = this.states.get(sourceId)
     if (!state) return
     const adult = group === 'adult'
     for (let i = 0; i < records.length; i += SLICE) {
       if (this.disposed) return
-      for (const record of records.slice(i, i + SLICE)) state.items.set(String(record.id), { ...(record as unknown as CatalogItem), sourceId, ...(adult ? { isAdult: true } : {}) })
+      // Registros recém-lidos do cache (só desta fonte): marcados no próprio objeto, sem cópia de cada um.
+      for (let j = i; j < Math.min(records.length, i + SLICE); j += 1) {
+        const item = records[j] as unknown as CatalogItem & { isAdult?: boolean }
+        item.sourceId = sourceId
+        if (adult) item.isAdult = true
+        state.items.set(String(item.id), item)
+      }
       if (i + SLICE < records.length) await pause()
     }
     if (this.disposed) return

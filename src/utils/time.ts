@@ -5,6 +5,15 @@ export function formatClock(ms: number): string {
   return `${two(d.getHours())}:${two(d.getMinutes())}`
 }
 
+const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
+/** Data curta do relógio do menu: "Sex, 13 nov" (sem Intl: a TV antiga nem sempre tem pt-BR completo). */
+export function formatShortDate(ms: number): string {
+  const d = new Date(ms)
+  return `${WEEKDAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`
+}
+
 export function formatRuntime(minutes: number | null | undefined): string | null {
   if (!minutes || minutes <= 0) return null
   const h = Math.floor(minutes / 60)

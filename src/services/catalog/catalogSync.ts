@@ -180,6 +180,8 @@ export async function syncSources(deps: SyncDeps, scope: string, profileId: stri
 
 /** Alvo do carregamento progressivo (o CatalogStore). */
 export interface ProgressiveTarget {
+  /** Grupo que a tela aberta espera (ex.: Filmes → movie): sai antes dos demais. */
+  preferredGroup?(): 'channel' | 'movie' | 'series' | 'adult' | null
   fillGroup(sourceId: string, group: 'channel' | 'movie' | 'series' | 'adult', categories: CatalogRecord[], records: CatalogRecord[]): Promise<void>
   finishProgressive(sourceId: string): void
 }
@@ -216,7 +218,13 @@ export async function streamFromCache(deps: Pick<SyncDeps, 'cache' | 'diag'>, ta
   const started = Date.now()
   const groups = STREAM_GROUPS.filter(({ group }) => group !== 'adult' || includeAdult)
   const read = deps.cache.reader(scope, sourceId, groups.flatMap(({ categories, records }) => [categories, records]))
-  for (const { group, categories, records } of groups) {
+  const remaining = groups.slice()
+  while (remaining.length) {
+    // A tela já montada decide a ordem (a leitura do IndexedDB já está em andamento para todos).
+    await pause()
+    const wanted = target.preferredGroup?.()
+    const index = Math.max(0, remaining.findIndex((g) => g.group === wanted))
+    const { group, categories, records } = remaining.splice(index, 1)[0]!
     sets[categories] = await read(categories, pause)
     sets[records] = await read(records, pause)
     if (sets[categories].length !== meta.counts[categories] || sets[records].length !== meta.counts[records]) {

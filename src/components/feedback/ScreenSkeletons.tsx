@@ -117,9 +117,10 @@ export function MyIplexSkeleton({ rowCount = 10, personal = true }: { rowCount?:
           </div>
         </div>
       </section>
-      {personal && <SkeletonRow shape="landscape" count={rowCount} />}
+      {/* Mesma ordem da tela: Continuar assistindo, Lançamentos, Favoritos, Lista de desejo. */}
       {personal && <SkeletonRow shape="landscape" count={rowCount} />}
       <SkeletonRow shape="poster" count={rowCount} />
+      {personal && <SkeletonRow shape="landscape" count={rowCount} />}
       {personal && <SkeletonRow shape="poster" count={rowCount} />}
     </main>
   )

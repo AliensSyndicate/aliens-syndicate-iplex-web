@@ -11,6 +11,7 @@ import type { Backend } from '../services/api/backend'
 import { readJson } from '../utils/storage'
 import { probeCatalogCache, probeCatalogSets } from './catalogSetsProbe'
 import { diag, diagFlag } from './diagnostics'
+import { tmdbMatchStats } from '../services/tmdb/tmdbClient'
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)
@@ -473,12 +474,17 @@ async function runHome() {
     tab.focus()
     tab.click()
   } else report(`${t}:tab`, { note: 'sem aba Meu iPlex; usando a tela atual', tabs: all('.iplex-header__capsule .iplex-tab').map((b) => (b.textContent ?? '').trim()).join('|') })
+  const opened = Date.now()
   if (!(await waitFor(() => !!$('.iplex-home'), 20000))) return report(`${t}:enter`, { fail: 'tela não abriu' })
-  await sleep(8000)
+  // Fileiras reais (o esqueleto também usa .iplex-home).
+  const real = await waitFor(() => !!($('.iplex-home .iplex-row__title')?.textContent ?? '').trim(), 40000)
+  report(`${t}:ready`, { real: String(real), ms: String(Date.now() - opened) })
+  await sleep(1500)
   const y = () => String(Math.round(window.scrollY))
   const rows = all('.iplex-home .iplex-row').map((r) => `${(r.querySelector('.iplex-row__title')?.textContent ?? '').trim()}:${r.querySelectorAll('.iplex-row__track [data-nav]').length}`)
   const seeAll = $('.iplex-row__see-all')?.getBoundingClientRect()
   const main = $('.iplex-home')?.getBoundingClientRect()
+  report(`${t}:header`, { info: ($('.iplex-header__info-top')?.textContent ?? '').trim(), rect: rectText($('.iplex-header__info')), capsule: rectText($('.iplex-header__capsule')), city: rectText($('.iplex-header__city')) })
   report(`${t}:layout`, { hero: String(!!$('.iplex-home__hero')), heroImg: String(!!$('.iplex-home__hero img')), rows: rows.join('|'), seeAllRightGap: seeAll && main ? String(Math.round(main.right - seeAll.right)) : '-', focused: label(document.activeElement), y: y() })
   const down: string[] = []
   for (let i = 0; i < 8; i += 1) {
@@ -524,6 +530,116 @@ async function runHome() {
     press('Escape')
     await waitFor(() => !!$('.iplex-home'), 10000)
     await sleep(1500)
+  }
+}
+
+/** Fotos (?selftest=photos): quanto cada imagem visível leva para aparecer, e de onde vem a espera. */
+async function measurePhotos(tag: string, limitMs = 25000, action?: () => void) {
+  // O navegador da TV guarda só 150 registros de rede por padrão.
+  performance.setResourceTimingBufferSize?.(5000)
+  performance.clearResourceTimings?.()
+  const resStart = 0
+  const t0 = performance.now()
+  action?.()
+  const statStart = tmdbMatchStats.length
+  const seen = new Map<Element, { visibleAt: number; loadedAt: number | null; img: boolean; ready: boolean }>()
+  const inView = (el: Element) => {
+    const r = el.getBoundingClientRect()
+    return r.width > 0 && r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth
+  }
+  let sideSkeleton = 0
+  let sideSkeletonGoneAt = -1
+  let sideRect = '-'
+  while (performance.now() - t0 < limitMs) {
+    const now = performance.now() - t0
+    const bones = all('.iplex-side__item--skeleton')
+    if (bones.length) {
+      sideSkeleton = Math.max(sideSkeleton, bones.length)
+      sideRect = `${rectText(bones[0]!)}|item=${rectText($('.iplex-side__item:not(.iplex-side__item--skeleton)'))}`
+    } else if (sideSkeleton && sideSkeletonGoneAt < 0) sideSkeletonGoneAt = Math.round(now)
+    for (const el of all('.iplex-artwork')) {
+      if (!inView(el)) continue
+      const entry = seen.get(el) ?? { visibleAt: now, loadedAt: null, img: false, ready: el.classList.contains('is-loaded') }
+      entry.img = entry.img || !!el.querySelector('img')
+      if (entry.loadedAt === null && el.classList.contains('is-loaded')) entry.loadedAt = now
+      seen.set(el, entry)
+    }
+    const list = [...seen.values()]
+    // Já carregadas antes de aparecer (memória do navegador) contam como 0.
+    // Para quando tudo o que está à vista carregou ou ficou só com o nome (sem imagem) por 3 s.
+    if (list.length && now > 3000 && list.every((e) => e.loadedAt !== null || (!e.img && now - e.visibleAt > 3000))) break
+    await sleep(200)
+  }
+  const all0 = [...seen.values()]
+  // Já carregadas quando apareceram (tela anterior ou memória do navegador) ficam fora dos tempos.
+  const list = all0.filter((e) => !e.ready)
+  const loaded = list.filter((e) => e.loadedAt !== null).map((e) => e.loadedAt! - e.visibleAt).sort((a, b) => a - b)
+  const firstSeen = list.map((e) => e.visibleAt).sort((a, b) => a - b)
+  const doneAt = list.filter((e) => e.loadedAt !== null).map((e) => e.loadedAt!).sort((a, b) => a - b)
+  const pct = (arr: number[], p: number) => (arr.length ? String(Math.round(arr[Math.min(arr.length - 1, Math.floor((arr.length - 1) * p))]!)) : '-')
+  const res = (performance.getEntriesByType('resource') as PerformanceResourceTiming[]).slice(resStart)
+  const matchRes = res.filter((r) => r.name.includes('/api/tmdb/match')).map((r) => r.duration).sort((a, b) => a - b)
+  const imgRes = res.filter((r) => r.initiatorType === 'img')
+  const tmdbImg = imgRes.filter((r) => r.name.includes('image.tmdb.org')).map((r) => r.duration).sort((a, b) => a - b)
+  const otherImg = imgRes.filter((r) => !r.name.includes('image.tmdb.org')).map((r) => r.duration).sort((a, b) => a - b)
+  const stats = tmdbMatchStats.slice(statStart)
+  const misses = stats.filter((x) => !x.hit)
+  const waits = misses.map((x) => x.waitMs).sort((a, b) => a - b)
+  const nets = misses.filter((x) => x.ok).map((x) => x.netMs).sort((a, b) => a - b)
+  report(`photos:${tag}`, {
+    cards: String(list.length),
+    already: String(all0.length - list.length),
+    firstCardMs: pct(firstSeen, 0),
+    allPhotosMs: pct(doneAt, 1),
+    loaded: String(loaded.length),
+    noImage: String(list.filter((e) => e.loadedAt === null && !e.img).length),
+    pending: String(list.filter((e) => e.loadedAt === null && e.img).length),
+    p50: pct(loaded, 0.5),
+    p90: pct(loaded, 0.9),
+    max: pct(loaded, 1),
+    total: String(Math.round(performance.now() - t0)),
+    sideSkeleton: `${sideSkeleton}${sideSkeleton ? ` até ${sideSkeletonGoneAt}ms ${sideRect}` : ''}`,
+  })
+  report(`photos:${tag}:why`, {
+    matchCalls: String(misses.length),
+    cacheHits: String(stats.length - misses.length),
+    queueP50: pct(waits, 0.5),
+    queueMax: pct(waits, 1),
+    netP50: pct(nets, 0.5),
+    netP90: pct(nets, 0.9),
+    resMatchP50: pct(matchRes, 0.5),
+    tmdbImgs: String(tmdbImg.length),
+    tmdbImgP50: pct(tmdbImg, 0.5),
+    tmdbImgP90: pct(tmdbImg, 0.9),
+    sourceImgs: String(otherImg.length),
+    sourceImgP50: pct(otherImg, 0.5),
+  })
+}
+
+async function runPhotos() {
+  const cold = diagFlag('cold') ? 'cold' : 'warm'
+  const tabButton = (name: string) => all('.iplex-header__capsule .iplex-tab').find((b) => (b.textContent ?? '').trim() === name)
+  await waitFor(() => !!tabButton('Filmes'), 40000)
+  for (const tabName of ['Filmes', 'Séries', 'Meu iPlex']) {
+    const button = tabButton(tabName)
+    if (!button) continue
+    button.focus()
+    // Mede desde o clique na aba (lista, cartões e fotos chegando).
+    await measurePhotos(`${cold}:${tabName}`, 25000, () => button.click())
+    if (tabName === 'Meu iPlex') {
+      await measurePhotos(`${cold}:${tabName}:scroll`, 20000, () => {
+        void keys('ArrowDown', 3, 350)
+      })
+      continue
+    }
+    // Rolagem: entra na grade e desce três fileiras, como no uso real.
+    press('ArrowRight')
+    await sleep(500)
+    const before = label(document.activeElement)
+    await measurePhotos(`${cold}:${tabName}:scroll`, 20000, () => {
+      void keys('ArrowDown', 3, 350)
+    })
+    report(`photos:${cold}:${tabName}:moved`, { before, after: label(document.activeElement), y: String(Math.round(window.scrollY)) })
   }
 }
 
@@ -941,6 +1057,12 @@ async function runSeriesRow() {
 export async function runTvSelfTest() {
   try {
     diag('st:start', `vp=${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio}`)
+    if (/selftest=photos/.test(window.location.search)) {
+      await sleep(4000)
+      await runPhotos()
+      diag('st:done', 'ok')
+      return
+    }
     if (/selftest=play/.test(window.location.search)) {
       await sleep(4000)
       diag('st:session', `unavailable=${!!$('.iplex-watermark')}`)
@@ -1014,4 +1136,4 @@ export async function runTvSelfTest() {
   }
 }
 
-export const selfTestRequested = () => /(?:^|[?&])selftest=(?:1|home|settings|skeleton|sync|actions|play)(?:&|$)/.test(window.location.search)
+export const selfTestRequested = () => /(?:^|[?&])selftest=(?:1|home|settings|skeleton|sync|actions|play|photos)(?:&|$)/.test(window.location.search)

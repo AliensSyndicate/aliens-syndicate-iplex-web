@@ -219,6 +219,15 @@ describe('entrada rápida pelo cache', () => {
     expect(out?.vod).toHaveLength(3)
   })
 
+  it('a tela aberta escolhe a ordem: Filmes recebe os filmes antes dos canais', async () => {
+    const sets = world(['m1', 'm2', 'm3'])
+    const cache = createMemoryCache()
+    await cache.replace(scope, 's1', meta(sets), sets)
+    const t = { ...target(), preferredGroup: () => 'movie' as const }
+    await streamFromCache(deps(cache), t, scope, 's1', meta(sets), true)
+    expect(t.calls).toEqual(['movie:3', 'channel:1', 'series:0', 'adult:1', 'fim:s1'])
+  })
+
   it('sem o grupo adulto quando o perfil não é habilitado', async () => {
     const sets = world(['m1'])
     const cache = createMemoryCache()
