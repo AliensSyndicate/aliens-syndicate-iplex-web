@@ -154,6 +154,8 @@ describe('listas IPTV nas configurações', () => {
     })
     await screen.findByRole('main', { name: 'Configurações' }, { timeout: 15000 })
     expect(await find('Listas IPTV')).toBeTruthy()
+    // Versão sempre visível, fixa no canto da tela.
+    expect(document.querySelector('.iplex-settings__version')?.textContent).toMatch(/^iPlex Web \S+/)
     // A data fica dentro do botão, embaixo do nome.
     const a = screen.getByRole('button', { name: 'Lista A, lista atual. Atualizada em 28/10/2026 13:05' })
     expect(a.getAttribute('aria-current')).toBe('true')
@@ -171,7 +173,7 @@ describe('listas IPTV nas configurações', () => {
 })
 
 describe('sincronizar a lista atual nas configurações', () => {
-  it('OK na lista atual pede a sincronização, fica na tela mostrando o andamento e mostra a nova data ao terminar', async () => {
+  it('OK na lista atual pede a busca no provedor, recarrega como numa troca (sem refazer sessão e biblioteca) e acompanha até terminar', async () => {
     const kinds = ['movie', 'series'] as const
     const done = new Date(2026, 9, 29, 9, 30).getTime()
     let syncing = false
@@ -179,23 +181,29 @@ describe('sincronizar a lista atual nas configurações', () => {
     const syncSource = vi.fn(async () => {
       syncing = true
     })
-    start('/configuracoes', 'single', {
+    const { backend } = start('/configuracoes', 'single', {
       listSpaces: async () => {
-        // O servidor termina depois do pedido: a primeira consulta ainda vem "sincronizando".
-        if (syncing && synced++ > 0) syncing = false
+        // O servidor termina depois do pedido: as primeiras consultas ainda vêm "sincronizando".
+        if (syncing && synced++ > 1) syncing = false
         return [{ sourceId: 'a', name: 'Lista A', kinds: [...kinds], ...(syncing ? { syncing: true } : { lastSyncAt: synced ? done : undefined }) }]
       },
       syncSource,
     })
     await screen.findByRole('main', { name: 'Configurações' }, { timeout: 15000 })
+    const acquire = vi.spyOn(backend, 'acquireSession')
+    const library = vi.spyOn(backend, 'readLibrary')
     const button = await screen.findByRole('button', { name: /^Lista A, lista atual/ })
     button.click()
     await waitFor(() => expect(syncSource).toHaveBeenCalledWith('a'))
-    expect(await find('Sincronizando…')).toBeTruthy()
-    // Continua nas Configurações (não recarrega o app).
-    expect(window.location.pathname).toBe('/configuracoes')
-    expect(await screen.findByText('Atualizada em 29/10/2026 09:30', {}, { timeout: 15000 })).toBeTruthy()
-  }, 40000)
+    // Recarrega como numa troca: volta ao início.
+    await waitFor(() => expect(window.location.pathname).toBe('/meu-iplex'), { timeout: 15000 })
+    await screen.findByRole('navigation', { name: 'Menu principal' }, { timeout: 15000 })
+    expect(acquire).not.toHaveBeenCalled()
+    expect(library).not.toHaveBeenCalled()
+    // A busca segue em segundo plano; ao voltar às Configurações, a data nova aparece quando o servidor termina.
+    screen.getByRole('button', { name: 'Configurações' }).click()
+    expect(await screen.findByText('Atualizada em 29/10/2026 09:30', {}, { timeout: 20000 })).toBeTruthy()
+  }, 45000)
 
   it('pedido recusado (limite) avisa na própria lista', async () => {
     start('/configuracoes', 'single', {

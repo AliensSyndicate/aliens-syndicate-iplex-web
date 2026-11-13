@@ -78,6 +78,11 @@ export function PlatformProvider({ children, detect: injected }: { children: Rea
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>
 }
 
+/** Plataforma, quando já detectada (telas que também aparecem antes da detecção, como o carregamento). */
+export function useOptionalPlatform(): PlatformApi | null {
+  return useContext(Ctx)
+}
+
 export function usePlatform(): PlatformApi {
   const value = useContext(Ctx)
   if (!value) throw new Error('PlatformProvider ausente')

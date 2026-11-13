@@ -53,18 +53,20 @@ export default function SettingsScreen() {
   const account = backend.accountIdentity()
   // Quando a lista foi conferida neste aparelho (reserva se o servidor não informar a data).
   const localSync = readJson<Record<string, number>>(`iplex.sourceSync.v1.${ready.identity.familyId}.${ready.profile.id}`) ?? {}
-  /** Troca a lista: volta à página inicial e recarrega tudo desde o começo. */
+  /** Troca a lista: volta à página inicial e recarrega só as listas e o catálogo. */
   const switchSource = (sourceId: string) => {
     navigate(SECTION_PATHS[startSection(ready.profile)], { replace: true })
     void session.selectSource(sourceId)
   }
-  /** A própria lista: pede a sincronização (como o Gestor) e fica nesta tela, no início, mostrando o andamento. */
+  /**
+   * A própria lista: pede ao servidor a busca no provedor (como o Gestor) e, aceito o pedido, recarrega como numa
+   * troca (volta à página inicial). O conteúdo novo entra sozinho quando o servidor termina. Recusa: o erro fica aqui.
+   */
   const [confirm, setConfirm] = useState(false)
   const [syncError, setSyncError] = useState<Record<string, string>>({})
   const syncSource = (sourceId: string) => {
-    window.scrollTo(0, 0)
     setSyncError((errors) => ({ ...errors, [sourceId]: '' }))
-    session.syncSource(sourceId).catch((raw) => {
+    session.syncSource(sourceId, () => navigate(SECTION_PATHS[startSection(ready.profile)], { replace: true })).catch((raw) => {
       const kind = toAppError(raw).kind
       setSyncError((errors) => ({ ...errors, [sourceId]: kind === 'rate-limited' ? 'Aguarde alguns segundos e tente de novo' : 'Não foi possível atualizar agora' }))
     })
@@ -116,7 +118,7 @@ export default function SettingsScreen() {
                 return (
                   <li key={space.sourceId} className="iplex-settings__list">
                     {/* Cada lista é um botão: nome e, embaixo, a última atualização. A atual é a destacada: OK nela
-                        sincroniza; OK em outra troca de lista (recarrega desde o início). */}
+                        pede a busca no provedor e recarrega; OK em outra troca de lista. As duas voltam ao início. */}
                     <button
                       type="button"
                       className={classNames('iplex-button', current ? 'iplex-button-primary' : 'iplex-button-secondary', 'iplex-settings__source')}
@@ -161,6 +163,10 @@ export default function SettingsScreen() {
           <IplexText variant="caption">Suporte: perfis, fontes, assinatura e desvinculação são gerenciados no iPlex Gestor.</IplexText>
         </IplexCard>
       </div>
+      {/* Versão sempre visível (canto inferior direito, fixa durante a rolagem): referência para o suporte. */}
+      <IplexText variant="caption" as="p" className="iplex-settings__version">
+        {`iPlex Web ${WEB_VERSION}${platform.info ? ` · App da TV ${platform.info.appVersion}` : ''}`}
+      </IplexText>
       {ready.profile.type === 'admin' && (
         <div className="iplex-settings__danger" data-nav-row="x">
           <IplexButton variant="secondary" navId="set-forget" onClick={() => setConfirm(true)}>

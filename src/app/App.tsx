@@ -38,9 +38,10 @@ const SettingsScreen = lazy(screenLoaders.settings)
 
 const STEP_LABEL: Record<StartupStep, string> = {
   device: 'Verificando dispositivo...',
-  connection: 'Verificando conexão com o Control...',
+  connection: 'Carregando perfis...',
   account: 'Configurando conta...',
   profile: 'Carregando perfil...',
+  source: 'Carregando lista...',
   movies: 'Configurando filmes...',
   series: 'Configurando séries...',
   channels: 'Configurando Ao Vivo...',

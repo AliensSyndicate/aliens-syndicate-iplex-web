@@ -23,6 +23,14 @@ describe('tela única de inicialização', () => {
     expect(screen.getAllByText('Configurando filmes...').length).toBeGreaterThan(0)
   })
 
+  it('ordem fixa (logo, "Só um instante.", etapa) e versão sempre no rodapé', () => {
+    const { container } = render(<SplashScreen label="Carregando perfis..." />)
+    const order = Array.from(container.querySelectorAll('.iplex-splash > *')).map((el) => el.className.split(' ').find((c) => c.startsWith('iplex-splash__')))
+    expect(order).toEqual(['iplex-splash__logo', 'iplex-splash__title', 'iplex-splash__status', 'iplex-splash__spinner', 'iplex-splash__version'])
+    expect(container.querySelector('.iplex-splash__title')?.textContent).toBe('Só um instante.')
+    expect(container.querySelector('.iplex-splash__version')?.textContent).toMatch(/^iPlex Web · versão \S+/)
+  })
+
   it('com shell novo: não desenha nada e informa a etapa real ao shell', async () => {
     const { client, call } = fakeBridge()
     enableUnifiedStartup(client)
@@ -37,8 +45,8 @@ describe('tela única de inicialização', () => {
     enableUnifiedStartup(client)
     const { rerender } = render(<SplashScreen />)
     expect(call).toHaveBeenLastCalledWith('app.status', { text: 'Verificando dispositivo...' })
-    rerender(<SplashScreen label="Verificando conexão com o Control..." />)
-    expect(call).toHaveBeenLastCalledWith('app.status', { text: 'Verificando conexão com o Control...' })
+    rerender(<SplashScreen label="Carregando perfis..." />)
+    expect(call).toHaveBeenLastCalledWith('app.status', { text: 'Carregando perfis...' })
     rerender(<SplashScreen label="Tudo pronto!" />)
     expect(call).toHaveBeenLastCalledWith('app.status', { text: 'Tudo pronto!' })
   })

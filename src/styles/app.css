@@ -34,6 +34,7 @@
   align-items: center;
   -webkit-justify-content: center;
   justify-content: center;
+  position: relative;
   min-height: 100vh;
   background-color: var(--iplex-bg);
 }
@@ -51,6 +52,14 @@
   margin: var(--iplex-space-4) 0 0;
   width: 100%;
   padding: 0 var(--iplex-safe-area-x);
+  text-align: center;
+}
+.iplex-splash__version {
+  position: absolute;
+  left: var(--iplex-safe-area-x);
+  right: var(--iplex-safe-area-x);
+  bottom: var(--iplex-space-7);
+  margin: 0;
   text-align: center;
 }
 .iplex-splash__spinner {
@@ -1630,6 +1639,19 @@
 }
 .iplex-settings__danger {
   margin-top: var(--iplex-space-5);
+}
+/* Versão fixa no canto inferior direito, acima do conteúdo que rola e abaixo dos diálogos. */
+.iplex-settings__version {
+  position: fixed;
+  right: var(--iplex-safe-area-x);
+  bottom: var(--iplex-space-5);
+  z-index: 40;
+  margin: 0;
+  padding: var(--iplex-space-2) var(--iplex-space-4);
+  border-radius: var(--iplex-radius-full);
+  background-color: var(--iplex-bg);
+  color: var(--iplex-text-secondary);
+  pointer-events: none;
 }
 
 /* ---- Player ---------------------------------------------------------- */

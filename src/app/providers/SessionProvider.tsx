@@ -30,7 +30,7 @@ import { useBackend } from './BackendProvider'
 import { usePlatform } from './PlatformProvider'
 
 /** Etapas reais da inicialização (cada uma só aparece quando de fato começa). */
-export type StartupStep = 'device' | 'connection' | 'account' | 'profile' | 'movies' | 'series' | 'channels' | 'done'
+export type StartupStep = 'device' | 'connection' | 'account' | 'profile' | 'source' | 'movies' | 'series' | 'channels' | 'done'
 
 export interface ReadySession {
   status: 'ready'
@@ -72,13 +72,14 @@ export interface SessionApi {
   checkDevice(): Promise<void>
   /** Permissões do perfil mudaram no Control: some/aparece o conteúdo adulto na hora e o catálogo é refeito em seguida. */
   refreshAccess(): Promise<void>
-  /** Passa a usar outra lista IPTV e recarrega tudo desde o início. */
+  /** Passa a usar outra lista IPTV: recarrega só listas e catálogo (sessão, perfis e biblioteca continuam). */
   selectSource(sourceId: string): Promise<void>
   /**
-   * Atualiza a lista em uso (mesma sincronização manual do Gestor), sem sair da tela: a lista aparece como
-   * sincronizando e, ao terminar, o catálogo novo entra em segundo plano.
+   * Atualiza a lista em uso: pede ao servidor a busca no provedor (mesma sincronização manual do Gestor) e, aceito o
+   * pedido (`onAccepted`), recarrega a lista na hora como numa troca. Quando o servidor termina, só o que mudou
+   * entra em segundo plano.
    */
-  syncSource(sourceId: string): Promise<void>
+  syncSource(sourceId: string, onAccepted?: () => void): Promise<void>
   /**
    * Quem volta a um perfil cuja tela inicial é Meu iPlex pode ver o esqueleto dela durante a inicialização (em vez do
    * texto de etapas). Vale até a inicialização cair no download completo, que volta ao texto de progresso.
@@ -295,6 +296,86 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [backend],
   )
 
+  /**
+   * Catálogo das listas ativas: abre do cache local (grupos em segundo plano) ou baixa os seis conjuntos; backend
+   * antigo cai no formato paginado. Devolve o trabalho de segundo plano, quando houver. Falhas sobem para quem chamou.
+   */
+  const prepareCatalog = useCallback(
+    async (identity: DeviceIdentity, profile: Profile, spaces: Space[], catalog: CatalogStore, alive: () => boolean, onStep: (step: StartupStep) => void): Promise<(() => Promise<void>) | null> => {
+      const hasKind = (kind: 'movie' | 'series' | 'channel') => spaces.some((space) => space.kinds.includes(kind))
+      const loadKinds = async (kinds: Array<'movie' | 'series' | 'channel'>) => {
+        const present = kinds.filter(hasKind)
+        await Promise.all(present.map((kind) => catalog.ensure(kind, CATALOG.maxPages)))
+        for (const kind of present) {
+          const error = catalog.errorFor(kind)
+          if (error) throw error
+        }
+      }
+      let background: (() => Promise<void>) | null = null
+      // Seis conjuntos (cache local + diferenças); o formato paginado só entra se o backend for antigo.
+      let prepared = false
+      try {
+        const syncDeps = { backend, cache: getCatalogCache(), diag }
+        const scope = `${identity.familyId}:${profile.id}`
+        const sourceIds = spaces.map((space) => space.sourceId)
+        // Cache válido (esquema atual e mesmas permissões): a interface abre já e os grupos chegam em segundo plano.
+        const open = await openFromCache(syncDeps, scope, profile.id, sourceIds)
+        if (open) {
+          for (const entry of open) catalog.beginProgressive(entry.sourceId, entry.meta.version, entry.manifest?.adultEnabled === true)
+          background = async () => {
+            try {
+              const preloaded = new Map<string, { meta: SourceMeta; sets: SourceSets }>()
+              for (const entry of open) {
+                const sets = await streamFromCache(syncDeps, catalog, scope, entry.sourceId, entry.meta, entry.manifest?.adultEnabled === true)
+                if (!alive()) return
+                if (sets) preloaded.set(entry.sourceId, { meta: entry.meta, sets })
+              }
+              // Versão nova (ou cache corrompido): diferenças/baixa completa em segundo plano e troca de uma vez.
+              if (open.some((entry) => !preloaded.has(entry.sourceId) || entry.manifest?.version !== entry.meta.version)) {
+                const results = await syncSources({ ...syncDeps, preloaded }, scope, profile.id, sourceIds)
+                if (!alive()) return
+                for (const result of results) {
+                  await catalog.hydrateAsync(result.sourceId, result.sets, result.version, result.adultEnabled)
+                  diag('sync', `fonte=${result.sourceId.slice(0, 8)} modo=${result.mode} ${result.ms}ms (segundo plano)`)
+                }
+              }
+              if (alive()) writeJson(syncTimesKey(identity, profile), { ...(readJson<Record<string, number>>(syncTimesKey(identity, profile)) ?? {}), ...Object.fromEntries(sourceIds.map((sourceId) => [sourceId, Date.now()])) })
+            } catch (raw) {
+              diag('sync', `segundo plano falhou: ${toAppError(raw).kind}`)
+              for (const sourceId of sourceIds) catalog.finishProgressive(sourceId)
+            }
+          }
+          prepared = true
+        } else {
+          returning.current = false
+          const results = await syncSources(syncDeps, scope, profile.id, sourceIds, (group) => {
+            // O grupo adulto não tem texto próprio na inicialização.
+            if (alive() && group !== 'adult') onStep(group)
+          })
+          for (const result of results) {
+            catalog.hydrate(result.sourceId, result.sets, result.version, result.adultEnabled)
+            diag('sync', `fonte=${result.sourceId.slice(0, 8)} modo=${result.mode} ${result.ms}ms`)
+          }
+          prepared = true
+        }
+      } catch (raw) {
+        if (toAppError(raw).kind !== 'backend-outdated') throw raw
+        diag('sync', 'backend sem seis conjuntos: formato paginado')
+        returning.current = false
+      }
+      if (!prepared) {
+        onStep('movies')
+        await loadKinds(['movie'])
+        onStep('series')
+        await loadKinds(['series'])
+        onStep('channels')
+        await loadKinds(['channel'])
+      }
+      return background
+    },
+    [backend],
+  )
+
   const enter = useCallback(
     async (identity: DeviceIdentity, profiles: Profile[], profile: Profile, options: { pinVerified?: boolean; tryOnly?: boolean } = {}) => {
       const id = ++run.current
@@ -376,76 +457,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return
       }
       if (!alive()) return catalog.dispose()
-      const hasKind = (kind: 'movie' | 'series' | 'channel') => spaces.some((space) => space.kinds.includes(kind))
-      const loadKinds = async (kinds: Array<'movie' | 'series' | 'channel'>) => {
-        const present = kinds.filter(hasKind)
-        await Promise.all(present.map((kind) => catalog.ensure(kind, CATALOG.maxPages)))
-        for (const kind of present) {
-          const error = catalog.errorFor(kind)
-          if (error) throw error
-        }
-      }
-      let background: (() => Promise<void>) | null = null
+      let background: (() => Promise<void>) | null
       try {
-        // Seis conjuntos (cache local + diferenças); o formato paginado só entra se o backend for antigo.
-        let prepared = false
-        try {
-          const syncDeps = { backend, cache: getCatalogCache(), diag }
-          const scope = `${identity.familyId}:${profile.id}`
-          const sourceIds = spaces.map((space) => space.sourceId)
-          // Cache válido (esquema atual e mesmas permissões): a interface abre já e os grupos chegam em segundo plano.
-          const open = await openFromCache(syncDeps, scope, profile.id, sourceIds)
-          if (open) {
-            for (const entry of open) catalog.beginProgressive(entry.sourceId, entry.meta.version, entry.manifest?.adultEnabled === true)
-            background = async () => {
-              try {
-                const preloaded = new Map<string, { meta: SourceMeta; sets: SourceSets }>()
-                for (const entry of open) {
-                  const sets = await streamFromCache(syncDeps, catalog, scope, entry.sourceId, entry.meta, entry.manifest?.adultEnabled === true)
-                  if (!alive()) return
-                  if (sets) preloaded.set(entry.sourceId, { meta: entry.meta, sets })
-                }
-                // Versão nova (ou cache corrompido): diferenças/baixa completa em segundo plano e troca de uma vez.
-                if (open.some((entry) => !preloaded.has(entry.sourceId) || entry.manifest?.version !== entry.meta.version)) {
-                  const results = await syncSources({ ...syncDeps, preloaded }, scope, profile.id, sourceIds)
-                  if (!alive()) return
-                  for (const result of results) {
-                    await catalog.hydrateAsync(result.sourceId, result.sets, result.version, result.adultEnabled)
-                    diag('sync', `fonte=${result.sourceId.slice(0, 8)} modo=${result.mode} ${result.ms}ms (segundo plano)`)
-                  }
-                }
-                if (alive()) writeJson(syncTimesKey(identity, profile), { ...(readJson<Record<string, number>>(syncTimesKey(identity, profile)) ?? {}), ...Object.fromEntries(sourceIds.map((sourceId) => [sourceId, Date.now()])) })
-              } catch (raw) {
-                diag('sync', `segundo plano falhou: ${toAppError(raw).kind}`)
-                for (const sourceId of sourceIds) catalog.finishProgressive(sourceId)
-              }
-            }
-            prepared = true
-          } else {
-            returning.current = false
-            const results = await syncSources(syncDeps, scope, profile.id, sourceIds, (group) => {
-              // O grupo adulto não tem texto próprio na inicialização.
-              if (alive() && group !== 'adult' && !switching) setState({ status: 'starting', step: group })
-            })
-            for (const result of results) {
-              catalog.hydrate(result.sourceId, result.sets, result.version, result.adultEnabled)
-              diag('sync', `fonte=${result.sourceId.slice(0, 8)} modo=${result.mode} ${result.ms}ms`)
-            }
-            prepared = true
-          }
-        } catch (raw) {
-          if (toAppError(raw).kind !== 'backend-outdated') throw raw
-          diag('sync', 'backend sem seis conjuntos: formato paginado')
-          returning.current = false
-        }
-        if (!prepared) {
-          setState({ status: 'starting', step: 'movies' })
-          await loadKinds(['movie'])
-          setState({ status: 'starting', step: 'series' })
-          await loadKinds(['series'])
-          setState({ status: 'starting', step: 'channels' })
-          await loadKinds(['channel'])
-        }
+        background = await prepareCatalog(identity, profile, spaces, catalog, alive, (next) => {
+          if (alive() && !switching) setState({ status: 'starting', step: next })
+        })
         // Meu iPlex é preparado junto (telas já carregadas na troca de perfil; biblioteca e catálogo já estão prontos aqui).
         await prefetched
         if (!switching && !background) {
@@ -463,7 +479,84 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setState({ status: 'ready', identity, profiles, profile, lease, spaces, allSpaces: registered, spacesError: null, unavailable: false, catalog, library })
       if (background) void background()
     },
-    [backend, leases, toPairing, enterUnavailable],
+    [backend, leases, toPairing, enterUnavailable, prepareCatalog],
+  )
+
+  /**
+   * Troca ou atualização de lista com o app aberto: só listas e catálogo são relidos. Sessão de uso, perfis e
+   * biblioteca continuam (a entrada completa refazia tudo). Qualquer falha cai na entrada completa.
+   */
+  const reloadSource = useCallback(
+    async (sourceId: string): Promise<void> => {
+      const current = stateRef.current
+      if (current.status !== 'ready') return
+      const { identity, profiles, profile, lease, library } = current
+      writeJson(activeSourceKey(identity, profile), sourceId)
+      // Fonte fora do ar (sem sessão de uso): a entrada completa decide o caminho.
+      if (current.unavailable) return enter(identity, profiles, profile, { pinVerified: true })
+      const id = ++run.current
+      const alive = () => id === run.current
+      const startedAt = Date.now()
+      current.catalog.dispose()
+      setState({ status: 'starting', step: 'source' })
+      const full = () => (alive() ? enter(identity, profiles, profile, { pinVerified: true }) : Promise.resolve())
+      let registered: Space[]
+      try {
+        registered = await step(backend.listSpaces(profile.id))
+      } catch {
+        return full()
+      }
+      if (!alive()) return
+      const spaces = activeSpaces(registered, identity, profile)
+      if (spaces.length > 0 && spaces.every((space) => space.unavailable)) return full()
+      const catalog = new CatalogStore(backend, profile.id, spaces)
+      library.bindCatalog((itemId) => catalog.findLoaded(itemId))
+      let background: (() => Promise<void>) | null
+      try {
+        background = await prepareCatalog(identity, profile, spaces, catalog, alive, () => undefined)
+      } catch {
+        catalog.dispose()
+        return full()
+      }
+      if (!alive()) return catalog.dispose()
+      if (!background) writeJson(syncTimesKey(identity, profile), { ...(readJson<Record<string, number>>(syncTimesKey(identity, profile)) ?? {}), ...Object.fromEntries(spaces.map((space) => [space.sourceId, Date.now()])) })
+      setState({ status: 'ready', identity, profiles, profile, lease, spaces, allSpaces: registered, spacesError: null, unavailable: false, catalog, library })
+      diag('session', `lista recarregada @${Date.now() - startedAt}ms${background ? ' (cache)' : ''}`)
+      if (background) void background()
+    },
+    [backend, enter, prepareCatalog],
+  )
+
+  /** Acompanha a busca no provedor pedida pela TV (a cada 5 s, até 15 min); ao terminar, baixa só o que mudou. */
+  const watchSync = useCallback(
+    async (sourceId: string, profileId: string) => {
+      // A recarga da lista pode ainda não ter chegado à tela: a marca entra quando a sessão estiver pronta.
+      const start = stateRef.current
+      const mark = (spaces: Space[]) => spaces.map((space) => (space.sourceId === sourceId ? { ...space, syncing: true } : space))
+      if (start.status === 'ready' && start.profile.id === profileId) setState({ ...start, spaces: mark(start.spaces), allSpaces: mark(start.allSpaces) })
+      const until = Date.now() + SYNC_WATCH_MS
+      while (Date.now() < until) {
+        await new Promise((resolve) => setTimeout(resolve, SYNC_POLL_MS))
+        const now = stateRef.current
+        if (now.status === 'starting') continue
+        if (now.status !== 'ready' || now.profile.id !== profileId) return
+        let fresh: Space[]
+        try {
+          fresh = await backend.listSpaces(profileId)
+        } catch {
+          continue
+        }
+        const latest = stateRef.current
+        if (latest.status !== 'ready' || latest.profile.id !== profileId) return
+        setState({ ...latest, spaces: mergeSpaces(latest.spaces, fresh), allSpaces: mergeSpaces(latest.allSpaces, fresh) })
+        if (fresh.find((space) => space.sourceId === sourceId)?.syncing) continue
+        diag('sync', `lista ${sourceId} sincronizada; catálogo novo em segundo plano`)
+        // Mesmo caminho da mudança de permissões: baixa só o que mudou e atualiza as telas sozinho.
+        await refreshAccess(true)
+        return
+      }
+    },
+    [backend, refreshAccess],
   )
 
   const loadProfiles = useCallback(async (identity: DeviceIdentity, alive: () => boolean) => {
@@ -635,41 +728,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         }
       },
       selectSource: async (sourceId) => {
-        const current = stateRef.current
-        if (current.status !== 'ready') return
-        writeJson(activeSourceKey(current.identity, current.profile), sourceId)
-        await enter(current.identity, current.profiles, current.profile, { pinVerified: true })
+        await reloadSource(sourceId)
       },
-      syncSource: async (sourceId) => {
+      syncSource: async (sourceId, onAccepted) => {
         const current = stateRef.current
         if (current.status !== 'ready') return
         await backend.syncSource(sourceId)
-        const mark = (spaces: Space[]) => spaces.map((space) => (space.sourceId === sourceId ? { ...space, syncing: true } : space))
-        setState({ ...current, spaces: mark(current.spaces), allSpaces: mark(current.allSpaces) })
         diag('sync', `lista ${sourceId} pedida pela TV`)
+        onAccepted?.()
+        // Recarrega já (como numa troca) e acompanha a busca no provedor em segundo plano.
         const profileId = current.profile.id
-        void (async () => {
-          const until = Date.now() + SYNC_WATCH_MS
-          while (Date.now() < until) {
-            await new Promise((resolve) => setTimeout(resolve, SYNC_POLL_MS))
-            const now = stateRef.current
-            if (now.status !== 'ready' || now.profile.id !== profileId) return
-            let fresh: Space[]
-            try {
-              fresh = await backend.listSpaces(profileId)
-            } catch {
-              continue
-            }
-            const latest = stateRef.current
-            if (latest.status !== 'ready' || latest.profile.id !== profileId) return
-            setState({ ...latest, spaces: mergeSpaces(latest.spaces, fresh), allSpaces: mergeSpaces(latest.allSpaces, fresh) })
-            if (fresh.find((space) => space.sourceId === sourceId)?.syncing) continue
-            diag('sync', `lista ${sourceId} sincronizada; catálogo novo em segundo plano`)
-            // Mesmo caminho da mudança de permissões: baixa só o que mudou e atualiza as telas sozinho.
-            await refreshAccess(true)
-            return
-          }
-        })()
+        void reloadSource(sourceId).then(() => watchSync(sourceId, profileId))
       },
       reloadSpaces: async () => {
         const current = stateRef.current
@@ -678,7 +747,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state, boot, enter, leases, toPairing],
+    [state, boot, enter, leases, toPairing, reloadSource, watchSync],
   )
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>

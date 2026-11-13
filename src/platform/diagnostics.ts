@@ -12,6 +12,13 @@ import { BRIDGE_PROTOCOL, BRIDGE_VERSION } from './bridge/protocol'
 
 let enabled: boolean | null = null
 let sequence = 0
+/** Query da abertura: as telas navegam (ex.: /assistir?...) e os parâmetros de diagnóstico sumiriam. */
+const BOOT_SEARCH = typeof window === 'undefined' ? '' : window.location.search
+
+/** Parâmetro de diagnóstico presente na URL de abertura (só vale com o diagnóstico ativo). */
+export function diagFlag(name: string): boolean {
+  return diagnosticsEnabled() && new RegExp(`(?:^|[?&])${name}=1(?:&|$)`).test(BOOT_SEARCH)
+}
 
 export function diagnosticsEnabled(): boolean {
   if (enabled !== null) return enabled

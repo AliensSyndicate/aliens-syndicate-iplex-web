@@ -21,7 +21,7 @@ import { useBackend } from '../../app/providers/BackendProvider'
 import { usePlatform } from '../../app/providers/PlatformProvider'
 import { useReadySession, useSession } from '../../app/providers/SessionProvider'
 import { PATHS } from '../../app/routes/paths'
-import { diag, diagnosticsEnabled } from '../../platform/diagnostics'
+import { diag, diagFlag } from '../../platform/diagnostics'
 import { Dialog } from '../../components/dialogs/Dialog'
 import { PinDialog } from '../../components/dialogs/PinDialog'
 import { ErrorState } from '../../components/feedback/ErrorState'
@@ -724,7 +724,7 @@ export default function PlayerScreen() {
   const episodeTitle = (episode && season !== undefined ? seasonMetas[season]?.episodes.find((m) => m.episodeNumber === episode.episodeNum)?.name : '') || episode?.title || undefined
 
   // DIAGNÓSTICO TEMPORÁRIO (ponto no centro): `?diag=1&bare=1` desenha só o plano de vídeo, sem nenhuma camada do Web.
-  if (diagnosticsEnabled() && /(?:^|[?&])bare=1(?:&|$)/.test(window.location.search)) {
+  if (diagFlag('bare')) {
     return (
       <main ref={rootRef} className="iplex-player" tabIndex={-1}>
         <div ref={containerRef} className="iplex-player__surface" />

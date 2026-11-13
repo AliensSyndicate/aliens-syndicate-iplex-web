@@ -54,7 +54,7 @@ export class LibraryStore {
   private readonly backend: Backend
   private readonly identity: DeviceIdentity
   private readonly profile: Profile
-  private readonly findItem?: (id: string) => CatalogItem | null
+  private findItem?: (id: string) => CatalogItem | null
 
   constructor(backend: Backend, identity: DeviceIdentity, profile: Profile, findItem?: (id: string) => CatalogItem | null) {
     this.findItem = findItem
@@ -64,6 +64,11 @@ export class LibraryStore {
     this.persistent = profile.type !== 'guest'
     this.generations = { ...profile.generations }
     this.index = this.persistent ? (readJson<Record<string, IndexedItem>>(indexKey(identity.familyId, profile.id)) ?? {}) : {}
+  }
+
+  /** Lista IPTV recarregada na mesma sessão: os itens passam a vir do catálogo novo. */
+  bindCatalog(findItem: (id: string) => CatalogItem | null) {
+    this.findItem = findItem
   }
 
   subscribe = (listener: () => void) => {

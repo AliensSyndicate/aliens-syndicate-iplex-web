@@ -10,7 +10,7 @@
 import type { Backend } from '../services/api/backend'
 import { readJson } from '../utils/storage'
 import { probeCatalogCache, probeCatalogSets } from './catalogSetsProbe'
-import { diag } from './diagnostics'
+import { diag, diagFlag } from './diagnostics'
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)
@@ -557,6 +557,12 @@ async function runSettings() {
     trail.push(`${key.replace('Arrow', '')}=${label(document.activeElement)}`)
   }
   report(`${t}:nav`, { trail: trail.join(' > '), y: String(Math.round(window.scrollY)) })
+  // Versão fixa: mesma posição no topo e com a tela rolada até o fim (Baixo até "Sair deste dispositivo").
+  const version = () => `${($('.iplex-settings__version')?.textContent ?? '-').trim()}@${rectText($('.iplex-settings__version'))}`
+  const top = version()
+  await keys('ArrowDown', 6, 400)
+  await sleep(600)
+  report(`${t}:version`, { top, scrolled: version(), y: String(Math.round(window.scrollY)), a: label(document.activeElement), view: `${window.innerWidth}x${window.innerHeight}` })
 }
 
 /** Esqueleto x tela real do Meu iPlex (?selftest=skeleton): posição e tamanho de cada bloco nas duas versões. */
@@ -587,24 +593,55 @@ async function runSkeleton() {
 /** Sincronizar a lista atual (?selftest=sync): OK no botão da lista em uso e acompanha o texto até terminar. */
 async function runSync() {
   const t = 'sync'
-  window.history.pushState({}, '', '/configuracoes')
-  window.dispatchEvent(new PopStateEvent('popstate'))
-  if (!(await waitFor(() => !!$('.iplex-settings__source[aria-current="true"]'), 20000))) return report(`${t}:enter`, { fail: 'lista atual não apareceu' })
+  const openSettings = async () => {
+    window.history.pushState({}, '', '/configuracoes')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    return waitFor(() => !!$('.iplex-settings__source[aria-current="true"]'), 20000)
+  }
+  // Pronto de novo: menu principal na tela (sem a tela de carregamento).
+  const backHome = () => waitFor(() => !!$('nav[aria-label="Menu principal"]') && !$('.iplex-splash') && location.pathname !== '/configuracoes', 60000)
+  if (!(await openSettings())) return report(`${t}:enter`, { fail: 'lista atual não apareceu' })
   await sleep(1500)
-  const button = $('.iplex-settings__source[aria-current="true"]')!
+  const lists = all('.iplex-settings__source').map((b) => `${(b.querySelector('.iplex-settings__source-name')?.textContent ?? '').trim()}${b.getAttribute('aria-current') ? '*' : ''}`)
   const text = () => ($('.iplex-settings__source[aria-current="true"] .iplex-settings__source-date')?.textContent ?? '').trim()
   const before = text()
+  const button = $('.iplex-settings__source[aria-current="true"]')!
   button.focus()
-  button.click()
   const start = Date.now()
+  button.click()
+  const sawSplash = await waitFor(() => !!$('.iplex-splash'), 4000)
+  const part = (sel: string) => `${($(sel)?.textContent ?? '-').trim()}@${rectText($(sel))}`
+  report(`${t}:splash`, { logo: rectText($('.iplex-splash__logo')), title: part('.iplex-splash__title'), status: part('.iplex-splash__status'), spinner: rectText($('.iplex-splash__spinner')), version: part('.iplex-splash__version') })
+  const ready = await backHome()
+  report(`${t}:reload`, { lists: lists.join('|'), before, splash: String(sawSplash), ready: String(ready), ms: String(Date.now() - start), path: location.pathname, err: ($('.iplex-state')?.textContent ?? '').slice(0, 60) })
+  // Busca no provedor em segundo plano: acompanha a data nas Configurações.
+  await sleep(1000)
+  await openSettings()
   const seen: string[] = []
   while (Date.now() - start < 240000) {
-    await sleep(2000)
     const now = text()
     if (seen[seen.length - 1]?.split('@')[0] !== now) seen.push(`${now}@${Math.round((Date.now() - start) / 1000)}s`)
     if (now !== 'Sincronizando…' && seen.some((v) => v.startsWith('Sincronizando'))) break
+    await sleep(2000)
   }
-  report(`${t}:result`, { before, trail: seen.join(' > '), path: location.pathname, y: String(Math.round(window.scrollY)), focused: label(document.activeElement) })
+  report(`${t}:result`, { trail: seen.join(' > '), path: location.pathname })
+  // Troca para outra lista e volta (quando houver mais de uma).
+  const other = all('.iplex-settings__source').find((b) => !b.getAttribute('aria-current'))
+  if (!other) return
+  const original = ($('.iplex-settings__source[aria-current="true"] .iplex-settings__source-name')?.textContent ?? '').trim()
+  for (const target of [other, null]) {
+    if (!(await openSettings())) return
+    await sleep(800)
+    const el = target ?? all('.iplex-settings__source').find((b) => (b.querySelector('.iplex-settings__source-name')?.textContent ?? '').trim() === original)
+    if (!el) return
+    const name = (el.querySelector('.iplex-settings__source-name')?.textContent ?? '').trim()
+    el.focus()
+    const at = Date.now()
+    el.click()
+    const ok = await backHome()
+    report(`${t}:switch`, { to: name, ready: String(ok), ms: String(Date.now() - at), err: ($('.iplex-state')?.textContent ?? '').slice(0, 60) })
+    await sleep(3000)
+  }
 }
 
 /** Botões do detalhe (?selftest=actions): abre um filme de Continuar assistindo e mede botões e barra de progresso. */
@@ -710,6 +747,45 @@ async function runTrailer(tab: string, tries: number) {
     await sleep(1000)
     return
   }
+}
+
+/** Tudo o que ocupa o centro da tela (em qualquer camada), com as medidas e as cores que o tornariam visível. */
+function centerScan(tag: string) {
+  const cx = window.innerWidth / 2
+  const cy = window.innerHeight / 2
+  const rows: string[] = []
+  for (const el of all('body *')) {
+    const r = el.getBoundingClientRect()
+    if (!(r.width > 0 && r.height > 0 && r.left <= cx + 60 && r.right >= cx - 60 && r.top <= cy + 60 && r.bottom >= cy - 60)) continue
+    if (r.width >= window.innerWidth - 2 && r.height >= window.innerHeight - 2 && el.children.length) {
+      const c = getComputedStyle(el)
+      rows.push(`FULL ${el.tagName.toLowerCase()}.${String(el.className).replace(/\s+/g, '.').slice(0, 50)} bg=${c.backgroundColor} op=${c.opacity} vis=${c.visibility}`)
+      continue
+    }
+    const c = getComputedStyle(el)
+    rows.push(`${el.tagName.toLowerCase()}.${String(el.className).replace(/\s+/g, '.').slice(0, 60)} ${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)} bg=${c.backgroundColor} bd=${c.borderTopWidth}/${c.borderTopColor} sh=${c.boxShadow.slice(0, 40)} op=${c.opacity} vis=${c.visibility} disp=${c.display} z=${c.zIndex}`)
+  }
+  const top = document.elementFromPoint(cx, cy)
+  report(`center:${tag}`, { top: top ? `${top.tagName.toLowerCase()}.${String(top.className).slice(0, 60)}` : '-', active: label(document.activeElement), root: document.documentElement.className.slice(0, 80) })
+  for (let i = 0; i < rows.length; i += 4) report(`center:${tag}:${i / 4}`, { rows: rows.slice(i, i + 4).join(' || ') })
+}
+
+/** Centro da tela antes e durante a reprodução de um filme (?selftest=play&center=1). */
+async function runCenter() {
+  if (!(await openCard('Filmes', 0))) return report('center', { fail: 'detalhes não abriram' })
+  const play = $('[data-nav-id="d-continue"]') ?? $('[data-nav-id="d-play"]')
+  play?.click()
+  await waitFor(() => !!$('.iplex-player'), 10000)
+  centerScan('preparing')
+  const started = await waitFor(() => /[1-9]/.test($('.iplex-player__time')?.textContent ?? ''), 40000)
+  await waitFor(() => $('.iplex-player__overlay')?.getAttribute('data-overlay-mode') === 'hidden', 12000)
+  await sleep(500)
+  report('center:started', { started: String(started) })
+  centerScan('playing')
+  // `hold=1`: deixa o vídeo na tela por 45 s para alguém olhar a TV.
+  if (diagFlag('hold')) await sleep(45000)
+  press('Escape')
+  await sleep(1500)
 }
 
 /** Filme: confere que não aparece no começo, leva a barra aos últimos 15 min e confere "Marcar como finalizado" (sem acionar: nada é dado como visto). */
@@ -868,7 +944,8 @@ export async function runTvSelfTest() {
     if (/selftest=play/.test(window.location.search)) {
       await sleep(4000)
       diag('st:session', `unavailable=${!!$('.iplex-watermark')}`)
-      if (/finish=1/.test(window.location.search)) await runMovieFinish()
+      if (/center=1/.test(window.location.search)) await runCenter()
+      else if (/finish=1/.test(window.location.search)) await runMovieFinish()
       else if (/trailer=1/.test(window.location.search)) await runTrailer('Filmes', 7)
       else await runSeriesRow()
       diag('st:done', 'ok')
