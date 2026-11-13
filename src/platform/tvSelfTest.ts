@@ -667,7 +667,7 @@ async function openCard(tab: string, row: number) {
   return waitFor(() => !!$('[data-nav-id="d-play"]') || !!$('[data-nav-id="d-continue"]'), 12000)
 }
 
-/** Trailer (?selftest=play): abre títulos até um ter trailer e confere a troca da imagem, sem mexer no foco. */
+/** Trailer (?selftest=play&trailer=1): abre títulos até um ter o botão "Assistir trailer"; nada entra sozinho. */
 async function runTrailer(tab: string, tries: number) {
   const t = tab.toLowerCase()
   for (let i = 0; i < tries; i += 1) {
@@ -675,41 +675,44 @@ async function runTrailer(tab: string, tries: number) {
       report(`trailer:${t}:${i}`, { fail: 'detalhes não abriram', a: focusLabel(), path: location.pathname })
       continue
     }
-    const start = Date.now()
     const title = ($('.iplex-details h1, .iplex-details .iplex-text--hero-title')?.textContent ?? '').trim().slice(0, 30)
-    if (!(await waitFor(() => !!$('.iplex-trailer__frame'), 14000))) {
-      report(`trailer:${t}:${i}`, { title, trailer: 'nenhum (ou TMDB sem vídeo)' })
+    const button = (await waitFor(() => !!$('[data-nav-id="d-trailer"]'), 6000)) ? $('[data-nav-id="d-trailer"]') : null
+    if (!button) {
+      report(`trailer:${t}:${i}`, { title, button: 'sem botão (TMDB sem vídeo)' })
       press('Escape')
       await sleep(800)
       continue
     }
-    const appeared = Date.now() - start
-    const before = focusLabel()
-    const played = await waitFor(() => !!$('.iplex-trailer.is-playing') || !$('.iplex-trailer__frame'), 18000) && !!$('.iplex-trailer__frame')
-    await sleep(800)
-    const frame = $('.iplex-trailer__frame')
-    report(`trailer:${t}:${i}`, { title, appearedMs: String(appeared), played: String(played), stage: rectText($('.iplex-trailer')), frame: rectText(frame), opacity: $('.iplex-trailer') ? getComputedStyle($('.iplex-trailer') as HTMLElement).opacity : '-', focus: before, iframeHasFocus: String(document.activeElement?.tagName === 'IFRAME') })
+    // Parado nos detalhes: o trailer não pode entrar sozinho.
+    await sleep(7000)
+    report(`trailer:${t}:${i}:idle`, { title, autoStarted: String(!!$('.iplex-trailer')), actions: all('.iplex-details__actions .iplex-button').map((b) => (b.textContent ?? '').trim()).join('|') })
+    button.focus()
+    const start = Date.now()
+    button.click()
+    await sleep(150)
+    const spinner = !!$('.iplex-trailer.is-loading .iplex-trailer__loading')
+    const played = (await waitFor(() => !!$('.iplex-trailer.is-playing') || !$('.iplex-trailer'), 25000)) && !!$('.iplex-trailer.is-playing')
+    const playedMs = Date.now() - start
+    await sleep(1500)
+    report(`trailer:${t}:${i}`, { title, spinner: String(spinner), played: String(played), playedMs: String(playedMs), frame: rectText($('.iplex-trailer__frame')), opacity: $('.iplex-trailer') ? getComputedStyle($('.iplex-trailer') as HTMLElement).opacity : '-', notice: ($('.iplex-details__error')?.textContent ?? '').trim(), iframeHasFocus: String(document.activeElement?.tagName === 'IFRAME') })
     if (!played) {
       press('Escape')
       await sleep(800)
       continue
     }
-    await sleep(6000)
+    await sleep(8000)
     press('Enter')
     await sleep(1200)
     report(`trailer:${t}:${i}:key`, { closed: String(!$('.iplex-trailer')), path: location.pathname, focus: focusLabel() })
-    const again = await waitFor(() => !!$('.iplex-trailer.is-playing'), 25000)
-    report(`trailer:${t}:${i}:again`, { again: String(again) })
-    press('ArrowRight')
-    await sleep(1200)
-    report(`trailer:${t}:${i}:later`, { closed: String(!$('.iplex-trailer')), a: focusLabel() })
+    await sleep(8000)
+    report(`trailer:${t}:${i}:after`, { reopened: String(!!$('.iplex-trailer')), a: focusLabel() })
     press('Escape')
     await sleep(1000)
     return
   }
 }
 
-/** Filme: leva a barra além de 4/5 e confere "Marcar como finalizado" (sem acionar: nada é dado como visto). */
+/** Filme: confere que não aparece no começo, leva a barra aos últimos 15 min e confere "Marcar como finalizado" (sem acionar: nada é dado como visto). */
 async function runMovieFinish() {
   if (!(await openCard('Filmes', 0))) return report('finish', { fail: 'detalhes não abriram' })
   const play = $('[data-nav-id="d-continue"]') ?? $('[data-nav-id="d-play"]')
@@ -723,12 +726,12 @@ async function runMovieFinish() {
     press('ArrowDown')
     await sleep(300)
   }
-  report('finish:timeline', { a: focusLabel() })
+  report('finish:timeline', { a: focusLabel(), early: String(!!$('[data-nav-id="pc-finish"]')) })
   await keys('ArrowRight', 130, 40)
   press('Enter')
   const shown = await waitFor(() => !!$('[data-nav-id="pc-finish"]'), 20000)
   const button = $('[data-nav-id="pc-finish"]')
-  report('finish:button', { shown: String(shown), rect: rectText(button), a: focusLabel(), hint: ($('.iplex-player__seek-hint')?.textContent ?? '').trim() })
+  report('finish:button', { shown: String(shown), rect: rectText(button), a: focusLabel(), hint: ($('.iplex-player__seek-hint')?.textContent ?? '').trim(), times: all('.iplex-player__time').map((e) => e.textContent ?? '').join('|') })
   await waitFor(() => $('.iplex-player__overlay')?.getAttribute('data-overlay-mode') === 'hidden', 9000)
   await sleep(300)
   report('finish:hidden', { mode: String($('.iplex-player__overlay')?.getAttribute('data-overlay-mode')), a: focusLabel() })
@@ -787,12 +790,24 @@ async function runSeriesRow() {
   const opened = await waitFor(() => !!$('.iplex-player__browser'), 8000)
   await sleep(600)
   const closed = $('.iplex-player__browser')
-  report('series:opened', { opened: String(opened), browsing: String(browsing()), browser: rectText(closed), panel: rectText($('.iplex-player__panel')), view: `${window.innerWidth}x${window.innerHeight}`, a: focusLabel() })
+  const panelBefore = rectText($('.iplex-player__panel'))
+  report('series:opened', { opened: String(opened), browsing: String(browsing()), browser: rectText(closed), panel: panelBefore, content: rectText($('.iplex-player__content')), hint: `${($('.iplex-player__browser-hint')?.textContent ?? '-').trim()}@${rectText($('.iplex-player__browser-hint'))}`, timeline: rectText($('.iplex-player__timeline')), view: `${window.innerWidth}x${window.innerHeight}`, a: focusLabel() })
+  // Até a barra (Baixo a partir dos controles centrais) e um Baixo nela abre a seção.
+  for (let i = 0; i < 3 && (document.activeElement as HTMLElement | null)?.dataset.navId !== 'pc-timeline'; i += 1) {
+    press('ArrowDown')
+    await sleep(350)
+  }
+  const onBar = focusLabel()
+  press('ArrowDown')
+  await sleep(1000)
+  const scrolls = [$('.iplex-player'), $('.iplex-player__overlay'), $('.iplex-player__panel'), $('.iplex-player__content')].map((e) => String(e?.scrollTop ?? '-')).join('/')
+  report('series:bar-down', { onBar, browsing: String(browsing()), a: focusLabel(), panelBefore, panelAfter: rectText($('.iplex-player__panel')), content: rectText($('.iplex-player__content')), hint: rectText($('.iplex-player__browser-hint')), scrolls, winY: String(window.scrollY) })
   for (let i = 0; i < 4 && !browsing(); i += 1) {
     press('ArrowDown')
     await sleep(350)
   }
   await sleep(600)
+  report('series:align', { title: rectText($('.iplex-player__heading')), timeline: rectText($('.iplex-player__timeline')), chip: rectText($('.iplex-player__browser .iplex-chip')), firstCard: rectText($('.iplex-player__episode-card')) })
   report('series:down', { browsing: String(browsing()), a: focusLabel(), browser: rectText($('.iplex-player__browser')), chips: rectText($('.iplex-player__browser .iplex-chips')), row: rectText($('.iplex-player__episodes')), current: rectText($('.iplex-player__episode-card.is-current')), transport: $('.iplex-player__transport') ? getComputedStyle($('.iplex-player__transport') as HTMLElement).opacity : '-', seasons: String(all('.iplex-player__browser .iplex-chip').length), cards: String(all('.iplex-player__episode-card').length) })
   const landed = focusLabel()
   press('ArrowUp')
@@ -813,8 +828,19 @@ async function runSeriesRow() {
     const card = all('.iplex-player__episode-card').find((c) => !c.classList.contains('is-current'))
     report('swap:card', { card: label(card ?? null) })
     card?.focus()
+    // Como no uso real: o foco para no cartão antes do OK (o stream é pedido nesse meio-tempo).
+    await sleep(1500)
+    const swapAt = Date.now()
     card?.click()
-    for (let i = 0; i < 25; i += 1) {
+    // Tempo até o novo episódio tocar (tempo decorrido > 0 com o novo `e`).
+    const target = card?.dataset.navId?.replace(/^pe-/, '') ?? ''
+    const elapsed = () => ($('.iplex-player__time')?.textContent ?? '').trim()
+    const reset = await waitFor(() => new URLSearchParams(window.location.search).get('e') === target && !/[1-9]/.test(elapsed()), 10000)
+    const resetMs = Date.now() - swapAt
+    const spinner = !!$('.iplex-player__error [role="status"]')
+    const ok = await waitFor(() => !$('.iplex-player__error') && /[1-9]/.test(elapsed()), 40000)
+    report('swap:playing', { reset: String(reset), resetMs: String(resetMs), spinner: String(spinner), ok: String(ok), ms: String(Date.now() - swapAt), time: elapsed() })
+    for (let i = 0; i < 3; i += 1) {
       await sleep(1000)
       report('swap:t', { i: String(i), path: window.location.pathname, e: String(new URLSearchParams(window.location.search).get('e')), player: String(!!$('.iplex-player')), time: ($('.iplex-player__time:last-child')?.textContent ?? '').trim(), err: ($('.iplex-state')?.textContent ?? '').slice(0, 60) })
     }

@@ -75,6 +75,8 @@ export default function DetailsScreen() {
   const [series, setSeries] = useState<SeriesDetails | null>(null)
   const [busy, setBusy] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
+  /** Trailer aberto pelo botão (nunca sozinho). */
+  const [trailerOpen, setTrailerOpen] = useState(false)
   const recommendation = useOpenTmdbTitle()
 
   useEffect(() => {
@@ -212,11 +214,23 @@ export default function DetailsScreen() {
     ...(summary && summary.title !== item.title ? [['Na fonte IPTV', item.title] as [string, string]] : []),
   ]
 
+  /** Trailer: só com vídeo no TMDB e com o shell liberando o player externo (ver capabilities.externalVideo). */
+  const canTrailer = !!details?.trailerKey && platform.visible && !!platform.capabilities.externalVideo
+
   return (
     <main className="iplex-page iplex-details" aria-label={name} data-nav-managed-y="">
       <div className="iplex-details__backdrop" aria-hidden="true">
         {tmdbPending && !summary?.backdrop ? <div className="iplex-skeleton iplex-details__backdrop-skeleton" /> : <Artwork src={summary?.backdrop} alt="" fallback="" />}
-        {details?.trailerKey && platform.visible && platform.capabilities.externalVideo && <DetailsTrailer key={details.trailerKey} videoKey={details.trailerKey} />}
+        {trailerOpen && canTrailer && details?.trailerKey && (
+          <DetailsTrailer
+            key={details.trailerKey}
+            videoKey={details.trailerKey}
+            onClose={(failed) => {
+              setTrailerOpen(false)
+              setListError(failed ? 'Não foi possível reproduzir o trailer agora.' : null)
+            }}
+          />
+        )}
         <div className="iplex-hero__scrim" />
       </div>
       <section className="iplex-details__info">
@@ -259,6 +273,19 @@ export default function DetailsScreen() {
           {item.kind === 'series' && (
             <IplexButton variant="secondary" navId="d-seasons" navGroup="details-actions" onClick={() => navigate(PATHS.seasons(item.sourceId, item.id, item.title))}>
               Temporadas
+            </IplexButton>
+          )}
+          {canTrailer && (
+            <IplexButton
+              variant="secondary"
+              navId="d-trailer"
+              navGroup="details-actions"
+              onClick={() => {
+                setListError(null)
+                setTrailerOpen(true)
+              }}
+            >
+              Assistir trailer
             </IplexButton>
           )}
           {personal && (

@@ -7,9 +7,6 @@ import { IplexText } from '../ui/IplexText'
 import { ERROR_COPY } from './errorCopy'
 import { Spinner } from './LoadingState'
 
-/** Falhas da fonte IPTV costumam voltar na hora: o spinner mostra que a nova tentativa aconteceu. */
-const RETRY_FEEDBACK = new Set<AppErrorKind>(['iptv-unavailable', 'iptv-not-configured', 'playback-error'])
-
 /**
  * Tela de erro e recuperação. Design obrigatório: fundo sólido #0F0F0F, sem
  * card, logo pequeno, título #F1F1F1, descrição #B7B7B7, botão Primary sem ícone.
@@ -61,11 +58,8 @@ export function ErrorState({
     buttonRef.current?.focus()
   }, [inline, resolved, retrying])
 
+  /** Toda nova tentativa mostra o spinner (a falha costuma voltar na hora e o clique pareceria ignorado). */
   const retry = () => {
-    if (!RETRY_FEEDBACK.has(resolved)) {
-      onRetry?.()
-      return
-    }
     retried.current = true
     setRetrying(true)
   }

@@ -12,7 +12,18 @@ export interface PlayerEpisode {
 }
 
 /** Fileira dos controles abertos: episódios da temporada, já rolada até o que está tocando. */
-export function PlayerEpisodes({ episodes, currentId, onPlay }: { episodes: PlayerEpisode[]; currentId: string | null; onPlay: (episode: SeriesEpisode) => void }) {
+export function PlayerEpisodes({
+  episodes,
+  currentId,
+  onPlay,
+  onFocusEpisode,
+}: {
+  episodes: PlayerEpisode[]
+  currentId: string | null
+  onPlay: (episode: SeriesEpisode) => void
+  /** Foco num cartão (null ao sair): o player pode pedir o stream antes do OK. */
+  onFocusEpisode?: (episode: SeriesEpisode | null) => void
+}) {
   const track = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const row = track.current
@@ -29,6 +40,8 @@ export function PlayerEpisodes({ episodes, currentId, onPlay }: { episodes: Play
             type="button"
             className={classNames('iplex-player__episode-card', 'iplex-focusable', current && 'is-current')}
             onClick={() => onPlay(episode)}
+            onFocus={() => onFocusEpisode?.(episode)}
+            onBlur={() => onFocusEpisode?.(null)}
             aria-label={`Episódio ${episode.episodeNum ?? ''}: ${name}`}
             aria-current={current ? 'true' : undefined}
             data-nav=""

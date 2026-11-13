@@ -1,5 +1,5 @@
 import { GoBackward10SecIcon, GoForward10SecIcon, PauseIcon, PlayIcon } from '@hugeicons/core-free-icons'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { SeasonSelector } from '../../features/details/SeasonSelector'
 import type { PlaybackTrack } from '../../platform/playback/types'
 import type { SeriesSeason } from '../../services/api/types'
@@ -19,7 +19,9 @@ export type OverlayMode = 'hidden' | 'info' | 'interactive'
  *    (‑10 s, reproduzir/pausar, +10 s) e a barra navegável. Filme perto do fim:
  *    "Marcar como finalizado" fica aqui, nunca sobre o vídeo. Em séries,
  *    temporadas e episódios ficam logo abaixo; na TV (collapsible), fora da
- *    tela até o foco descer até eles, e aí o painel sobe.
+ *    tela até o foco descer até eles ("Temporadas e capítulos" avisa abaixo da
+ *    barra; Baixo na barra os abre). Aí só o conteúdo do painel sobe: o fundo
+ *    (degradê) fica parado.
  * Ao ocultar, o conteúdo anterior continua desenhado durante o fade-out.
  * Ao vivo: sem linha do tempo, saltos ou selos de duração.
  */
@@ -44,6 +46,7 @@ export function PlayerOverlay({
   episodes,
   currentEpisodeId,
   onPlayEpisode,
+  onFocusEpisode,
   onToggle,
   onSkip,
   onOpenTracks,
@@ -70,6 +73,7 @@ export function PlayerOverlay({
   episodes: PlayerEpisode[]
   currentEpisodeId: string | null
   onPlayEpisode: (episode: PlayerEpisode['episode']) => void
+  onFocusEpisode?: (episode: PlayerEpisode['episode'] | null) => void
   onToggle: () => void
   onSkip: (direction: 1 | -1) => void
   onOpenTracks: (kind: 'audio' | 'text') => void
@@ -81,6 +85,24 @@ export function PlayerOverlay({
   const shown = mode === 'hidden' ? lastShown : mode
   const interactive = shown === 'interactive'
   const [browsing, setBrowsing] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  /**
+   * O foco que desce até a fileira fora da tela não pode rolar o overlay (WebKit/Tizen antigos ignoram
+   * preventScroll e rolam o ancestral com overflow): quem se move é só o conteúdo, por transform.
+   */
+  const pinScroll = () => {
+    const reset = () => {
+      for (let node: HTMLElement | null = root.current; node; node = node.parentElement) {
+        if (node.scrollTop) node.scrollTop = 0
+        if (node.classList.contains('iplex-player')) break
+      }
+      root.current?.querySelectorAll<HTMLElement>('.iplex-player__panel, .iplex-player__content, .iplex-player__browser').forEach((node) => {
+        if (node.scrollTop) node.scrollTop = 0
+      })
+    }
+    reset()
+    requestAnimationFrame(reset)
+  }
   if (browsing && !interactive) setBrowsing(false)
   const hasBrowser = interactive && (episodes.length > 1 || seasons.length > 1)
   const hint = live ? null : seekHint(positionMs, durationMs, previewMs, pendingMs)
@@ -102,6 +124,8 @@ export function PlayerOverlay({
   )
   return (
     <div
+      ref={root}
+      onScrollCapture={pinScroll}
       className={classNames('iplex-player__overlay', mode !== 'hidden' && 'is-visible', interactive && 'is-interactive', collapsible && browsing && 'is-browsing')}
       aria-hidden={mode === 'hidden'}
       data-overlay-mode={mode}
@@ -114,83 +138,93 @@ export function PlayerOverlay({
         </div>
       )}
       <div className="iplex-player__panel">
-        <div className="iplex-player__heading-row">
-          <div className="iplex-player__heading">
-            <IplexText variant="section-title" as="p">{title}</IplexText>
-            {(episodeCode || episodeTitle) && (
-              <IplexText variant="meta" className="iplex-player__episode">
-                {episodeCode && <span className="iplex-player__code">{episodeCode}</span>}
-                {episodeTitle && <span>{episodeTitle}</span>}
-              </IplexText>
-            )}
-            {live && (
-              <div className="iplex-player__live-row">
-                <span className="iplex-player__live">Ao vivo</span>
-                {badges.length > 0 && (
-                  <ul className="iplex-player__badges iplex-player__badges--live" aria-label="Informações técnicas">
-                    {badges.map((b) => (
-                      <li key={b} className="iplex-player__badge">{b}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+        <div className="iplex-player__content">
+          <div className="iplex-player__heading-row">
+            <div className="iplex-player__heading">
+              <IplexText variant="section-title" as="p">{title}</IplexText>
+              {(episodeCode || episodeTitle) && (
+                <IplexText variant="meta" className="iplex-player__episode">
+                  {episodeCode && <span className="iplex-player__code">{episodeCode}</span>}
+                  {episodeTitle && <span>{episodeTitle}</span>}
+                </IplexText>
+              )}
+              {live && (
+                <div className="iplex-player__live-row">
+                  <span className="iplex-player__live">Ao vivo</span>
+                  {badges.length > 0 && (
+                    <ul className="iplex-player__badges iplex-player__badges--live" aria-label="Informações técnicas">
+                      {badges.map((b) => (
+                        <li key={b} className="iplex-player__badge">{b}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+            {!live && hint && (
+              <span className="iplex-player__seek-hint" role="status">
+                {hint}
+              </span>
             )}
           </div>
-          {!live && hint && (
-            <span className="iplex-player__seek-hint" role="status">
-              {hint}
-            </span>
+          {!live && (
+            <PlayerTimeline
+              positionMs={positionMs}
+              durationMs={durationMs}
+              seekable={interactive && seekable}
+              previewMs={previewMs}
+              pendingMs={pendingMs}
+              onBlur={onTimelineBlur}
+            />
+          )}
+          {hasBrowser && collapsible && (
+            <IplexText variant="meta" as="p" className="iplex-player__browser-hint">
+              Temporadas e capítulos
+            </IplexText>
+          )}
+          {((!live && badges.length > 0) || (interactive && (audio.length > 1 || text.length > 0 || !!onFinish))) && (
+            <div className="iplex-player__footer">
+              {!live && badges.length > 0 && (
+                <ul className="iplex-player__badges" aria-label="Informações técnicas">
+                  {badges.map((b) => (
+                    <li key={b} className="iplex-player__badge">{b}</li>
+                  ))}
+                </ul>
+              )}
+              {interactive && audio.length > 1 && (
+                <IplexButton variant="secondary" navId="pc-audio" navGroup="player-tracks" onClick={() => onOpenTracks('audio')}>
+                  Áudio
+                </IplexButton>
+              )}
+              {interactive && text.length > 0 && (
+                <IplexButton variant="secondary" navId="pc-text" navGroup="player-tracks" onClick={() => onOpenTracks('text')}>
+                  Legendas
+                </IplexButton>
+              )}
+              {interactive && onFinish && (
+                <IplexButton variant="secondary" navId="pc-finish" navGroup="player-tracks" onClick={onFinish}>
+                  Marcar como finalizado
+                </IplexButton>
+              )}
+            </div>
+          )}
+          {hasBrowser && (
+            <div
+              className={classNames('iplex-player__browser', collapsible && 'is-collapsible')}
+              data-nav-managed-y=""
+              onFocus={() => {
+                setBrowsing(true)
+                pinScroll()
+              }}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) setBrowsing(false)
+              }}
+            >
+              {seasons.length > 1 && selectedSeason !== null && <SeasonSelector seasons={seasons} selected={selectedSeason} onSelect={onSelectSeason} />}
+              <PlayerEpisodes key={selectedSeason} episodes={episodes} currentId={currentEpisodeId} onPlay={onPlayEpisode} onFocusEpisode={onFocusEpisode} />
+            </div>
           )}
         </div>
-        {!live && (
-          <PlayerTimeline
-            positionMs={positionMs}
-            durationMs={durationMs}
-            seekable={interactive && seekable}
-            previewMs={previewMs}
-            pendingMs={pendingMs}
-            onBlur={onTimelineBlur}
-          />
-        )}
-        {((!live && badges.length > 0) || (interactive && (audio.length > 1 || text.length > 0 || !!onFinish))) && (
-          <div className="iplex-player__footer">
-            {!live && badges.length > 0 && (
-              <ul className="iplex-player__badges" aria-label="Informações técnicas">
-                {badges.map((b) => (
-                  <li key={b} className="iplex-player__badge">{b}</li>
-                ))}
-              </ul>
-            )}
-            {interactive && audio.length > 1 && (
-              <IplexButton variant="secondary" navId="pc-audio" navGroup="player-tracks" onClick={() => onOpenTracks('audio')}>
-                Áudio
-              </IplexButton>
-            )}
-            {interactive && text.length > 0 && (
-              <IplexButton variant="secondary" navId="pc-text" navGroup="player-tracks" onClick={() => onOpenTracks('text')}>
-                Legendas
-              </IplexButton>
-            )}
-            {interactive && onFinish && (
-              <IplexButton variant="secondary" navId="pc-finish" navGroup="player-tracks" onClick={onFinish}>
-                Marcar como finalizado
-              </IplexButton>
-            )}
-          </div>
-        )}
-        {hasBrowser && (
-          <div
-            className={classNames('iplex-player__browser', collapsible && 'is-collapsible')}
-            data-nav-managed-y=""
-            onFocus={() => setBrowsing(true)}
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) setBrowsing(false)
-            }}
-          >
-            {seasons.length > 1 && selectedSeason !== null && <SeasonSelector seasons={seasons} selected={selectedSeason} onSelect={onSelectSeason} />}
-            <PlayerEpisodes key={selectedSeason} episodes={episodes} currentId={currentEpisodeId} onPlay={onPlayEpisode} />
-          </div>
-        )}
       </div>
     </div>
   )

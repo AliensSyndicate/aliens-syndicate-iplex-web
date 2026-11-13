@@ -65,15 +65,19 @@ export const PLAYER = {
    * Esquerda/Direita na barra = fração da duração, limitado a [minMs, maxMs].
    */
   scrubStep: { fraction: 0.01, minMs: 5_000, maxMs: 60_000 },
+  /** Séries: o stream do próximo episódio é pedido ao backend nos últimos minutos (a troca não espera por ele). */
+  prefetchNextMs: 3 * 60_000,
+  /** Episódio parado no foco da fileira por esse tempo: o stream dele é pedido antes do OK. */
+  prefetchFocusMs: 500,
+  /** Stream pedido antes da hora vale por esse tempo; depois disso, um novo pedido revalida as permissões. */
+  prefetchMaxAgeMs: 10 * 60_000,
   /** APROVADO: o botão "Próximo episódio" aparece nos últimos 30 s do episódio. */
   nextEpisodeWindowMs: 30_000,
-  /** Filmes: "Marcar como finalizado" aparece depois de 4/5 da duração. */
-  finishFraction: 0.8,
+  /** Filmes: "Marcar como finalizado" aparece quando faltam 15 min (ou menos) para o fim. */
+  finishRemainingMs: 15 * 60_000,
 } as const
 
 export const TRAILER = {
-  /** Tempo sem interação na tela de detalhes antes de o trailer cobrir a tela. */
-  delayMs: 5_000,
   /** Duração do fade de saída (a mesma do CSS de .iplex-trailer). */
   fadeOutMs: 700,
   /** Volume do trailer (0 a 100): o padrão do player, sem redução. Sempre enviado porque o YouTube lembra o último valor. */

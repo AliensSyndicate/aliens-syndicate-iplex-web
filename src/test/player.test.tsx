@@ -316,6 +316,29 @@ describe('player', () => {
     expect(screen.getByRole('button', { name: 'Reproduzir' })).toBeTruthy()
   })
 
+  it('troca de episódio: stream do próximo pedido antes e série não relida', async () => {
+    let resolveStream!: ReturnType<typeof vi.spyOn>
+    let readSeries!: ReturnType<typeof vi.spyOn>
+    start(EPISODE('102'), (backend) => {
+      resolveStream = vi.spyOn(backend, 'resolveStream')
+      readSeries = vi.spyOn(backend, 'readSeries')
+    })
+    const a = await playing()
+    time(100_000, 600_000, a)
+    expect(resolveStream).toHaveBeenCalledTimes(1)
+    // Últimos 3 min: o stream do próximo já é pedido.
+    time(450_000, 600_000, a)
+    await waitFor(() => expect(resolveStream).toHaveBeenCalledTimes(2))
+    expect(resolveStream.mock.calls[1]![1]).toMatchObject({ episodeId: '103' })
+    time(585_000, 600_000, a)
+    fireEvent.click(await screen.findByRole('button', { name: /^Próximo episódio em \d+s$/ }))
+    const next = await playing(2)
+    expect(next.load.mock.calls[0]![0]).toMatchObject({ url: expect.any(String) })
+    // Nenhum pedido novo para o episódio já pedido nem releitura da série.
+    expect(resolveStream).toHaveBeenCalledTimes(2)
+    expect(readSeries).toHaveBeenCalledTimes(1)
+  })
+
   it('14, 16. próximo episódio manual: atual concluído e o próximo começa do zero', async () => {
     const { saveProgress } = start(EPISODE('102'))
     const a = await playing()
@@ -518,23 +541,23 @@ describe('listas do catálogo', () => {
 describe('marcar filme como finalizado', () => {
   const button = () => screen.queryByRole('button', { name: 'Marcar como finalizado' })
 
-  it('depois de 4/5 da duração só aparece com os controles abertos e grava a conclusão', async () => {
+  it('nos últimos 15 min só aparece com os controles abertos e grava a conclusão', async () => {
     const { saveProgress } = start(MOVIE)
     const a = await playing()
-    time(500_000, 600_000, a)
+    time(5_400_000, 6_000_000, a)
     await waitFor(() => expect(overlayMode()).toBe('info'))
     expect(button()).toBeNull()
     enter()
     await waitFor(() => expect(overlayMode()).toBe('interactive'))
     fireEvent.click(await screen.findByRole('button', { name: 'Marcar como finalizado' }))
-    await waitFor(() => expect(saveProgress.mock.calls.some(([w]) => w.positionSec === 600 && w.durationSec === 600)).toBe(true))
+    await waitFor(() => expect(saveProgress.mock.calls.some(([w]) => w.positionSec === 6000 && w.durationSec === 6000)).toBe(true))
     await waitFor(() => expect(window.location.pathname).toBe('/titulo/demo-source/m-bbb'))
   })
 
-  it('antes de 4/5 não aparece nem com os controles abertos', async () => {
+  it('com mais de 15 min pela frente não aparece nem com os controles abertos', async () => {
     start(MOVIE)
     const a = await playing()
-    time(479_000, 600_000, a)
+    time(5_000_000, 6_000_000, a)
     enter()
     await waitFor(() => expect(overlayMode()).toBe('interactive'))
     expect(button()).toBeNull()
@@ -543,7 +566,7 @@ describe('marcar filme como finalizado', () => {
   it('some quando os controles fecham e o foco não fica nele', async () => {
     start(MOVIE)
     const a = await playing()
-    time(500_000, 600_000, a)
+    time(5_400_000, 6_000_000, a)
     enter()
     await waitFor(() => expect(overlayMode()).toBe('interactive'))
     await screen.findByRole('button', { name: 'Marcar como finalizado' })

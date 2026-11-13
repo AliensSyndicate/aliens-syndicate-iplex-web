@@ -12,7 +12,7 @@
  *    OK abre o modo interativo. Setas só agem com o overlay interativo aberto.
  * 6. Séries: "Próximo episódio" nos últimos 30 s, contados pelo tempo real da mídia.
  * 7. Saída: Voltar → detalhes do conteúdo; término natural → tela de origem.
- * 8. Filmes: "Marcar como finalizado" depois de 4/5 da duração, só nos controles abertos (OK/Enter).
+ * 8. Filmes: "Marcar como finalizado" nos últimos 15 min, só nos controles abertos (OK/Enter).
  * 9. Séries: temporadas e episódios logo abaixo dos controles abertos; na TV, Baixo os traz à tela.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -36,7 +36,7 @@ import { focusElement } from '../../navigation/spatial'
 import { createPlaybackAdapter } from '../../platform/playback/createAdapter'
 import type { PlaybackAdapter, PlaybackTrack } from '../../platform/playback/types'
 import { AppError, toAppError } from '../../services/api/errors'
-import type { CatalogItem, ContentKind, SeriesDetails, SeriesEpisode } from '../../services/api/types'
+import type { CatalogItem, ContentKind, SeriesDetails, SeriesEpisode, StreamGrant } from '../../services/api/types'
 import { isAdultItem } from '../../services/catalog/adult'
 import { episodeContentId } from '../../services/catalog/normalize'
 import { indexFromItem } from '../../services/library/libraryStore'
@@ -138,6 +138,16 @@ export default function PlayerScreen() {
     adultRef.current = adult
   }, [adult])
   const contentKey = `${sourceId}|${itemId}|${episodeId ?? ''}|${attempt}`
+  /**
+   * Troca de episódio (manual ou automática) reaproveita o item e a série já lidos: só o stream
+   * do novo episódio é pedido ao backend, sem esperar a releitura da série inteira na fonte IPTV.
+   */
+  const itemCache = useRef<CatalogItem | null>(null)
+  const seriesCache = useRef<{ key: string; details: SeriesDetails } | null>(null)
+  /** Streams de episódios pedidos antes da troca (próximo episódio, episódio focado na fileira). */
+  const grantCache = useRef(new Map<string, { at: number; promise: Promise<StreamGrant> }>())
+  /** Primeiro conteúdo aberto nesta tela: nas trocas seguintes o carregamento mostra o spinner. */
+  const [firstContent] = useState(contentKey)
 
   const progressMeta = useCallback(() => {
     if (!item) return null
@@ -238,11 +248,15 @@ export default function PlayerScreen() {
     }
     saveInFlight.current = null
     saveQueued.current = false
+    const startedAt = Date.now()
     ;(async () => {
       try {
-        const found = await session.catalog.findItem(sourceId, itemId, title)
+        const cached = itemCache.current
+        const reuse = !!cached && cached.sourceId === sourceId && cached.id === itemId && cached.kind === kind && !isAdultItem(cached)
+        const found = reuse ? cached : await session.catalog.findItem(sourceId, itemId, title)
         if (!alive) return
         if (!found || found.kind !== kind) throw new AppError('content-unavailable')
+        itemCache.current = found
         setItem(found)
         // Adulto: com PIN pessoal no perfil, o vídeo só é resolvido depois do PIN (o backend também exige, uso único).
         if (isAdultItem(found) && session.profile.pinRequired === true) {
@@ -254,14 +268,31 @@ export default function PlayerScreen() {
           }
         }
         if (found.kind === 'series' && episodeId) {
-          const details = await backend.readSeries(session.profile.id, found.sourceId, found.providerRef).catch(() => null)
-          const ep = details?.seasons.flatMap((s) => s.episodes).find((e) => e.id === episodeId) ?? null
-          if (!alive) return
-          setSeries(details)
-          setEpisode(ep)
+          const applySeries = (details: SeriesDetails | null) => {
+            if (!alive) return
+            setSeries(details)
+            setEpisode(details?.seasons.flatMap((s) => s.episodes).find((e) => e.id === episodeId) ?? null)
+          }
+          const seriesKey = `${found.sourceId}|${found.providerRef}`
+          const known = seriesCache.current?.key === seriesKey ? seriesCache.current.details : null
+          // A série (nomes, próximo episódio) segue em paralelo com o stream; nunca atrasa o vídeo.
+          if (known) applySeries(known)
+          else
+            void backend
+              .readSeries(session.profile.id, found.sourceId, found.providerRef)
+              .catch(() => null)
+              .then((details) => {
+                if (details) seriesCache.current = { key: seriesKey, details }
+                applySeries(details)
+              })
         }
-        const grant = await backend.resolveStream(session.profile.id, { sourceId: found.sourceId, itemId: found.id, ...(episodeId ? { episodeId } : {}) })
+        const early = episodeId && attempt === 0 && !isAdultItem(found) ? grantCache.current.get(episodeId) : undefined
+        grantCache.current.clear()
+        const fresh = () => backend.resolveStream(session.profile.id, { sourceId: found.sourceId, itemId: found.id, ...(episodeId ? { episodeId } : {}) })
+        const usable = early && Date.now() - early.at < PLAYER.prefetchMaxAgeMs
+        const grant = await (usable ? early.promise.catch(fresh) : fresh())
         if (!alive) return
+        diag('player', `grant @${Date.now() - startedAt}ms${reuse ? ' reuse' : ''}${usable ? ' early' : ''}`)
         adapter = createPlaybackAdapter(platform)
         adapterRef.current = adapter
         setCanSeek(!!adapter.capabilities.seek && !!adapter.seek && !live)
@@ -279,6 +310,7 @@ export default function PlayerScreen() {
               // Overlay 1 aparece ao iniciar cada conteúdo e some sozinho após 5 s.
               if (firstPlay) {
                 firstPlay = false
+                diag('player', `playing @${Date.now() - startedAt}ms`)
                 overlayRef.current.reveal('info')
               }
             }
@@ -331,6 +363,7 @@ export default function PlayerScreen() {
           containerRef.current,
         )
         if (!alive) return
+        diag('player', `opened @${Date.now() - startedAt}ms`)
         setPhase((p) => (p.status === 'error' ? p : { status: 'playing' }))
         adapter.getTracks().then((t) => alive && setTracks(t), () => undefined)
       } catch (raw) {
@@ -422,7 +455,36 @@ export default function PlayerScreen() {
     // overlay.mode: o progresso dos episódios é relido cada vez que os controles abrem.
     [series, shownSeason, seasonMetas, personal, session.library, itemId, overlay.mode],
   )
+  /** Pede antes o stream de um episódio desta série (nunca adulto: o PIN do backend é de uso único). */
+  const prefetchGrant = useCallback(
+    (targetId: string) => {
+      if (!item || adult || kind !== 'series' || targetId === episodeId) return
+      const known = grantCache.current.get(targetId)
+      if (known && Date.now() - known.at < PLAYER.prefetchMaxAgeMs) return
+      const entry = { at: Date.now(), promise: backend.resolveStream(session.profile.id, { sourceId: item.sourceId, itemId: item.id, episodeId: targetId }) }
+      entry.promise.catch(() => {
+        if (grantCache.current.get(targetId) === entry) grantCache.current.delete(targetId)
+      })
+      grantCache.current.set(targetId, entry)
+      diag('player', `prefetch ${targetId}`)
+    },
+    [item, adult, kind, episodeId, backend, session.profile.id],
+  )
+  // Perto do fim, o próximo episódio já fica com o stream pedido (troca automática ou pelo cartão).
+  const nearEnd = phase.status === 'playing' && time.key === contentKey && time.durationMs > 0 && time.durationMs - time.positionMs <= PLAYER.prefetchNextMs
+  useEffect(() => {
+    if (nearEnd && nextEpisode) prefetchGrant(nextEpisode.id)
+  }, [nearEnd, nextEpisode, prefetchGrant])
+  // Episódio parado no foco da fileira: o stream dele é pedido antes do OK.
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(focusTimer.current), [])
+  const focusEpisode = (target: SeriesEpisode | null) => {
+    clearTimeout(focusTimer.current)
+    if (target) focusTimer.current = setTimeout(() => prefetchGrant(target.id), PLAYER.prefetchFocusMs)
+  }
+
   const playEpisode = (target: SeriesEpisode) => {
+    clearTimeout(focusTimer.current)
     overlay.hide()
     if (target.id === episodeId) return
     saveRef.current(true)
@@ -615,6 +677,15 @@ export default function PlayerScreen() {
           scrub(key === 'ArrowRight' ? 1 : -1)
           return true
         }
+        // Séries: Baixo na barra abre temporadas e capítulos direto no episódio que está tocando.
+        if (focusedId === 'pc-timeline' && key === 'ArrowDown') {
+          const browser = document.querySelector<HTMLElement>('.iplex-player__browser')
+          const target = browser?.querySelector<HTMLElement>('.iplex-player__episodes [data-nav-preferred]') ?? browser?.querySelector<HTMLElement>('[data-nav]')
+          if (target) {
+            focusElement(target)
+            return true
+          }
+        }
         return false
       default:
         return false
@@ -665,10 +736,10 @@ export default function PlayerScreen() {
     <main ref={rootRef} className="iplex-player" aria-label={`Reproduzindo ${title}`} tabIndex={-1} onMouseMove={() => overlay.reveal(live ? 'info' : 'interactive')}>
       <div ref={containerRef} className="iplex-player__surface" />
       {cue && <div className="iplex-player__cue">{cue}</div>}
-      {phase.status === 'preparing' && attempt > 0 && (
+      {phase.status === 'preparing' && (attempt > 0 || contentKey !== firstContent) && (
         <div className="iplex-player__error">
           <section className="iplex-state iplex-state--screen">
-            <Spinner label="Tentando novamente" />
+            <Spinner label={attempt > 0 ? 'Tentando novamente' : 'Carregando episódio'} />
           </section>
         </div>
       )}
@@ -711,6 +782,7 @@ export default function PlayerScreen() {
             episodes={episodes}
             currentEpisodeId={episodeId}
             onPlayEpisode={playEpisode}
+            onFocusEpisode={focusEpisode}
             onToggle={() => {
               toggle()
               overlay.touch()

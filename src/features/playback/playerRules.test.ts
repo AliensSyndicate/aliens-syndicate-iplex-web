@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SeriesDetails } from '../../services/api/types'
-import { clampSeek, createSeekGate, endedEarly, episodeCode, findNextEpisode, formatTimecode, nextEpisodeCountdown, qualityLabel, scrubStepMs, subtitledFromSource } from './playerRules'
+import { canMarkFinished, clampSeek, createSeekGate, endedEarly, episodeCode, findNextEpisode, formatTimecode, nextEpisodeCountdown, qualityLabel, scrubStepMs, subtitledFromSource } from './playerRules'
 
 const ep = (id: string, season: number, episodeNum: number | null) => ({ id, title: id, season, episodeNum })
 const SERIES: SeriesDetails = {
@@ -79,5 +79,15 @@ describe('playerRules', () => {
     expect(formatTimecode(2_292_000, true)).toBe('00:38:12')
     expect(formatTimecode(8_100_000, true)).toBe('02:15:00')
     expect(formatTimecode(65_000, false)).toBe('01:05')
+  })
+})
+
+describe('canMarkFinished', () => {
+  it('só nos últimos 15 minutos da duração real', () => {
+    expect(canMarkFinished(0, 6_000_000)).toBe(false)
+    expect(canMarkFinished(5_099_000, 6_000_000)).toBe(false)
+    expect(canMarkFinished(5_100_000, 6_000_000)).toBe(true)
+    expect(canMarkFinished(5_900_000, 6_000_000)).toBe(true)
+    expect(canMarkFinished(10_000, 0)).toBe(false)
   })
 })
