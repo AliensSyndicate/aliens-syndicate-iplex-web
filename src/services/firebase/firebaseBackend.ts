@@ -4,8 +4,9 @@
  *    Player, SEM App Check (o reCAPTCHA é incompatível com o Tizen 5.5) e com
  *    lista fechada de ações + credencial de dispositivo verificada no servidor.
  *    A callable `manager` (com App Check) continua exclusiva do Gestor;
- *  - Firebase Auth: credencial do dispositivo via custom token (uid tv_<deviceId>,
- *    claims deviceId/familyId) emitido em finishDevicePair;
+ *  - Firebase Auth: credencial do dispositivo via custom token emitido em finishDevicePair: uid da conta que
+ *    vinculou a TV + claims player/deviceId/familyId (nenhum usuário novo no Auth). Pareamentos antigos usam
+ *    uid tv_<deviceId>. Nos dois casos o backend trata a TV como o dispositivo, nunca como a pessoa;
  *  - Biblioteca e gerações pela callable, com autorização do perfil ativo.
  *    O Web não lê o Firestore diretamente.
  * Nenhuma credencial administrativa passa pelo navegador. URLs individuais
@@ -133,7 +134,9 @@ export function createFirebaseBackend(config: FirebaseWebConfig): Backend {
     const token = await user.getIdTokenResult()
     const deviceId = token.claims.deviceId
     const familyId = token.claims.familyId
-    if (typeof deviceId !== 'string' || typeof familyId !== 'string' || user.uid !== `tv_${deviceId}`) {
+    // Credencial de pareamento: legada (uid tv_<deviceId>) ou atual (uid da conta que vinculou + claim `player`).
+    const paired = user.uid === `tv_${deviceId}` || token.claims.player === true
+    if (typeof deviceId !== 'string' || typeof familyId !== 'string' || !paired) {
       // Sessão que não é de dispositivo pareado: nunca é usada como Player.
       await signOut(auth)
       return null

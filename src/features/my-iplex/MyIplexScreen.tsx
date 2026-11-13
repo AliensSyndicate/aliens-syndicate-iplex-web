@@ -8,18 +8,21 @@ import { ContentCarousel } from '../../components/catalog/ContentCarousel'
 import { LandscapeCard } from '../../components/catalog/LandscapeCard'
 import { PosterCard } from '../../components/catalog/PosterCard'
 import { EmptyState } from '../../components/feedback/EmptyState'
-import { MyIplexSkeleton } from '../../components/feedback/ScreenSkeletons'
+import { SkeletonRow } from '../../components/feedback/LoadingState'
+import { HeroSkeleton, MyIplexSkeleton } from '../../components/feedback/ScreenSkeletons'
 import { IplexButton } from '../../components/ui/IplexButton'
 import { IplexText } from '../../components/ui/IplexText'
 import { useCatalog } from '../../hooks/useCatalog'
 import { useLibrary } from '../../hooks/useLibrary'
 import { useMatch } from '../../hooks/useMetadata'
 import { useInitialFocus } from '../../navigation/FocusProvider'
+import { focusElement } from '../../navigation/spatial'
 import { useRowNavigation } from '../../navigation/rowNavigation'
 import type { CatalogItem } from '../../services/api/types'
 import { continuing, latestReleases, libraryTitles, itemFromIndexed } from '../catalog/collections'
 import { hasPersonalLibrary, SECTION_PATHS } from '../profiles/profileRules'
 import { readDailyPick, writeDailyPick } from './dailyPick'
+import { readHomeSnapshot, writeHomeSnapshot } from './homeSnapshot'
 
 const ROW = 10
 const LAUNCHES_PER_KIND = 5
@@ -32,7 +35,7 @@ const providerImage = (item: CatalogItem) => (item.imageRef && /^https:\/\//i.te
  * fundo neutro (nunca fica preso em carregamento). Os já descartados são lembrados por id, então a lista
  * crescer ou mudar de ordem (páginas do catálogo chegando) não reinicia a busca nem troca o título à toa.
  */
-function Hero({ candidates, start, greeting, onOpen, onShown }: { candidates: CatalogItem[]; start: number; greeting: string; onOpen: (item: CatalogItem) => void; onShown: (id: string) => void }) {
+function Hero({ candidates, start, greeting, onOpen, onShown, autoFocus }: { candidates: CatalogItem[]; start: number; greeting: string; onOpen: (item: CatalogItem) => void; onShown: (id: string) => void; autoFocus: boolean }) {
   const [failedIds, setFailedIds] = useState<string[]>([])
   const first = candidates[start % candidates.length]!
   const rotated = [...candidates.slice(start % candidates.length), ...candidates.slice(0, start % candidates.length)]
@@ -67,7 +70,7 @@ function Hero({ candidates, start, greeting, onOpen, onShown }: { candidates: Ca
           </IplexText>
         )}
         <div data-nav-row="x" data-nav-group-root="home-hero">
-          <IplexButton navId="home-hero-open" navGroup="home-hero" autoFocus onClick={() => onOpen(item)}>
+          <IplexButton navId="home-hero-open" navGroup="home-hero" autoFocus={autoFocus} onClick={() => onOpen(item)}>
             Ver detalhes
           </IplexButton>
         </div>
@@ -92,12 +95,21 @@ export default function MyIplexScreen() {
   const favoriteTitles = useMemo(() => libraryTitles(library.favorites, indexed, true), [library.favorites, store, movies.items, series.items]) // eslint-disable-line react-hooks/exhaustive-deps
   const wishlist = useMemo(() => libraryTitles(library.wishlist ?? [], indexed).slice(0, ROW), [library.wishlist, store, movies.items, series.items]) // eslint-disable-line react-hooks/exhaustive-deps
   const watched = useMemo(() => libraryTitles(library.watched, indexed).slice(0, ROW), [library.watched, store, movies.items, series.items]) // eslint-disable-line react-hooks/exhaustive-deps
-  const launches = useMemo(() => [...latestReleases(movies.items, LAUNCHES_PER_KIND), ...latestReleases(series.items, LAUNCHES_PER_KIND)]
+  // Filmes e séries completos (o carregamento em segundo plano pode levar vários segundos na TV).
+  const catalogReady = !(movies.loading || series.loading)
+  const fresh = useMemo(() => [...latestReleases(movies.items, LAUNCHES_PER_KIND), ...latestReleases(series.items, LAUNCHES_PER_KIND)]
     .sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)), [movies.items, series.items])
+  // Foto dos lançamentos guardada no aparelho: destaque e Lançamentos aparecem na hora e são trocados quando o catálogo chega.
+  const snapshotKey = `iplex.home.v1.${session.identity.familyId}.${session.profile.id}`
+  const [snapshot] = useState(() => readHomeSnapshot(snapshotKey))
+  const launches = catalogReady || snapshot.length === 0 ? fresh : snapshot
+  useEffect(() => {
+    if (catalogReady && fresh.length > 0) writeHomeSnapshot(snapshotKey, fresh)
+  }, [catalogReady, fresh, snapshotKey])
 
   // Destaque do dia: um só por dia e por perfil, guardado no aparelho (não é sorteado de novo a cada abertura).
   const pickKey = `iplex.hero.v1.${session.identity.familyId}.${session.profile.id}`
-  const [daily] = useState(() => readDailyPick(pickKey))
+  const [daily, setDaily] = useState(() => readDailyPick(pickKey))
   const [pick] = useState(() => Math.random())
   const heroCandidates = useMemo(() => {
     const known = daily ? launches.find((l) => l.id === daily) ?? session.catalog.findLoaded(daily) : null
@@ -105,17 +117,39 @@ export default function MyIplexScreen() {
     return [known, ...launches.filter((l) => l.id !== known.id)]
   }, [daily, launches, session.catalog])
   const heroStart = daily && heroCandidates[0]?.id === daily ? 0 : Math.floor(pick * heroCandidates.length)
-  const onHeroShown = useCallback((id: string) => writeDailyPick(pickKey, id), [pickKey])
+  // O destaque que apareceu fica fixo (inclusive quando a lista da foto é trocada pela do catálogo).
+  const onHeroShown = useCallback(
+    (id: string) => {
+      writeDailyPick(pickKey, id)
+      setDaily(id)
+    },
+    [pickKey],
+  )
   const featured = heroCandidates.length > 0
 
-  // O esqueleto só sai com o conteúdo completo (biblioteca e os dois catálogos), sem trocar de tela no meio.
-  const ready = loaded && !(movies.loading || series.loading)
+  // A tela sai do esqueleto com a biblioteca (fileiras pessoais). Destaque e Lançamentos ficam em esqueleto, no mesmo
+  // lugar e tamanho, até a foto guardada ou o catálogo chegarem: nada muda de posição. Visitante (só Lançamentos) espera.
+  const ready = loaded && (personal || catalogReady || snapshot.length > 0)
+  // Foco inicial no destaque só se ele já estava na tela; senão no primeiro cartão (o destaque não o puxa depois).
+  const [heroAtReady, setHeroAtReady] = useState<boolean | null>(null)
+  if (ready && heroAtReady === null) setHeroAtReady(featured)
+  // Sem destaque na abertura: o foco vai ao primeiro cartão do Meu iPlex (nunca ao menu do topo).
+  useEffect(() => {
+    if (!ready || heroAtReady !== false) return
+    const id = setTimeout(() => {
+      const active = document.activeElement
+      if (active instanceof HTMLElement && active.closest('.iplex-home')) return
+      const first = document.querySelector<HTMLElement>('.iplex-home [data-nav]')
+      if (first) focusElement(first)
+    }, 0)
+    return () => clearTimeout(id)
+  }, [ready, heroAtReady])
   useInitialFocus(`${location.pathname}${location.search}`, ready)
   useRowNavigation()
 
   const openItem = (i: CatalogItem) => navigate(contentPath(i))
   const greeting = `Olá, ${session.profile.name}`
-  const loading = !loaded || movies.loading || series.loading
+  const loading = !loaded || !catalogReady
   // Seções pessoais (visitante só tem Lançamentos). Nenhuma seção vazia entra.
   const sections = [
     // Lançamentos logo depois de Continuar assistindo.
@@ -125,6 +159,8 @@ export default function MyIplexScreen() {
     { id: 'watched', title: 'Assistidos', items: watched, scope: 'watched' },
   ] as const
   const visible = sections.filter((section) => section.items.length > 0 && (section.id === 'releases' || personal))
+  /** Lançamentos ainda chegando (sem foto guardada): esqueleto da fileira no lugar dela. */
+  const releasesPending = !catalogReady && launches.length === 0
   const empty = !loading && !(personal && continueRow.length > 0) && visible.length === 0
 
   if (!ready) return <MyIplexSkeleton rowCount={ROW} personal={personal} />
@@ -132,7 +168,9 @@ export default function MyIplexScreen() {
   return (
     <main className="iplex-page iplex-home" aria-label="Meu iPlex" data-nav-managed-y="">
       {featured ? (
-        <Hero candidates={heroCandidates} start={heroStart} greeting={greeting} onOpen={openItem} onShown={onHeroShown} />
+        <Hero candidates={heroCandidates} start={heroStart} greeting={greeting} onOpen={openItem} onShown={onHeroShown} autoFocus={heroAtReady !== false} />
+      ) : !catalogReady ? (
+        <HeroSkeleton />
       ) : (
         <div style={{ paddingTop: 'var(--iplex-content-top)' }}>
           <IplexText variant="page-title" className="iplex-page__title">
@@ -171,6 +209,7 @@ export default function MyIplexScreen() {
           })}
         </ContentCarousel>
       )}
+      {releasesPending && <SkeletonRow shape="poster" count={ROW} />}
       {visible.map((section) => (
         <ContentCarousel key={section.id} title={section.title} id={`my-${section.id}`} shape={section.id === 'favorites' ? 'landscape' : undefined} onSeeAll={() => navigate(PATHS.catalog(section.scope))}>
           {section.items.map((item) => {

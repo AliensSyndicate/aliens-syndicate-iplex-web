@@ -77,6 +77,9 @@ export function createBridgePlaybackAdapter(bridge: BridgeClient, methods: reado
     async setSubtitlesVisible(visible) {
       if (has('player.setSubtitlesVisible')) await bridge.call('player.setSubtitlesVisible', { visible })
     },
+    attach() {
+      // AVPlay: o vídeo é um plano da TV atrás da página.
+    },
     on: emitter.on,
     async destroy() {
       if (destroyed) return

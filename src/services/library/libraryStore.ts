@@ -42,6 +42,12 @@ export interface LibrarySnapshot {
   library: Library
 }
 
+/**
+ * Busca no catálogo da sessão. `kind` (do índice guardado) permite responder `undefined` = "ainda carregando esse
+ * tipo": aí vale o índice do aparelho. `null` = o catálogo pronto não tem o item (fonte/permissões mudaram).
+ */
+export type CatalogLookup = (id: string, kind?: ContentKind) => CatalogItem | null | undefined
+
 const EMPTY: Library = { favorites: [], wishlist: [], watched: [], progress: [] }
 const indexKey = (familyId: string, profileId: string) => `iplex.library.index.v1.${familyId}.${profileId}`
 
@@ -54,9 +60,9 @@ export class LibraryStore {
   private readonly backend: Backend
   private readonly identity: DeviceIdentity
   private readonly profile: Profile
-  private findItem?: (id: string) => CatalogItem | null
+  private findItem?: CatalogLookup
 
-  constructor(backend: Backend, identity: DeviceIdentity, profile: Profile, findItem?: (id: string) => CatalogItem | null) {
+  constructor(backend: Backend, identity: DeviceIdentity, profile: Profile, findItem?: CatalogLookup) {
     this.findItem = findItem
     this.backend = backend
     this.identity = identity
@@ -67,7 +73,7 @@ export class LibraryStore {
   }
 
   /** Lista IPTV recarregada na mesma sessão: os itens passam a vir do catálogo novo. */
-  bindCatalog(findItem: (id: string) => CatalogItem | null) {
+  bindCatalog(findItem: CatalogLookup) {
     this.findItem = findItem
   }
 
@@ -124,11 +130,13 @@ export class LibraryStore {
 
   indexed(contentId: string): IndexedItem | null {
     const episode = parseEpisodeContentId(contentId)
-    const item = this.findItem?.(episode?.seriesItemId ?? contentId)
     const cached = this.index[contentId]
+    const item = this.findItem?.(episode?.seriesItemId ?? contentId, cached?.kind)
     if (item) return { ...cached, ...indexFromItem(item), contentId, ...(episode ? { episodeId: episode.episodeId } : {}) }
+    // Sem catálogo ou com esse tipo ainda carregando: o índice do aparelho (as fileiras do Meu iPlex não esperam).
+    if (item === undefined) return cached ?? null
     // A ready catalog is authoritative after source/permission changes.
-    return this.findItem ? null : cached ?? null
+    return null
   }
 
   remember(item: IndexedItem) {

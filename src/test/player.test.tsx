@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createEmitter, type PlaybackAdapter } from '../platform/playback/types'
 
 type FakeAdapter = PlaybackAdapter & {
+  attach: ReturnType<typeof vi.fn>
   load: ReturnType<typeof vi.fn>
   destroy: ReturnType<typeof vi.fn>
   seek: ReturnType<typeof vi.fn>
@@ -17,6 +18,7 @@ vi.mock('../platform/playback/createAdapter', () => ({
     const adapter = {
       kind: 'html5' as const,
       capabilities: { seek: true, audioTracks: true, subtitles: true },
+      attach: vi.fn(),
       load: vi.fn(async () => emitter.emit('state', { state: 'playing' })),
       play: vi.fn(async () => undefined),
       pause: vi.fn(async () => undefined),
@@ -35,6 +37,7 @@ vi.mock('../platform/playback/createAdapter', () => ({
 }))
 
 const { App } = await import('../app/App')
+const { livePlayback, liveKey } = await import('../features/live-tv/livePlayback')
 const { createMockBackend } = await import('../dev/mock/mockBackend')
 const { browserContext } = await import('../platform/environment')
 type Backend = ReturnType<typeof createMockBackend>
@@ -64,6 +67,7 @@ const MOVIE = '/assistir?s=demo-source&i=m-bbb&k=movie&t=Big'
 const EPISODE = (e: string) => `/assistir?s=demo-source&i=s-demo&k=series&t=Demo&e=${e}`
 
 beforeEach(() => {
+  livePlayback.reset()
   created.length = 0
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })))
 })
@@ -639,5 +643,40 @@ describe('próximo episódio com os controles abertos', () => {
     time(585_000, 600_000, a)
     const next = await screen.findByRole('button', { name: /^Próximo episódio em \d+s$/ })
     await waitFor(() => expect(document.activeElement).toBe(next))
+  })
+})
+
+
+describe('Ao Vivo: Assistir reaproveita a prévia', () => {
+  const CHANNEL = '/assistir?s=demo-source&i=c-1&k=channel&t=Canal'
+  afterEach(() => livePlayback.reset())
+
+  it('mesmo canal da prévia: não reabre o vídeo, só vai à tela cheia com o overlay', async () => {
+    const { createPlaybackAdapter } = await import('../platform/playback/createAdapter')
+    const preview = createPlaybackAdapter({} as never) as unknown as FakeAdapter
+    livePlayback.adopt(liveKey('demo-source', 'c-1'), preview)
+    const { backend } = start(CHANNEL, (b) => vi.spyOn(b, 'resolveStream'))
+    await waitFor(() => expect(preview.attach).toHaveBeenCalled(), { timeout: 10000 })
+    expect(created).toHaveLength(1)
+    expect(preview.load).not.toHaveBeenCalled()
+    expect(backend.resolveStream).not.toHaveBeenCalled()
+    await waitFor(() => expect(overlayMode()).toBe('info'))
+  }, 15_000)
+
+  it('ao sair, o canal fica esperando a tela Ao Vivo (não é destruído na hora)', async () => {
+    const view = start(CHANNEL)
+    const a = await playing()
+    view.unmount()
+    expect(a.destroy).not.toHaveBeenCalled()
+    expect(livePlayback.claim(liveKey('demo-source', 'c-1'))).toBe(a)
+  })
+
+  it('outro conteúdo encerra a prévia antes de usar o player da TV', async () => {
+    const { createPlaybackAdapter } = await import('../platform/playback/createAdapter')
+    const preview = createPlaybackAdapter({} as never) as unknown as FakeAdapter
+    livePlayback.adopt(liveKey('demo-source', 'c-9'), preview)
+    start('/assistir?s=demo-source&i=m-bbb&k=movie&t=Big')
+    await playing(2)
+    expect(preview.destroy).toHaveBeenCalled()
   })
 })

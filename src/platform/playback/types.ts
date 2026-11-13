@@ -61,6 +61,8 @@ export interface PlaybackAdapter {
   getTracks(): Promise<PlaybackTrack[]>
   selectTrack(kind: 'audio' | 'text', index: number): Promise<void>
   setSubtitlesVisible(visible: boolean): Promise<void>
+  /** Leva o vídeo para outro contêiner sem recarregar (o AVPlay desenha atrás da página: nada a fazer). */
+  attach(container: HTMLElement | null): void
   on<E extends PlaybackEventName>(event: E, listener: (data: PlaybackEventMap[E]) => void): () => void
   destroy(): Promise<void>
 }

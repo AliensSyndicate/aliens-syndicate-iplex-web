@@ -198,6 +198,9 @@ export function createHtml5Adapter(load: () => Promise<HlsClass> = loadHls): Pla
         subtitlesOn = true
       }
     },
+    attach(container) {
+      if (video && container && video.parentElement !== container) container.appendChild(video)
+    },
     async setSubtitlesVisible(visible) {
       subtitlesOn = visible
       if (!hls) return

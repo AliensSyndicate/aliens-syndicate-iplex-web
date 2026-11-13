@@ -95,28 +95,35 @@ export function RouteSkeleton({ pathname }: { pathname: string }) {
  * 3 linhas e botão; fileiras como as do perfil (Continuar e Favoritos em 16:9, depois pôsteres). Visitante: só
  * Lançamentos (pôster).
  */
+/** Destaque do Meu iPlex em esqueleto (mesmas medidas do real): usado também enquanto os lançamentos chegam. */
+export function HeroSkeleton() {
+  return (
+    <section className="iplex-home__hero" aria-hidden="true">
+      <div className="iplex-details__backdrop">
+        <div className="iplex-skeleton iplex-details__backdrop-skeleton" />
+        <div className="iplex-hero__scrim" />
+      </div>
+      <div className="iplex-home__hero-info">
+        <TextLine variant="meta" width="16rem" />
+        <TextLine variant="meta" width="19rem" />
+        <TextLine variant="hero" width="60%" />
+        <div>
+          <TextLine variant="description" width="100%" />
+          <TextLine variant="description" width="100%" />
+          <TextLine variant="description" width="70%" />
+        </div>
+        <div>
+          <div className="iplex-skeleton iplex-skeleton--button iplex-skeleton--hero-button">{'\u00a0'}</div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export function MyIplexSkeleton({ rowCount = 10, personal = true }: { rowCount?: number; personal?: boolean }) {
   return (
     <main className="iplex-page iplex-home" aria-busy="true" aria-label="Meu iPlex">
-      <section className="iplex-home__hero" aria-hidden="true">
-        <div className="iplex-details__backdrop">
-          <div className="iplex-skeleton iplex-details__backdrop-skeleton" />
-          <div className="iplex-hero__scrim" />
-        </div>
-        <div className="iplex-home__hero-info">
-          <TextLine variant="meta" width="16rem" />
-          <TextLine variant="meta" width="19rem" />
-          <TextLine variant="hero" width="60%" />
-          <div>
-            <TextLine variant="description" width="100%" />
-            <TextLine variant="description" width="100%" />
-            <TextLine variant="description" width="70%" />
-          </div>
-          <div>
-            <div className="iplex-skeleton iplex-skeleton--button iplex-skeleton--hero-button">{'\u00a0'}</div>
-          </div>
-        </div>
-      </section>
+      <HeroSkeleton />
       {/* Mesma ordem da tela: Continuar assistindo, Lançamentos, Favoritos, Lista de desejo. */}
       {personal && <SkeletonRow shape="landscape" count={rowCount} />}
       <SkeletonRow shape="poster" count={rowCount} />

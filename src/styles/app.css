@@ -429,6 +429,28 @@
 .iplex-row__track::-webkit-scrollbar {
   display: none;
 }
+/*
+ * Respiro depois do último item das listas horizontais: o Chromium da TV ignora o padding final de um flex que rola,
+ * então um item vazio no fim faz o papel (margem segura menos o espaço que o último item já tem à direita).
+ */
+.iplex-row__track::after,
+.iplex-chips::after,
+.iplex-player__episodes::after {
+  content: '';
+  -webkit-flex: none;
+  flex: none;
+  width: calc(var(--iplex-safe-area-x) - var(--iplex-list-end-gap, 0px));
+  height: 1px;
+}
+.iplex-row__track {
+  --iplex-list-end-gap: var(--iplex-card-gap);
+}
+.iplex-chips {
+  --iplex-list-end-gap: var(--iplex-space-3);
+}
+.iplex-player__episodes {
+  --iplex-list-end-gap: var(--iplex-space-4);
+}
 .iplex-tile {
   -webkit-flex: none;
   flex: none;
@@ -1657,6 +1679,41 @@
   background-color: var(--iplex-bg);
   color: var(--iplex-text-secondary);
   pointer-events: none;
+}
+
+/* ---- Ao Vivo: prévia do canal ao fundo -------------------------------- */
+/* Camadas: fundo (html/body) → prévia (vídeo; no AVPlay, o plano da TV atrás da página) → véu → conteúdo.
+ * Com a prévia tocando, html e body ficam transparentes; sem ela, o fundo oficial continua como sempre. */
+:root.is-live-preview,
+:root.is-live-preview body {
+  background-color: transparent !important;
+}
+.iplex-live-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+.iplex-live-preview video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* Véu para ler menu e grade sobre o vídeo: mais escuro à esquerda (menu lateral), mais leve à direita. */
+:root.is-live-preview .iplex-live-preview::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: linear-gradient(90deg, rgba(15, 15, 15, 0.92) 0%, rgba(15, 15, 15, 0.7) 30%, rgba(15, 15, 15, 0.55) 100%);
 }
 
 /* ---- Player ---------------------------------------------------------- */

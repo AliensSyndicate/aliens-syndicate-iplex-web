@@ -36,6 +36,7 @@ import { isAdultItem } from '../../services/catalog/adult'
 import { viewMemory } from './viewMemory'
 import { LiveChannelPanel } from '../live-tv/LiveChannelPanel'
 import { useLiveState } from '../live-tv/useLiveState'
+import { LivePreview } from '../live-tv/LivePreview'
 import { hasPersonalLibrary, isKids } from '../profiles/profileRules'
 import { COLLECTION_TITLES, KIND_LABELS, SCOPE_KINDS, buildSidebar, isAdultCategory, itemFromIndexed, sortItems, sortOptionsFor, continuing, latestReleases, type CollectionId, type PersonalCollection, type SideEntry, type SortId } from './collections'
 
@@ -240,7 +241,7 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   // Sempre há uma coleção selecionada: a confirmada (se ainda existir no menu) ou a primeira com conteúdo.
   const selected: CollectionId = chosen && sidebar.some((s) => s.id === chosen) ? chosen : firstWithContent
 
-  // ---- Ao Vivo: player de fundo mudo, painel do canal e saída da interface ----
+  // ---- Ao Vivo: prévia ao fundo, painel do canal e saída da interface ----
   const favoriteIds = useMemo(() => new Set(library.favorites.map((f) => f.contentId)), [library.favorites])
   const liveState = useLiveState({ enabled: live, catalog: session.catalog, store, favoriteIds, personal, canPlay: !session.unavailable })
 
@@ -654,8 +655,18 @@ export function CatalogScreen({ kinds, title, initial, live = false, adult = fal
   const sideSkeleton = !scope && !blocked && loading && groups.size === 0
 
   const mainClass = 'iplex-page iplex-page--catalog'
+  // Ao Vivo: prévia do canal ao fundo (camada 2). Com ela tocando, a página fica transparente sobre o vídeo.
+  const [previewActive, setPreviewActive] = useState(false)
+  useEffect(() => {
+    if (!live) return
+    const root = document.documentElement
+    root.classList.toggle('is-live-preview', previewActive)
+    return () => root.classList.remove('is-live-preview')
+  }, [live, previewActive])
+  const previewFallback = live ? (items.find((i) => i.kind === 'channel') ?? null) : null
   return (
     <>
+    {live && <LivePreview fallback={previewFallback} chosenId={liveState.armedId} onActive={setPreviewActive} />}
     <main className={mainClass} aria-label={title} data-nav-managed="" style={cols !== GRID_COLS ? ({ '--iplex-cols': cols } as React.CSSProperties) : undefined}>
       <nav className="iplex-catalog__side" ref={sideRef} aria-label={`Categorias de ${kindLabel}`} onFocus={onSideFocus}>
         {sidebar.map((entry, i) => {

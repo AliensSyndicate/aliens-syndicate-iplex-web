@@ -190,8 +190,10 @@ export function ensureVisible(el: HTMLElement, win: Window = window) {
       const r = el.getBoundingClientRect()
       if (axis === 'x') {
         const startPad = Number(node.getAttribute('data-nav-scroll-pad')) || pad
+        // Fim: o último item para na margem segura da lista (o mesmo recuo do início), sem grudar na borda da tela.
+        const endPad = Math.max(pad, parseFloat(getComputedStyle(node).paddingLeft) || 0)
         if (r.left < box.left + startPad) node.scrollLeft -= box.left + startPad - r.left
-        else if (r.right > box.right - pad) node.scrollLeft += r.right - (box.right - pad)
+        else if (r.right > box.right - endPad) node.scrollLeft += r.right - (box.right - endPad)
       } else if (!yManaged) {
         // 'padding': o início da área rolável fica sob o menu transparente (padding-top).
         const startPad = node.getAttribute('data-nav-scroll-pad') === 'padding' ? parseFloat(getComputedStyle(node).paddingTop) || pad : pad

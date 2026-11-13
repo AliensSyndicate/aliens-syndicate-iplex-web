@@ -478,7 +478,13 @@ async function runHome() {
   if (!(await waitFor(() => !!$('.iplex-home'), 20000))) return report(`${t}:enter`, { fail: 'tela não abriu' })
   // Fileiras reais (o esqueleto também usa .iplex-home).
   const real = await waitFor(() => !!($('.iplex-home .iplex-row__title')?.textContent ?? '').trim(), 40000)
-  report(`${t}:ready`, { real: String(real), ms: String(Date.now() - opened) })
+  const realMs = Date.now() - opened
+  const rowTitles = () => all('.iplex-home .iplex-row__title').map((e) => (e.textContent ?? '').trim()).filter(Boolean)
+  const firstRows = rowTitles().join('|')
+  const heroReal = await waitFor(() => !!$('.iplex-home__hero[aria-label]'), 40000)
+  const heroMs = Date.now() - opened
+  const launches = await waitFor(() => rowTitles().includes('Lançamentos'), 40000)
+  report(`${t}:ready`, { real: String(real), rowsMs: String(realMs), firstRows, heroMs: heroReal ? String(heroMs) : '-', launchesMs: launches ? String(Date.now() - opened) : '-', focus: label(document.activeElement) })
   await sleep(1500)
   const y = () => String(Math.round(window.scrollY))
   const rows = all('.iplex-home .iplex-row').map((r) => `${(r.querySelector('.iplex-row__title')?.textContent ?? '').trim()}:${r.querySelectorAll('.iplex-row__track [data-nav]').length}`)
@@ -531,6 +537,49 @@ async function runHome() {
     await waitFor(() => !!$('.iplex-home'), 10000)
     await sleep(1500)
   }
+}
+
+/** Ao Vivo (?selftest=live): prévia sem som ao fundo, Assistir sem reabrir, Voltar devolve a prévia. */
+async function runLive() {
+  if (!(await goTo('Ao Vivo'))) return report('live', { fail: 'aba não abriu' })
+  const state = () => ({ preview: String(document.documentElement.classList.contains('is-live-preview')), path: location.pathname, a: label(document.activeElement), video: String(!!$('.iplex-live-preview video')) })
+  await sleep(6000)
+  report('live:open', state())
+  press('ArrowRight')
+  await sleep(500)
+  press('ArrowRight')
+  await sleep(6000)
+  report('live:focus', state())
+  // 1º OK no canal: seleciona e abre o painel; 2º OK no mesmo canal: Assistir.
+  const card = document.activeElement as HTMLElement | null
+  card?.click()
+  await sleep(1500)
+  report('live:armed', { ...state(), panel: String(!!$('.iplex-live-panel.is-open')) })
+  const watchAt = Date.now()
+  card?.click()
+  const inPlayer = await waitFor(() => location.pathname.startsWith('/assistir') && !!$('.iplex-player'), 10000)
+  await sleep(3000)
+  report('live:watch', { inPlayer: String(inPlayer), ms: String(Date.now() - watchAt), overlay: String($('.iplex-player__overlay')?.getAttribute('data-overlay-mode')), err: ($('.iplex-state')?.textContent ?? '').slice(0, 60) })
+  press('Escape')
+  await waitFor(() => !location.pathname.startsWith('/assistir'), 8000)
+  await sleep(4000)
+  report('live:back', state())
+  await sleep(1000)
+}
+
+/** Respiro no fim das listas horizontais (?selftest=live também mede): último item longe da borda direita. */
+async function runListEnd() {
+  const tab = all('.iplex-header__capsule .iplex-tab').find((b) => (b.textContent ?? '').trim() === 'Meu iPlex')
+  tab?.focus()
+  tab?.click()
+  await waitFor(() => !!$('.iplex-home .iplex-row__title'), 30000)
+  await sleep(1500)
+  press('ArrowDown')
+  await sleep(500)
+  await keys('ArrowRight', 14, 250)
+  await sleep(800)
+  const r = (document.activeElement as HTMLElement | null)?.getBoundingClientRect()
+  report('list:end', { a: label(document.activeElement), right: r ? String(Math.round(r.right)) : '-', gapToEdge: r ? String(Math.round(window.innerWidth - r.right)) : '-' })
 }
 
 /** Fotos (?selftest=photos): quanto cada imagem visível leva para aparecer, e de onde vem a espera. */
@@ -1057,6 +1106,13 @@ async function runSeriesRow() {
 export async function runTvSelfTest() {
   try {
     diag('st:start', `vp=${window.innerWidth}x${window.innerHeight} dpr=${window.devicePixelRatio}`)
+    if (/selftest=live/.test(window.location.search)) {
+      await sleep(4000)
+      await runListEnd()
+      await runLive()
+      diag('st:done', 'ok')
+      return
+    }
     if (/selftest=photos/.test(window.location.search)) {
       await sleep(4000)
       await runPhotos()
@@ -1136,4 +1192,4 @@ export async function runTvSelfTest() {
   }
 }
 
-export const selfTestRequested = () => /(?:^|[?&])selftest=(?:1|home|settings|skeleton|sync|actions|play|photos)(?:&|$)/.test(window.location.search)
+export const selfTestRequested = () => /(?:^|[?&])selftest=(?:1|home|settings|skeleton|sync|actions|play|photos|live)(?:&|$)/.test(window.location.search)

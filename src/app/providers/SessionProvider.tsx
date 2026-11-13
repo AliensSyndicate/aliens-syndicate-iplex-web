@@ -279,7 +279,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const catalog = new CatalogStore(backend, profile.id, spaces)
       for (const { space, meta } of fast) catalog.beginProgressive(space.sourceId, meta.version, meta.counts.adult > 0)
       for (const { space, result } of legacy) catalog.hydrate(space.sourceId, result.sets, result.meta.version, result.sets.adult.length > 0)
-      const library = early?.library ?? new LibraryStore(backend, identity, profile, (id) => catalog.findLoaded(id))
+      const library = early?.library ?? new LibraryStore(backend, identity, profile, (id, kind) => catalog.findLoaded(id) ?? (kind && catalog.isLoading(kind) ? undefined : null))
       early?.attach(catalog)
       await (early?.loading ?? library.load()).catch(() => library.markLoaded())
       if (!alive()) return catalog.dispose()
@@ -397,7 +397,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // O código das telas não depende de nada do backend: baixa enquanto o lease é obtido.
       const prefetched = prefetchScreens()
       let catalogRef: CatalogStore | null = null
-      const library = new LibraryStore(backend, identity, profile, (id) => catalogRef?.findLoaded(id) ?? null)
+      const library = new LibraryStore(backend, identity, profile, (id, kind) => (catalogRef ? (catalogRef.findLoaded(id) ?? (kind && catalogRef.isLoading(kind) ? undefined : null)) : undefined))
       let lease: Lease
       try {
         lease = await step(leases.acquire(profile.id))
@@ -510,7 +510,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const spaces = activeSpaces(registered, identity, profile)
       if (spaces.length > 0 && spaces.every((space) => space.unavailable)) return full()
       const catalog = new CatalogStore(backend, profile.id, spaces)
-      library.bindCatalog((itemId) => catalog.findLoaded(itemId))
+      library.bindCatalog((itemId, kind) => catalog.findLoaded(itemId) ?? (kind && catalog.isLoading(kind) ? undefined : null))
       let background: (() => Promise<void>) | null
       try {
         background = await prepareCatalog(identity, profile, spaces, catalog, alive, () => undefined)

@@ -48,6 +48,7 @@ import { createProgressSession, resolveResumeMs, type ProgressSession } from './
 import { SEEK_CONFIRM_TIMEOUT_MS, canMarkFinished, clampSeek, createSeekGate, endedBeforeStart, endedEarly, episodeCode, findNextEpisode, nextEpisodeCountdown, qualityLabel, scrubStepMs, seasonEpisodes, subtitledFromSource } from './playerRules'
 import { neighbourChannel, zapList } from '../live-tv/zapList'
 import { useOverlayTimer } from './useOverlayTimer'
+import { liveKey, livePlayback } from '../live-tv/livePlayback'
 import { playRequestErrorCode, reportPlayRequest, setPlaybackActive } from '../remote/playRequestReport'
 
 type Phase = { status: 'preparing' } | { status: 'playing' } | { status: 'error'; error: AppError }
@@ -286,6 +287,44 @@ export default function PlayerScreen() {
                 applySeries(details)
               })
         }
+        // Ao vivo vindo da prévia (mesmo canal): o player já está tocando; só ganha a tela cheia e o overlay (sem reabrir).
+        const channelKey = liveKey(found.sourceId, found.id)
+        const preview = live && attempt === 0 ? livePlayback.claim(channelKey) : null
+        if (preview) {
+          adapter = preview
+          adapterRef.current = adapter
+          setCanSeek(false)
+          if (adapter.kind === 'native-bridge') root.classList.add('is-native-playback')
+          offs.push(
+            adapter.on('state', ({ state }) => {
+              if (state === 'playing' || state === 'paused') statusRef.current?.({ state })
+              setPlaying(state === 'playing')
+            }),
+            adapter.on('time', (raw) => {
+              const t = { positionMs: raw.positionMs, durationMs: 0, key: contentKey }
+              setTime(t)
+              timeRef.current = t
+              statusRef.current?.({ state: 'playing' })
+            }),
+            adapter.on('error', (info) => setPhase({ status: 'error', error: new AppError(info.unsupported ? 'format-unsupported' : 'playback-error', info.code) })),
+            adapter.on('subtitle', ({ text, durationMs }) => {
+              setCue(text)
+              setTimeout(() => setCue((c) => (c === text ? null : c)), durationMs || 3000)
+            }),
+          )
+          adapter.attach(containerRef.current)
+          diag('player', `ao vivo da prévia @${Date.now() - startedAt}ms`)
+          setPlaying(true)
+          setPhase({ status: 'playing' })
+          reportPlayRequest(backend, playRequestId, 'started')
+          statusRef.current?.({ state: 'playing' })
+          overlayRef.current.reveal('info')
+          adapter.getTracks().then((t) => alive && setTracks(t), () => undefined)
+          return
+        }
+        // Qualquer outro conteúdo usa o player da TV sozinho: a prévia do Ao Vivo (se houver) é encerrada antes.
+        await livePlayback.stopNow()
+        if (!alive) return
         const early = episodeId && attempt === 0 && !isAdultItem(found) ? grantCache.current.get(episodeId) : undefined
         grantCache.current.clear()
         const fresh = () => backend.resolveStream(session.profile.id, { sourceId: found.sourceId, itemId: found.id, ...(episodeId ? { episodeId } : {}) })
@@ -363,6 +402,8 @@ export default function PlayerScreen() {
           containerRef.current,
         )
         if (!alive) return
+        // Canal: fica registrado para a tela Ao Vivo retomar a prévia sem reabrir (Voltar).
+        if (live) livePlayback.adopt(channelKey, adapter)
         diag('player', `opened @${Date.now() - startedAt}ms`)
         setPhase((p) => (p.status === 'error' ? p : { status: 'playing' }))
         adapter.getTracks().then((t) => alive && setTracks(t), () => undefined)
@@ -377,7 +418,9 @@ export default function PlayerScreen() {
       statusRef.current = null
       offs.forEach((off) => off())
       root.classList.remove('is-native-playback')
-      if (adapter) void adapter.destroy()
+      // Canal: espera a tela Ao Vivo retomá-lo como prévia; senão é encerrado logo depois.
+      if (adapter && live && livePlayback.claim(liveKey(sourceId, itemId)) === adapter) livePlayback.release()
+      else if (adapter) void adapter.destroy()
       adapterRef.current = null
     }
     // A reprodução reinicia ao mudar o conteúdo ou ao tentar novamente.
