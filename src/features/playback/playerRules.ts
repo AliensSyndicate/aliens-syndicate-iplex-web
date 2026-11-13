@@ -91,9 +91,9 @@ export function nextEpisodeCountdown(positionMs: number, durationMs: number, win
   return Math.max(0, Math.ceil(remaining / 1000))
 }
 
-/** Filme passou de 4/5 da duração real da mídia: já pode ser marcado como finalizado. */
-export function canMarkFinished(positionMs: number, durationMs: number, fraction = PLAYER.finishFraction): boolean {
-  return durationMs > 0 && positionMs / durationMs >= fraction
+/** Faltam 15 min ou menos pelo tempo real da mídia: o filme já pode ser marcado como finalizado. */
+export function canMarkFinished(positionMs: number, durationMs: number, windowMs = PLAYER.finishWindowMs): boolean {
+  return durationMs > 0 && positionMs > 0 && durationMs - positionMs <= windowMs
 }
 
 /** Episódios da temporada em reprodução, na ordem do catálogo IPTV. */

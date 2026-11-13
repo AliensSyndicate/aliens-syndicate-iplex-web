@@ -18,8 +18,10 @@ export type OverlayMode = 'hidden' | 'info' | 'interactive'
  *  - interactive (OK/Enter): o mesmo painel + três controles centralizados
  *    (‑10 s, reproduzir/pausar, +10 s) e a barra navegável. Filme perto do fim:
  *    "Marcar como finalizado" fica aqui, nunca sobre o vídeo. Em séries,
- *    temporadas e episódios ficam logo abaixo; na TV (collapsible), fora da
- *    tela até o foco descer até eles, e aí o painel sobe.
+ *    o rótulo "Temporadas e capítulos" fica abaixo da barra e a seção logo
+ *    depois; na TV (collapsible), fora da tela até o foco descer até ela (Baixo
+ *    na barra leva direto à seção). Só o conteúdo do painel sobe: o fundo
+ *    (degradê e escurecimento) fica parado.
  * Ao ocultar, o conteúdo anterior continua desenhado durante o fade-out.
  * Ao vivo: sem linha do tempo, saltos ou selos de duração.
  */
@@ -114,6 +116,7 @@ export function PlayerOverlay({
         </div>
       )}
       <div className="iplex-player__panel">
+        <div className="iplex-player__panel-body">
         <div className="iplex-player__heading-row">
           <div className="iplex-player__heading">
             <IplexText variant="section-title" as="p">{title}</IplexText>
@@ -179,6 +182,11 @@ export function PlayerOverlay({
           </div>
         )}
         {hasBrowser && (
+          <IplexText variant="meta" as="p" className="iplex-player__browser-label">
+            Temporadas e capítulos
+          </IplexText>
+        )}
+        {hasBrowser && (
           <div
             className={classNames('iplex-player__browser', collapsible && 'is-collapsible')}
             data-nav-managed-y=""
@@ -191,6 +199,7 @@ export function PlayerOverlay({
             <PlayerEpisodes key={selectedSeason} episodes={episodes} currentId={currentEpisodeId} onPlay={onPlayEpisode} />
           </div>
         )}
+        </div>
       </div>
     </div>
   )

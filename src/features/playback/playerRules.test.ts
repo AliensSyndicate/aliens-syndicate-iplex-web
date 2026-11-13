@@ -81,3 +81,15 @@ describe('playerRules', () => {
     expect(formatTimecode(65_000, false)).toBe('01:05')
   })
 })
+
+describe('marcar como finalizado', () => {
+  it('só quando faltam 15 min ou menos pelo tempo real', async () => {
+    const { canMarkFinished } = await import('./playerRules')
+    const twoHours = 7_200_000
+    expect(canMarkFinished(twoHours - 15 * 60_000 - 1, twoHours)).toBe(false)
+    expect(canMarkFinished(twoHours - 15 * 60_000, twoHours)).toBe(true)
+    expect(canMarkFinished(twoHours - 60_000, twoHours)).toBe(true)
+    expect(canMarkFinished(0, twoHours)).toBe(false)
+    expect(canMarkFinished(1000, 0)).toBe(false)
+  })
+})

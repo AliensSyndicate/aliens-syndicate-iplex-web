@@ -11,6 +11,7 @@ import type { Backend } from '../services/api/backend'
 import { readJson } from '../utils/storage'
 import { probeCatalogCache, probeCatalogSets } from './catalogSetsProbe'
 import { diag } from './diagnostics'
+import { focusElement } from '../navigation/spatial'
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)
@@ -667,7 +668,7 @@ async function openCard(tab: string, row: number) {
   return waitFor(() => !!$('[data-nav-id="d-play"]') || !!$('[data-nav-id="d-continue"]'), 12000)
 }
 
-/** Trailer (?selftest=play): abre títulos até um ter trailer e confere a troca da imagem, sem mexer no foco. */
+/** Trailer (?selftest=play&trailer=1): não entra sozinho; "Assistir trailer" abre (spinner → vídeo com som), OK fecha e o foco volta ao botão. */
 async function runTrailer(tab: string, tries: number) {
   const t = tab.toLowerCase()
   for (let i = 0; i < tries; i += 1) {
@@ -675,41 +676,42 @@ async function runTrailer(tab: string, tries: number) {
       report(`trailer:${t}:${i}`, { fail: 'detalhes não abriram', a: focusLabel(), path: location.pathname })
       continue
     }
-    const start = Date.now()
     const title = ($('.iplex-details h1, .iplex-details .iplex-text--hero-title')?.textContent ?? '').trim().slice(0, 30)
-    if (!(await waitFor(() => !!$('.iplex-trailer__frame'), 14000))) {
-      report(`trailer:${t}:${i}`, { title, trailer: 'nenhum (ou TMDB sem vídeo)' })
+    const button = (await waitFor(() => !!$('[data-nav-id="d-trailer"]'), 8000)) ? $('[data-nav-id="d-trailer"]') : null
+    if (!button) {
+      report(`trailer:${t}:${i}`, { title, trailer: 'sem botão (TMDB sem vídeo ou shell sem externalVideo)' })
       press('Escape')
       await sleep(800)
       continue
     }
-    const appeared = Date.now() - start
-    const before = focusLabel()
-    const played = await waitFor(() => !!$('.iplex-trailer.is-playing') || !$('.iplex-trailer__frame'), 18000) && !!$('.iplex-trailer__frame')
-    await sleep(800)
-    const frame = $('.iplex-trailer__frame')
-    report(`trailer:${t}:${i}`, { title, appearedMs: String(appeared), played: String(played), stage: rectText($('.iplex-trailer')), frame: rectText(frame), opacity: $('.iplex-trailer') ? getComputedStyle($('.iplex-trailer') as HTMLElement).opacity : '-', focus: before, iframeHasFocus: String(document.activeElement?.tagName === 'IFRAME') })
+    // Parado nos detalhes: nada começa sozinho.
+    await sleep(7000)
+    report(`trailer:${t}:${i}:idle`, { title, autoStarted: String(!!$('.iplex-trailer')), a: focusLabel() })
+    focusElement(button as HTMLElement)
+    const start = Date.now()
+    press('Enter')
+    await sleep(300)
+    report(`trailer:${t}:${i}:loading`, { open: String(!!$('.iplex-trailer')), spinner: String(!!$('.iplex-trailer__loading')), opacity: $('.iplex-trailer') ? getComputedStyle($('.iplex-trailer') as HTMLElement).opacity : '-' })
+    const played = await waitFor(() => !!$('.iplex-trailer.is-playing') || !$('.iplex-trailer'), 26000) && !!$('.iplex-trailer.is-playing')
+    report(`trailer:${t}:${i}`, { title, playedMs: String(Date.now() - start), played: String(played), frame: rectText($('.iplex-trailer__frame')), iframeHasFocus: String(document.activeElement?.tagName === 'IFRAME'), notice: ($('.iplex-details__error')?.textContent ?? '').trim() })
     if (!played) {
       press('Escape')
       await sleep(800)
       continue
     }
-    await sleep(6000)
+    await sleep(8000)
     press('Enter')
     await sleep(1200)
     report(`trailer:${t}:${i}:key`, { closed: String(!$('.iplex-trailer')), path: location.pathname, focus: focusLabel() })
-    const again = await waitFor(() => !!$('.iplex-trailer.is-playing'), 25000)
-    report(`trailer:${t}:${i}:again`, { again: String(again) })
-    press('ArrowRight')
-    await sleep(1200)
-    report(`trailer:${t}:${i}:later`, { closed: String(!$('.iplex-trailer')), a: focusLabel() })
+    await sleep(7000)
+    report(`trailer:${t}:${i}:after`, { reopened: String(!!$('.iplex-trailer')), a: focusLabel() })
     press('Escape')
     await sleep(1000)
     return
   }
 }
 
-/** Filme: leva a barra além de 4/5 e confere "Marcar como finalizado" (sem acionar: nada é dado como visto). */
+/** Filme: leva a barra aos últimos 15 min e confere "Marcar como finalizado" (sem acionar: nada é dado como visto). */
 async function runMovieFinish() {
   if (!(await openCard('Filmes', 0))) return report('finish', { fail: 'detalhes não abriram' })
   const play = $('[data-nav-id="d-continue"]') ?? $('[data-nav-id="d-play"]')
@@ -788,12 +790,20 @@ async function runSeriesRow() {
   await sleep(600)
   const closed = $('.iplex-player__browser')
   report('series:opened', { opened: String(opened), browsing: String(browsing()), browser: rectText(closed), panel: rectText($('.iplex-player__panel')), view: `${window.innerWidth}x${window.innerHeight}`, a: focusLabel() })
-  for (let i = 0; i < 4 && !browsing(); i += 1) {
+  // Até a barra; dali, um Baixo leva direto ao episódio atual.
+  for (let i = 0; i < 3 && (document.activeElement as HTMLElement | null)?.dataset.navId !== 'pc-timeline'; i += 1) {
+    press('ArrowDown')
+    await sleep(350)
+  }
+  report('series:timeline', { a: focusLabel() })
+  press('ArrowDown')
+  await sleep(350)
+  for (let i = 0; i < 3 && !browsing(); i += 1) {
     press('ArrowDown')
     await sleep(350)
   }
   await sleep(600)
-  report('series:down', { browsing: String(browsing()), a: focusLabel(), browser: rectText($('.iplex-player__browser')), chips: rectText($('.iplex-player__browser .iplex-chips')), row: rectText($('.iplex-player__episodes')), current: rectText($('.iplex-player__episode-card.is-current')), transport: $('.iplex-player__transport') ? getComputedStyle($('.iplex-player__transport') as HTMLElement).opacity : '-', seasons: String(all('.iplex-player__browser .iplex-chip').length), cards: String(all('.iplex-player__episode-card').length) })
+  report('series:down', { label: String(!!$('.iplex-player__browser-label')), panelFixed: rectText($('.iplex-player__panel')), body: rectText($('.iplex-player__panel-body')), browsing: String(browsing()), a: focusLabel(), browser: rectText($('.iplex-player__browser')), chips: rectText($('.iplex-player__browser .iplex-chips')), row: rectText($('.iplex-player__episodes')), current: rectText($('.iplex-player__episode-card.is-current')), transport: $('.iplex-player__transport') ? getComputedStyle($('.iplex-player__transport') as HTMLElement).opacity : '-', seasons: String(all('.iplex-player__browser .iplex-chip').length), cards: String(all('.iplex-player__episode-card').length) })
   const landed = focusLabel()
   press('ArrowUp')
   await sleep(350)
@@ -813,7 +823,10 @@ async function runSeriesRow() {
     const card = all('.iplex-player__episode-card').find((c) => !c.classList.contains('is-current'))
     report('swap:card', { card: label(card ?? null) })
     card?.focus()
+    const swapStart = Date.now()
     card?.click()
+    const swapped = await waitFor(() => /[1-9]/.test($('.iplex-player__time:last-child')?.textContent ?? '') && !$('.iplex-player__error'), 30000)
+    report('swap:ready', { ok: String(swapped), ms: String(Date.now() - swapStart) })
     for (let i = 0; i < 25; i += 1) {
       await sleep(1000)
       report('swap:t', { i: String(i), path: window.location.pathname, e: String(new URLSearchParams(window.location.search).get('e')), player: String(!!$('.iplex-player')), time: ($('.iplex-player__time:last-child')?.textContent ?? '').trim(), err: ($('.iplex-state')?.textContent ?? '').slice(0, 60) })

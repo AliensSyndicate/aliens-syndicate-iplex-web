@@ -9,55 +9,77 @@ const stage = () => document.querySelector('.iplex-trailer')
 const fromPlayer = (data: unknown) =>
   act(() => void window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(data), origin: YOUTUBE_ORIGIN, source: frame()!.contentWindow })))
 const wait = (ms: number) => act(() => void vi.advanceTimersByTime(ms))
+type Command = { func?: string; args?: unknown[] }
+const commands = (post: { mock: { calls: unknown[][] } }): Command[] =>
+  post.mock.calls.map((call) => JSON.parse(String(call[0])) as Command).filter((m) => m.func)
 
 beforeEach(() => void vi.useFakeTimers())
-afterEach(() => void vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
-describe('trailer em tela cheia', () => {
-  it('só entra depois do tempo sem interação', () => {
-    render(<DetailsTrailer videoKey="abc123" />)
-    wait(TRAILER.delayMs - 1000)
-    fireEvent.keyDown(window, { key: 'ArrowDown' })
-    wait(TRAILER.delayMs - 1000)
-    expect(frame()).toBeNull()
-    wait(1000)
-    expect(frame()).not.toBeNull()
-  })
-
-  it('cobre a tela só tocando; a tecla fecha sem chegar à tela e a contagem recomeça', () => {
-    const screenKeys = vi.fn()
-    window.addEventListener('keydown', screenKeys)
-    render(<DetailsTrailer videoKey="abc123" />)
-    wait(TRAILER.delayMs)
-    expect(stage()?.classList.contains('is-playing')).toBe(false)
+describe('trailer em tela cheia (aberto pelo botão)', () => {
+  it('carregando: tela escurecida com spinner; tocando: o vídeo cobre a tela', () => {
+    render(<DetailsTrailer videoKey="abc123" onClose={() => undefined} />)
+    expect(stage()?.classList.contains('is-loading')).toBe(true)
+    expect(document.querySelector('[aria-label="Carregando trailer"]')).not.toBeNull()
     fromPlayer({ event: 'onStateChange', info: 1 })
     expect(stage()?.classList.contains('is-playing')).toBe(true)
+    expect(document.querySelector('[aria-label="Carregando trailer"]')).toBeNull()
+  })
+
+  it('toca com som no volume máximo, reenviado quando o vídeo começa', () => {
+    // O jsdom não carrega o iframe: a própria janela faz o papel do player (mensagens só registradas).
+    vi.spyOn(HTMLIFrameElement.prototype, 'contentWindow', 'get').mockReturnValue(window)
+    const post = vi.spyOn(window, 'postMessage').mockImplementation(() => undefined)
+    render(<DetailsTrailer videoKey="abc123" onClose={() => undefined} />)
+    fromPlayer({ event: 'onReady' })
+    fromPlayer({ event: 'onStateChange', info: 1 })
+    const sent = commands(post)
+    expect(sent.filter((m) => m.func === 'unMute')).toHaveLength(2)
+    expect(sent.filter((m) => m.func === 'setVolume').every((m) => m.args?.[0] === TRAILER.volume)).toBe(true)
+    expect(sent.some((m) => m.func === 'mute')).toBe(false)
+    // Nunca cai para mudo sozinho, por mais que demore.
+    wait(TRAILER.giveUpMs - 1)
+    expect(commands(post).some((m) => m.func === 'mute')).toBe(false)
+  })
+
+  it('a tecla fecha sem chegar à tela', () => {
+    const onClose = vi.fn()
+    const screenKeys = vi.fn()
+    window.addEventListener('keydown', screenKeys)
+    render(<DetailsTrailer videoKey="abc123" onClose={onClose} />)
+    wait(0)
+    fromPlayer({ event: 'onStateChange', info: 1 })
     fireEvent.keyDown(window, { key: 'Enter' })
-    // Fade de saída: continua montado, já sem a classe que o deixa visível.
     expect(stage()?.classList.contains('is-playing')).toBe(false)
-    expect(frame()).not.toBeNull()
     expect(screenKeys).not.toHaveBeenCalled()
     wait(TRAILER.fadeOutMs)
-    expect(frame()).toBeNull()
-    wait(TRAILER.delayMs)
-    expect(frame()).not.toBeNull()
+    expect(onClose).toHaveBeenCalledWith(false)
     window.removeEventListener('keydown', screenKeys)
   })
 
-  it('no fim do vídeo recomeça, sem fechar', () => {
-    render(<DetailsTrailer videoKey="abc123" />)
-    wait(TRAILER.delayMs)
+  it('no fim do vídeo fecha (não fica em loop)', () => {
+    const onClose = vi.fn()
+    render(<DetailsTrailer videoKey="abc123" onClose={onClose} />)
     fromPlayer({ event: 'onStateChange', info: 1 })
     fromPlayer({ event: 'onStateChange', info: 0 })
-    expect(stage()?.classList.contains('is-playing')).toBe(true)
+    wait(TRAILER.fadeOutMs)
+    expect(onClose).toHaveBeenCalledWith(false)
   })
 
-  it('vídeo que não pode tocar: desiste e não tenta de novo', () => {
-    render(<DetailsTrailer videoKey="abc123" />)
-    wait(TRAILER.delayMs)
+  it('vídeo que não pode tocar: fecha avisando a falha', () => {
+    const onClose = vi.fn()
+    render(<DetailsTrailer videoKey="abc123" onClose={onClose} />)
     fromPlayer({ event: 'onError', info: 150 })
-    expect(frame()).toBeNull()
-    wait(TRAILER.delayMs * 2)
-    expect(frame()).toBeNull()
+    expect(onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('sem começar a tocar no prazo: desiste avisando a falha', () => {
+    const onClose = vi.fn()
+    render(<DetailsTrailer videoKey="abc123" onClose={onClose} />)
+    wait(TRAILER.giveUpMs)
+    expect(onClose).toHaveBeenCalledWith(true)
   })
 })

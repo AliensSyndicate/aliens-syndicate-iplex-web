@@ -67,20 +67,16 @@ export const PLAYER = {
   scrubStep: { fraction: 0.01, minMs: 5_000, maxMs: 60_000 },
   /** APROVADO: o botão "Próximo episódio" aparece nos últimos 30 s do episódio. */
   nextEpisodeWindowMs: 30_000,
-  /** Filmes: "Marcar como finalizado" aparece depois de 4/5 da duração. */
-  finishFraction: 0.8,
+  /** Filmes: "Marcar como finalizado" aparece quando faltam 15 min ou menos para o fim. */
+  finishWindowMs: 15 * 60_000,
 } as const
 
 export const TRAILER = {
-  /** Tempo sem interação na tela de detalhes antes de o trailer cobrir a tela. */
-  delayMs: 5_000,
   /** Duração do fade de saída (a mesma do CSS de .iplex-trailer). */
   fadeOutMs: 700,
   /** Volume do trailer (0 a 100): o padrão do player, sem redução. Sempre enviado porque o YouTube lembra o último valor. */
   volume: 100,
-  /** Player pronto e sem tocar nesse prazo: tenta sem som (autoplay bloqueado pelo navegador). */
-  mutedFallbackMs: 6_000,
-  /** Sem tocar nesse prazo: desiste e a imagem fica. */
+  /** Sem tocar nesse prazo: desiste e a tela avisa que o trailer não está disponível. */
   giveUpMs: 25_000,
 } as const
 

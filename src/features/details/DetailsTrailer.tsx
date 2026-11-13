@@ -1,75 +1,80 @@
 /**
- * Trailer em tela cheia nos detalhes, como um descanso de tela: depois de alguns
- * segundos sem interação ele cobre tudo e fica em loop; qualquer tecla ou
- * movimento fecha e a tela volta como estava (a tecla só fecha, não aciona nada).
- * O TMDB só entrega vídeos do YouTube, então ele toca no player oficial
- * incorporado, comandado por mensagens (sem script de terceiros na página). Só
- * aparece quando já está tocando; se o vídeo não puder tocar, a tela fica como está.
+ * Trailer em tela cheia nos detalhes, aberto pelo botão "Assistir trailer" (não entra sozinho).
+ * Enquanto carrega, a tela escurece com um spinner; tocando, o vídeo cobre tudo. Qualquer tecla
+ * ou movimento fecha (a tecla só fecha, não aciona nada) e o fim do vídeo também fecha.
+ * O TMDB só entrega vídeos do YouTube, então ele toca no player oficial incorporado, comandado
+ * por mensagens (sem script de terceiros na página).
+ *
+ * Áudio: aberto por um clique, o trailer toca com som desde o início (sem o recurso de começar
+ * mudo). O YouTube lembra mudo/volume da última sessão, então volume máximo e "unMute" são
+ * enviados quando o player fica pronto e de novo quando o vídeo começa a tocar.
  */
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Spinner } from '../../components/feedback/LoadingState'
 import { TRAILER } from '../../config/features'
 import { diag } from '../../platform/diagnostics'
 import { classNames } from '../../utils/classNames'
 import { coverSize, readPlayerMessage, trailerUrl, YOUTUBE_ORIGIN } from './trailerPlayer'
 
-type Phase = 'waiting' | 'loading' | 'playing' | 'closing' | 'done'
+type Phase = 'loading' | 'playing' | 'closing'
 
 const ACTIVITY = ['keydown', 'mousemove', 'mousedown', 'touchstart', 'wheel'] as const
 
-export function DetailsTrailer({ videoKey }: { videoKey: string }) {
-  const [phase, setPhase] = useState<Phase>('waiting')
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null)
+/** `failed`: o vídeo não pôde tocar (a tela mostra o aviso). */
+export function DetailsTrailer({ videoKey, onClose }: { videoKey: string; onClose: (failed: boolean) => void }) {
+  const [phase, setPhase] = useState<Phase>('loading')
+  const [size, setSize] = useState(() => coverSize(window.innerWidth, window.innerHeight))
   const frame = useRef<HTMLIFrameElement>(null)
-  const started = phase === 'loading' || phase === 'playing' || phase === 'closing'
-
-  // Sem interação, o trailer entra; com ela, a contagem recomeça e o que estiver aberto fecha.
+  const closeRef = useRef(onClose)
   useEffect(() => {
-    if (phase === 'done') return
-    let timer: ReturnType<typeof setTimeout> | undefined
-    // Saída: o som corta na hora e o vídeo dissolve de volta para a tela.
+    closeRef.current = onClose
+  }, [onClose])
+
+  // O próprio clique/OK que abriu o trailer não pode fechá-lo: a escuta só vale a partir do quadro seguinte.
+  const armed = useRef(false)
+  useEffect(() => {
+    const id = setTimeout(() => {
+      armed.current = true
+    }, 0)
+    return () => clearTimeout(id)
+  }, [])
+
+  // Interação fecha: o som corta na hora e o vídeo dissolve de volta para a tela.
+  useEffect(() => {
     if (phase === 'closing') {
       frame.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [], id: videoKey, channel: 'widget' }), YOUTUBE_ORIGIN)
-      timer = setTimeout(() => setPhase('waiting'), TRAILER.fadeOutMs)
+      const timer = setTimeout(() => closeRef.current(false), TRAILER.fadeOutMs)
       return () => clearTimeout(timer)
     }
-    const arm = () => {
-      clearTimeout(timer)
-      timer = setTimeout(() => setPhase('loading'), TRAILER.delayMs)
-    }
-    if (phase === 'waiting') arm()
     const onActivity = (event: Event) => {
-      if (phase === 'waiting') return arm()
-      if (phase === 'loading') return setPhase('waiting')
       if (event.type === 'keydown') {
         event.preventDefault()
         event.stopImmediatePropagation()
       }
-      setPhase('closing')
+      if (armed.current) setPhase('closing')
     }
     ACTIVITY.forEach((type) => window.addEventListener(type, onActivity, true))
-    return () => {
-      clearTimeout(timer)
-      ACTIVITY.forEach((type) => window.removeEventListener(type, onActivity, true))
-    }
+    return () => ACTIVITY.forEach((type) => window.removeEventListener(type, onActivity, true))
   }, [phase, videoKey])
+
 
   // O quadro acompanha a janela: nunca sobra faixa em volta do vídeo.
   useEffect(() => {
-    if (!started) return
     const fit = () => setSize(coverSize(window.innerWidth, window.innerHeight))
-    fit()
     window.addEventListener('resize', fit)
     return () => window.removeEventListener('resize', fit)
-  }, [started])
+  }, [])
 
   useEffect(() => {
-    if (!started) return
     const post = (message: Record<string, unknown>) => frame.current?.contentWindow?.postMessage(JSON.stringify({ ...message, id: videoKey, channel: 'widget' }), YOUTUBE_ORIGIN)
     const command = (func: string, ...args: unknown[]) => post({ event: 'command', func, args })
+    const fullVolume = () => {
+      command('unMute')
+      command('setVolume', TRAILER.volume)
+    }
     let ready = false
     let playing = false
-    let muted: ReturnType<typeof setTimeout> | undefined
     const listen = setInterval(() => post({ event: 'listening' }), 500)
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== YOUTUBE_ORIGIN || event.source !== frame.current?.contentWindow) return
@@ -77,48 +82,42 @@ export function DetailsTrailer({ videoKey }: { videoKey: string }) {
       if (message.ready && !ready) {
         ready = true
         clearInterval(listen)
-        command('setVolume', TRAILER.volume)
+        fullVolume()
         command('playVideo')
-        // Conta do player pronto: a TV demora a carregar, e isso não é autoplay bloqueado.
-        muted = setTimeout(() => {
-          if (playing) return
-          diag('trailer', 'muted-fallback')
-          command('mute')
-          command('playVideo')
-        }, TRAILER.mutedFallbackMs)
       }
       if (message.playing && !playing) {
         playing = true
+        fullVolume()
         diag('trailer', 'playing')
-        setPhase('playing')
+        setPhase((p) => (p === 'loading' ? 'playing' : p))
       }
-      if (message.ended) {
-        command('seekTo', 0, true)
-        command('playVideo')
-      }
+      if (message.ended && playing) setPhase('closing')
       if (message.error) {
         diag('trailer', `error ${String(event.data).slice(0, 120)}`)
-        setPhase('done')
+        closeRef.current(true)
       }
     }
     window.addEventListener('message', onMessage)
     const giveUp = setTimeout(() => {
       if (playing) return
       diag('trailer', 'gave-up')
-      setPhase('done')
+      closeRef.current(true)
     }, TRAILER.giveUpMs)
     return () => {
       clearInterval(listen)
-      clearTimeout(muted)
       clearTimeout(giveUp)
       window.removeEventListener('message', onMessage)
     }
-  }, [started, videoKey])
+  }, [videoKey])
 
-  if (!started) return null
   return createPortal(
-    <div className={classNames('iplex-trailer', phase === 'playing' && 'is-playing')} aria-hidden="true">
-      <iframe ref={frame} className="iplex-trailer__frame" style={size ?? undefined} src={trailerUrl(videoKey, window.location.origin)} title="Trailer" tabIndex={-1} allow="autoplay; encrypted-media" />
+    <div className={classNames('iplex-trailer', phase === 'loading' && 'is-loading', phase === 'playing' && 'is-playing')} aria-hidden="true">
+      {phase === 'loading' && (
+        <div className="iplex-trailer__loading">
+          <Spinner label="Carregando trailer" />
+        </div>
+      )}
+      <iframe ref={frame} className="iplex-trailer__frame" style={size} src={trailerUrl(videoKey, window.location.origin)} title="Trailer" tabIndex={-1} allow="autoplay; encrypted-media" />
     </div>,
     document.body,
   )

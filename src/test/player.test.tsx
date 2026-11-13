@@ -518,23 +518,23 @@ describe('listas do catálogo', () => {
 describe('marcar filme como finalizado', () => {
   const button = () => screen.queryByRole('button', { name: 'Marcar como finalizado' })
 
-  it('depois de 4/5 da duração só aparece com os controles abertos e grava a conclusão', async () => {
+  it('nos últimos 15 min só aparece com os controles abertos e grava a conclusão', async () => {
     const { saveProgress } = start(MOVIE)
     const a = await playing()
-    time(500_000, 600_000, a)
+    time(6_400_000, 7_200_000, a)
     await waitFor(() => expect(overlayMode()).toBe('info'))
     expect(button()).toBeNull()
     enter()
     await waitFor(() => expect(overlayMode()).toBe('interactive'))
     fireEvent.click(await screen.findByRole('button', { name: 'Marcar como finalizado' }))
-    await waitFor(() => expect(saveProgress.mock.calls.some(([w]) => w.positionSec === 600 && w.durationSec === 600)).toBe(true))
+    await waitFor(() => expect(saveProgress.mock.calls.some(([w]) => w.positionSec === 7200 && w.durationSec === 7200)).toBe(true))
     await waitFor(() => expect(window.location.pathname).toBe('/titulo/demo-source/m-bbb'))
   })
 
-  it('antes de 4/5 não aparece nem com os controles abertos', async () => {
+  it('faltando mais de 15 min não aparece nem com os controles abertos', async () => {
     start(MOVIE)
     const a = await playing()
-    time(479_000, 600_000, a)
+    time(6_299_000, 7_200_000, a)
     enter()
     await waitFor(() => expect(overlayMode()).toBe('interactive'))
     expect(button()).toBeNull()
@@ -543,7 +543,7 @@ describe('marcar filme como finalizado', () => {
   it('some quando os controles fecham e o foco não fica nele', async () => {
     start(MOVIE)
     const a = await playing()
-    time(500_000, 600_000, a)
+    time(6_400_000, 7_200_000, a)
     enter()
     await waitFor(() => expect(overlayMode()).toBe('interactive'))
     await screen.findByRole('button', { name: 'Marcar como finalizado' })
@@ -593,6 +593,21 @@ describe('episódios da temporada nos controles', () => {
     expect(before).toEqual(['pe-101', 'pe-102', 'pe-103'])
     expect(after.some((b) => b.getAttribute('aria-current') === 'true')).toBe(false)
     expect(window.location.search).toContain('e=102')
+  })
+
+  it('"Temporadas e capítulos" abaixo da barra; Baixo na barra vai direto ao episódio atual', async () => {
+    start(EPISODE('102'))
+    const a = await playing()
+    time(100_000, 600_000, a)
+    enter()
+    expect(await screen.findByText('Temporadas e capítulos')).toBeTruthy()
+    const bar = await screen.findByRole('slider', { name: 'Posição' })
+    act(() => bar.focus())
+    press('ArrowDown', 40)
+    const row = screen.getByRole('group', { name: 'Episódios da temporada' })
+    await waitFor(() => expect(document.activeElement).toBe(within(row).getByRole('button', { name: /Episódio 2:/ })))
+    // Só o conteúdo do painel se move: o próprio painel (com o fundo) fica onde está.
+    expect(document.querySelector('.iplex-player__panel > .iplex-player__panel-body .iplex-player__browser')).not.toBeNull()
   })
 
   it('filme não tem a fileira', async () => {

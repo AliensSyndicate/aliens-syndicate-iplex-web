@@ -7,8 +7,10 @@ import { IplexText } from '../ui/IplexText'
 import { ERROR_COPY } from './errorCopy'
 import { Spinner } from './LoadingState'
 
-/** Falhas da fonte IPTV costumam voltar na hora: o spinner mostra que a nova tentativa aconteceu. */
-const RETRY_FEEDBACK = new Set<AppErrorKind>(['iptv-unavailable', 'iptv-not-configured', 'playback-error'])
+/** Falhas da fonte IPTV costumam voltar na hora: o pedido só é refeito ao fim do spinner, para a nova tentativa ser percebida. */
+const DELAYED_RETRY = new Set<AppErrorKind>(['iptv-unavailable', 'iptv-not-configured', 'playback-error'])
+/** Tempo mínimo do spinner nos demais erros (o pedido sai na hora). */
+const MIN_RETRY_SPINNER_MS = 800
 
 /**
  * Tela de erro e recuperação. Design obrigatório: fundo sólido #0F0F0F, sem
@@ -26,7 +28,8 @@ export function ErrorState({
 }: {
   error?: AppError | null
   kind?: AppErrorKind
-  onRetry?: () => void
+  /** Pode devolver uma Promise: o spinner fica até ela terminar. */
+  onRetry?: () => void | Promise<unknown>
   retryLabel?: string
   secondary?: { label: string; onClick: () => void }
   /** Dentro de uma seção (sem ocupar a tela toda). */
@@ -45,15 +48,24 @@ export function ErrorState({
     retryRef.current = onRetry
   }, [onRetry])
 
-  // Refaz o pedido ao fim do spinner; se a tela sair antes, nada é repetido.
+  const mounted = useRef(true)
   useEffect(() => {
-    if (!retrying) return
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  /** Falha da fonte: o pedido sai ao fim do spinner; se a tela sair antes, nada é repetido. */
+  const [delayed, setDelayed] = useState(false)
+  useEffect(() => {
+    if (!delayed) return
     const id = setTimeout(() => {
+      setDelayed(false)
       setRetrying(false)
-      retryRef.current?.()
+      void retryRef.current?.()
     }, TIMING.retryFeedbackMs)
     return () => clearTimeout(id)
-  }, [retrying])
+  }, [delayed])
 
   useEffect(() => {
     if (retrying || (inline && !retried.current)) return
@@ -61,13 +73,28 @@ export function ErrorState({
     buttonRef.current?.focus()
   }, [inline, resolved, retrying])
 
+  /**
+   * "Tentar novamente" sempre mostra o spinner. Nos demais erros o pedido sai na hora e o spinner
+   * fica o tempo mínimo e enquanto a Promise devolvida por onRetry estiver pendente.
+   */
   const retry = () => {
-    if (!RETRY_FEEDBACK.has(resolved)) {
-      onRetry?.()
-      return
-    }
+    if (retrying) return
     retried.current = true
     setRetrying(true)
+    if (DELAYED_RETRY.has(resolved)) {
+      setDelayed(true)
+      return
+    }
+    let pending: unknown
+    try {
+      pending = onRetry?.()
+    } catch {
+      pending = undefined
+    }
+    const minimum = new Promise((resolve) => setTimeout(resolve, MIN_RETRY_SPINNER_MS))
+    void Promise.all([minimum, Promise.resolve(pending).catch(() => undefined)]).then(() => {
+      if (mounted.current) setRetrying(false)
+    })
   }
 
   if (retrying) {

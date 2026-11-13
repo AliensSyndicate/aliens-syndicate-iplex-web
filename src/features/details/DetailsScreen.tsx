@@ -31,6 +31,7 @@ import { useLibrary } from '../../hooks/useLibrary'
 import { useOpenTmdbTitle } from '../../hooks/useOpenTmdbTitle'
 import { useInitialFocus } from '../../navigation/FocusProvider'
 import { useRowNavigation } from '../../navigation/rowNavigation'
+import { focusElement } from '../../navigation/spatial'
 import { toAppError, type AppError } from '../../services/api/errors'
 import type { CatalogItem, SeriesDetails, SeriesEpisode } from '../../services/api/types'
 import { episodeContentId, itemYear } from '../../services/catalog/normalize'
@@ -75,6 +76,10 @@ export default function DetailsScreen() {
   const [series, setSeries] = useState<SeriesDetails | null>(null)
   const [busy, setBusy] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
+  /** Trailer aberto pelo botão (não entra sozinho); `failed`: não pôde tocar desta vez. */
+  const [trailer, setTrailer] = useState<'closed' | 'open' | 'failed'>('closed')
+  // App ocultado: o trailer fecha (e não reabre sozinho ao voltar).
+  if (!platform.visible && trailer === 'open') setTrailer('closed')
   const recommendation = useOpenTmdbTitle()
 
   useEffect(() => {
@@ -166,6 +171,7 @@ export default function DetailsScreen() {
   // Pessoas: biografia/filmografia ficam fora do perfil infantil (como a descoberta do Control).
   const canOpenPeople = session.profile.type !== 'kids' && !!summary
   const scope = { sourceId: item.sourceId, itemId: item.id, title: item.title }
+  const canTrailer = !!details?.trailerKey && platform.visible && platform.capabilities.externalVideo
 
   const playMovie = (resumeFrom: boolean) => navigate(PATHS.watch({ sourceId: item.sourceId, itemId: item.id, kind: 'movie', title: item.title, resume: resumeFrom }), { state: TO_PLAYER })
   const playEpisode = (ep: SeriesEpisode, resumeFrom: boolean) =>
@@ -216,7 +222,17 @@ export default function DetailsScreen() {
     <main className="iplex-page iplex-details" aria-label={name} data-nav-managed-y="">
       <div className="iplex-details__backdrop" aria-hidden="true">
         {tmdbPending && !summary?.backdrop ? <div className="iplex-skeleton iplex-details__backdrop-skeleton" /> : <Artwork src={summary?.backdrop} alt="" fallback="" />}
-        {details?.trailerKey && platform.visible && platform.capabilities.externalVideo && <DetailsTrailer key={details.trailerKey} videoKey={details.trailerKey} />}
+        {trailer === 'open' && canTrailer && details?.trailerKey && (
+          <DetailsTrailer
+            key={details.trailerKey}
+            videoKey={details.trailerKey}
+            onClose={(failed) => {
+              setTrailer(failed ? 'failed' : 'closed')
+              const button = document.querySelector<HTMLElement>('[data-nav-id="d-trailer"]')
+              if (button) focusElement(button)
+            }}
+          />
+        )}
         <div className="iplex-hero__scrim" />
       </div>
       <section className="iplex-details__info">
@@ -261,6 +277,11 @@ export default function DetailsScreen() {
               Temporadas
             </IplexButton>
           )}
+          {canTrailer && (
+            <IplexButton variant="secondary" navId="d-trailer" navGroup="details-actions" onClick={() => setTrailer('open')}>
+              Assistir trailer
+            </IplexButton>
+          )}
           {personal && (
             <>
             <IplexButton variant="secondary" navId="d-list" navGroup="details-actions" disabled={busy} onClick={() => void toggleList()} autoFocus={item.kind === 'series' && !resume && !first}>
@@ -282,6 +303,7 @@ export default function DetailsScreen() {
           </div>
         )}
         {listError && <IplexText variant="meta" className="iplex-details__error">{listError}</IplexText>}
+        {trailer === 'failed' && <IplexText variant="meta" className="iplex-details__error">O trailer não está disponível agora.</IplexText>}
       </section>
 
       {tmdbPending && <SkeletonRow count={ROW_LIMIT} />}

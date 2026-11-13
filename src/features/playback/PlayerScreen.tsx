@@ -12,8 +12,8 @@
  *    OK abre o modo interativo. Setas só agem com o overlay interativo aberto.
  * 6. Séries: "Próximo episódio" nos últimos 30 s, contados pelo tempo real da mídia.
  * 7. Saída: Voltar → detalhes do conteúdo; término natural → tela de origem.
- * 8. Filmes: "Marcar como finalizado" depois de 4/5 da duração, só nos controles abertos (OK/Enter).
- * 9. Séries: temporadas e episódios logo abaixo dos controles abertos; na TV, Baixo os traz à tela.
+ * 8. Filmes: "Marcar como finalizado" nos últimos 15 min, só nos controles abertos (OK/Enter).
+ * 9. Séries: "Temporadas e capítulos" abaixo da barra nos controles abertos; Baixo na barra traz a seção à tela.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -105,6 +105,11 @@ export default function PlayerScreen() {
   const [item, setItem] = useState<CatalogItem | null>(null)
   const [series, setSeries] = useState<SeriesDetails | null>(null)
   const [episode, setEpisode] = useState<SeriesEpisode | null>(null)
+  /** Lista de episódios da fonte já lida nesta reprodução (a troca de episódio não relê). */
+  const seriesCache = useRef<{ key: string; details: SeriesDetails } | null>(null)
+  /** Episódio aberto ao entrar no player: depois de uma troca, o carregamento mostra o spinner. */
+  const [firstEpisodeId] = useState(episodeId)
+  const episodeSwitched = episodeId !== firstEpisodeId
   const [seasonMetas, setSeasonMetas] = useState<Record<number, TmdbSeason>>({})
   /** Temporada escolhida na fileira; sem escolha, a do episódio que está tocando. */
   const [browseSeason, setBrowseSeason] = useState<number | null>(null)
@@ -253,14 +258,21 @@ export default function PlayerScreen() {
             return
           }
         }
+        // Troca de episódio: a lista da série já lida é reaproveitada, e a URL do stream é pedida
+        // em paralelo (antes as duas chamadas à fonte IPTV corriam em sequência a cada troca).
+        const grantPromise = backend.resolveStream(session.profile.id, { sourceId: found.sourceId, itemId: found.id, ...(episodeId ? { episodeId } : {}) })
+        grantPromise.catch(() => undefined)
         if (found.kind === 'series' && episodeId) {
-          const details = await backend.readSeries(session.profile.id, found.sourceId, found.providerRef).catch(() => null)
+          const seriesKey = `${found.sourceId}|${found.id}`
+          const cached = seriesCache.current?.key === seriesKey ? seriesCache.current.details : null
+          const details = cached ?? (await backend.readSeries(session.profile.id, found.sourceId, found.providerRef).catch(() => null))
+          if (details && !cached) seriesCache.current = { key: seriesKey, details }
           const ep = details?.seasons.flatMap((s) => s.episodes).find((e) => e.id === episodeId) ?? null
           if (!alive) return
           setSeries(details)
           setEpisode(ep)
         }
-        const grant = await backend.resolveStream(session.profile.id, { sourceId: found.sourceId, itemId: found.id, ...(episodeId ? { episodeId } : {}) })
+        const grant = await grantPromise
         if (!alive) return
         adapter = createPlaybackAdapter(platform)
         adapterRef.current = adapter
@@ -615,6 +627,18 @@ export default function PlayerScreen() {
           scrub(key === 'ArrowRight' ? 1 : -1)
           return true
         }
+        // Série: Baixo na barra abre direto temporadas e capítulos, no episódio que está tocando.
+        if (focusedId === 'pc-timeline' && key === 'ArrowDown') {
+          const browser = document.querySelector<HTMLElement>('.iplex-player__browser')
+          const target =
+            browser?.querySelector<HTMLElement>('.iplex-player__episode-card.is-current') ??
+            browser?.querySelector<HTMLElement>('.iplex-player__episode-card') ??
+            browser?.querySelector<HTMLElement>('[data-nav]')
+          if (target) {
+            focusElement(target)
+            return true
+          }
+        }
         return false
       default:
         return false
@@ -665,10 +689,10 @@ export default function PlayerScreen() {
     <main ref={rootRef} className="iplex-player" aria-label={`Reproduzindo ${title}`} tabIndex={-1} onMouseMove={() => overlay.reveal(live ? 'info' : 'interactive')}>
       <div ref={containerRef} className="iplex-player__surface" />
       {cue && <div className="iplex-player__cue">{cue}</div>}
-      {phase.status === 'preparing' && attempt > 0 && (
+      {phase.status === 'preparing' && (attempt > 0 || episodeSwitched) && (
         <div className="iplex-player__error">
           <section className="iplex-state iplex-state--screen">
-            <Spinner label="Tentando novamente" />
+            <Spinner label={attempt > 0 ? 'Tentando novamente' : 'Carregando episódio'} />
           </section>
         </div>
       )}
@@ -680,8 +704,9 @@ export default function PlayerScreen() {
               phase.error.retryable
                 ? () => {
                     const again = () => setAttempt((a) => a + 1)
-                    if (phase.error.kind === 'session-expired') void sessionApi.recoverSession().then(again, () => undefined)
-                    else again()
+                    // A Promise mantém o spinner do botão até a sessão ser recuperada.
+                    if (phase.error.kind === 'session-expired') return sessionApi.recoverSession().then(again, () => undefined)
+                    again()
                   }
                 : undefined
             }
